@@ -112,6 +112,11 @@ test('cash-builder controls meet the 44px mobile touch-target minimum', async ()
   assert.match(css, /\.quantity-button\s*\{[^}]*width:\s*2\.75rem;[^}]*height:\s*2\.75rem;/s);
 });
 
+test('cache-busts the stylesheet so mobile fixes reach returning visitors', async () => {
+  const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
+  assert.match(html, /href="style\.css\?v=[^"]+"/);
+});
+
 test('exports history as escaped CSV with a header row', () => {
   const csv = toCsv([{ timestamp: '2026-08-27T12:00:00.000Z', outcome: 'Correct', note: 'Quarter, then "dime"' }]);
   assert.match(csv, /^timestamp,outcome,note\r?\n/);
