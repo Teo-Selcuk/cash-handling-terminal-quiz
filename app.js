@@ -7,10 +7,12 @@ import {
   formatMoney,
   parseAmountToCents,
   scoreAnswer,
+  summarizeHistory,
   toCsv,
 } from './quiz-core.mjs';
 
 const HISTORY_KEY = 'cash-handling-terminal-quiz-history-v1';
+const THEME_KEY = 'cash-handling-terminal-quiz-theme-v1';
 const screens = ['setup', 'quiz', 'feedback', 'summary', 'history'];
 const refs = Object.fromEntries([
   'setup-form', 'setup-screen', 'quiz-screen', 'feedback-screen', 'summary-screen', 'history-screen',
@@ -19,7 +21,8 @@ const refs = Object.fromEntries([
   'cash-builder', 'selected-total', 'builder-status', 'clear-builder', 'feedback-heading',
   'feedback-kicker', 'feedback-lead', 'feedback-details', 'next-question', 'session-metrics',
   'start-another', 'summary-history', 'open-history', 'back-to-setup', 'history-metrics',
-  'history-rows', 'download-csv', 'clear-history', 'message', 'submit-answer',
+  'history-outcome-diagram', 'history-outcome-legend', 'history-outcomes-summary', 'history-accuracy-chart',
+  'history-rows', 'download-csv', 'clear-history', 'message', 'submit-answer', 'theme-toggle',
 ].map((id) => [id, document.getElementById(id)]));
 
 const state = {
@@ -40,6 +43,34 @@ const state = {
 
 function setMessage(message) {
   refs.message.textContent = message;
+}
+
+function savedTheme() {
+  try {
+    const theme = localStorage.getItem(THEME_KEY);
+    return theme === 'dark' || theme === 'light' ? theme : null;
+  } catch {
+    return null;
+  }
+}
+
+function applyTheme(theme, persist = false) {
+  const selectedTheme = theme === 'dark' ? 'dark' : 'light';
+  document.documentElement.dataset.theme = selectedTheme;
+  refs['theme-toggle'].setAttribute('aria-pressed', String(selectedTheme === 'dark'));
+  refs['theme-toggle'].textContent = selectedTheme === 'dark' ? 'Light mode' : 'Dark mode';
+  refs['theme-toggle'].setAttribute('aria-label', `Switch to ${selectedTheme === 'dark' ? 'light' : 'dark'} mode`);
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', selectedTheme === 'dark' ? '#0d1719' : '#123f46');
+  if (!persist) return;
+  try {
+    localStorage.setItem(THEME_KEY, selectedTheme);
+  } catch {
+    setMessage('Dark mode is active for this visit, but this browser could not save the preference.');
+  }
+}
+
+function initialTheme() {
+  return savedTheme() ?? (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
 }
 
 function makeSessionId() {
@@ -308,12 +339,11 @@ function showNextQuestion() {
 }
 
 function makeMetrics(records) {
-  const answered = records.length;
-  const correct = records.filter((record) => record.outcome === 'Correct').length;
-  const averageTime = answered ? records.reduce((sum, record) => sum + Number(record.timeUsedSeconds || 0), 0) / answered : 0;
+  const summary = summarizeHistory(records);
+  const averageTime = summary.answered ? records.reduce((sum, record) => sum + Number(record.timeUsedSeconds || 0), 0) / summary.answered : 0;
   return [
-    [`${answered}`, 'Questions'],
-    [`${answered ? Math.round((correct / answered) * 100) : 0}%`, 'Accuracy'],
+    [`${summary.answered}`, 'Questions'],
+    [`${summary.accuracyPercent}%`, 'Accuracy'],
     [`${averageTime.toFixed(1)}s`, 'Average time'],
   ];
 }
@@ -335,14 +365,65 @@ function renderSummary() {
   renderMetrics(refs['session-metrics'], makeMetrics(state.results));
 }
 
+function renderHistoryVisuals(summary) {
+  refs['history-outcomes-summary'].textContent = summary.answered
+    ? `${summary.correct} of ${summary.answered} correct`
+    : 'No answers yet';
+  refs['history-outcome-diagram'].replaceChildren();
+
+  if (summary.answered === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'chart-empty';
+    empty.textContent = 'Complete a question to populate this diagram.';
+    refs['history-outcome-diagram'].append(empty);
+  } else {
+    for (const outcome of summary.outcomes) {
+      const segment = document.createElement('span');
+      segment.className = `outcome-segment outcome-${outcome.key}`;
+      segment.style.setProperty('--segment-size', `${outcome.percent}%`);
+      segment.setAttribute('aria-hidden', 'true');
+      refs['history-outcome-diagram'].append(segment);
+    }
+  }
+
+  refs['history-outcome-legend'].replaceChildren(...summary.outcomes.map((outcome) => {
+    const item = document.createElement('li');
+    const marker = document.createElement('span');
+    marker.className = `legend-marker outcome-${outcome.key}`;
+    marker.setAttribute('aria-hidden', 'true');
+    const label = document.createElement('span');
+    label.textContent = `${outcome.label}: ${outcome.count} (${outcome.percent}%)`;
+    item.append(marker, label);
+    return item;
+  }));
+
+  refs['history-accuracy-chart'].replaceChildren(...summary.byDifficulty.map((level) => {
+    const row = document.createElement('div');
+    row.className = 'bar-chart-row';
+    const label = document.createElement('span');
+    label.className = 'bar-chart-label';
+    label.textContent = level.level;
+    const track = document.createElement('div');
+    track.className = 'bar-chart-track';
+    track.setAttribute('aria-hidden', 'true');
+    const fill = document.createElement('span');
+    fill.className = 'bar-chart-fill';
+    fill.style.setProperty('--bar-size', `${level.accuracyPercent}%`);
+    track.append(fill);
+    const value = document.createElement('span');
+    value.className = 'bar-chart-value';
+    value.textContent = `${level.accuracyPercent}% (${level.correct}/${level.answered})`;
+    row.append(label, track, value);
+    return row;
+  }));
+}
+
 function renderHistory() {
   const history = getHistory();
-  const levelMetrics = ['Easy', 'Medium', 'Hard'].map((level) => {
-    const records = history.filter((record) => record.difficulty === level);
-    const correct = records.filter((record) => record.outcome === 'Correct').length;
-    return [`${records.length ? Math.round((correct / records.length) * 100) : 0}%`, `${level} accuracy`];
-  });
+  const summary = summarizeHistory(history);
+  const levelMetrics = summary.byDifficulty.map((level) => [`${level.accuracyPercent}%`, `${level.level} accuracy`]);
   renderMetrics(refs['history-metrics'], [...makeMetrics(history), ...levelMetrics]);
+  renderHistoryVisuals(summary);
   refs['history-rows'].replaceChildren();
   if (history.length === 0) {
     const row = document.createElement('tr');
@@ -423,6 +504,8 @@ refs['setup-form'].addEventListener('submit', (event) => {
   showNextQuestion();
 });
 
+applyTheme(initialTheme());
+
 refs['answer-form'].addEventListener('submit', (event) => {
   event.preventDefault();
   submitCurrentAnswer();
@@ -441,6 +524,10 @@ refs['start-another'].addEventListener('click', () => showScreen('setup'));
 refs['open-history'].addEventListener('click', openHistory);
 refs['summary-history'].addEventListener('click', openHistory);
 refs['back-to-setup'].addEventListener('click', () => showScreen('setup'));
+refs['theme-toggle'].addEventListener('click', () => {
+  const isDark = document.documentElement.dataset.theme === 'dark';
+  applyTheme(isDark ? 'light' : 'dark', true);
+});
 refs['download-csv'].addEventListener('click', downloadHistory);
 refs['clear-history'].addEventListener('click', () => {
   if (window.confirm('Clear all saved quiz history from this browser? This cannot be undone.')) {

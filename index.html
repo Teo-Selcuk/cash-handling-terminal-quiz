@@ -16,7 +16,10 @@
           <h1>Cash Handling Trainer</h1>
           <p class="subtitle">Practice exact, change, and short transactions. Your history stays on this device.</p>
         </div>
-        <button class="secondary-button" id="open-history" type="button">History &amp; statistics</button>
+        <div class="header-actions">
+          <button class="secondary-button theme-toggle" id="theme-toggle" type="button" aria-pressed="false">Dark mode</button>
+          <button class="secondary-button" id="open-history" type="button">History &amp; statistics</button>
+        </div>
       </header>
 
       <p class="screen-reader-only" id="message" role="status" aria-live="polite"></p>
@@ -128,6 +131,29 @@
           <button class="text-button" id="back-to-setup" type="button">Back to setup</button>
         </div>
         <div class="metric-grid" id="history-metrics"></div>
+        <section class="history-visuals" aria-label="History visualizations">
+          <article class="visual-card" aria-labelledby="outcome-diagram-heading">
+            <div class="visual-heading">
+              <div>
+                <p class="eyebrow">Diagram</p>
+                <h3 id="outcome-diagram-heading">Answer outcomes</h3>
+              </div>
+              <p class="chart-note" id="history-outcomes-summary"></p>
+            </div>
+            <div class="outcome-diagram" id="history-outcome-diagram"></div>
+            <ul class="chart-legend" id="history-outcome-legend"></ul>
+          </article>
+          <article class="visual-card" aria-labelledby="accuracy-chart-heading">
+            <div class="visual-heading">
+              <div>
+                <p class="eyebrow">Chart</p>
+                <h3 id="accuracy-chart-heading">Accuracy by difficulty</h3>
+              </div>
+              <p class="chart-note">Correct answers</p>
+            </div>
+            <div class="bar-chart" id="history-accuracy-chart"></div>
+          </article>
+        </section>
         <div class="action-row">
           <button class="secondary-button" id="download-csv" type="button">Download CSV</button>
           <button class="danger-button" id="clear-history" type="button">Clear history</button>
