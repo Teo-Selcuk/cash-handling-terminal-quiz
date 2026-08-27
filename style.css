@@ -177,7 +177,7 @@ input:disabled { background: var(--disabled-surface); color: var(--muted); }
 .denomination-row { display: grid; grid-template-columns: 1fr auto auto auto; gap: 0.5rem; align-items: center; padding: 0.5rem; border: 0.0625rem solid var(--line); border-radius: 0.25rem; background: var(--surface); }
 .denomination-row strong { font-size: 0.9375rem; }
 .denomination-count { min-width: 2ch; font-variant-numeric: tabular-nums; font-weight: 800; text-align: center; }
-.quantity-button { width: 2.5rem; height: 2.5rem; border: 0.0625rem solid var(--brand); border-radius: 0.25rem; background: transparent; color: var(--brand); font-size: 1.25rem; font-weight: 800; }
+.quantity-button { width: 2.75rem; height: 2.75rem; border: 0.0625rem solid var(--brand); border-radius: 0.25rem; background: transparent; color: var(--brand); font-size: 1.25rem; font-weight: 800; }
 .quantity-button:hover { background: var(--surface-quiet); }
 
 .feedback-screen h2[data-result="correct"] { color: var(--success); }
