@@ -4,6 +4,134 @@
 
     $culture = [System.Globalization.CultureInfo]::GetCultureInfo('en-US')
 
+    function Get-RecommendedQuizDataDirectory {
+        $userProfile = [Environment]::GetFolderPath('UserProfile')
+
+        if ([string]::IsNullOrWhiteSpace($userProfile)) {
+            $userProfile = $env:USERPROFILE
+        }
+
+        return Join-Path `
+            (Join-Path $userProfile 'Downloads') `
+            'Cash-Handling-Quiz-Data'
+    }
+    function Get-QuizSettingsPath {
+        $localAppData = [Environment]::GetFolderPath('LocalApplicationData')
+
+        if ([string]::IsNullOrWhiteSpace($localAppData)) {
+            $localAppData = Join-Path $env:USERPROFILE 'AppData\Local'
+        }
+
+        return Join-Path `
+            (Join-Path $localAppData 'Cash-Handling-Terminal-Quiz') `
+            'Settings.json'
+    }
+    function Get-DefaultQuizSettings {
+        return [pscustomobject]@{
+            DefaultQuestionCount = 10
+            DefaultTimeLimitSeconds = 20
+            DataDirectory = Get-RecommendedQuizDataDirectory
+            ClickableBillCoinModeEnabled = $false
+        }
+    }
+    function Read-QuizSettings {
+        param([string]$Path)
+
+        $settings = Get-DefaultQuizSettings
+
+        if (-not (Test-Path -LiteralPath $Path)) {
+            return $settings
+        }
+
+        try {
+            $saved = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+
+            [int]$numberOfQuestions = 0
+            if (
+                [int]::TryParse(
+                    [string]$saved.DefaultQuestionCount,
+                    [ref]$numberOfQuestions
+                ) -and
+                $numberOfQuestions -ge 1 -and
+                $numberOfQuestions -le 100
+            ) {
+                $settings.DefaultQuestionCount = $numberOfQuestions
+            }
+
+            [int]$timeLimitSeconds = 0
+            if (
+                [int]::TryParse(
+                    [string]$saved.DefaultTimeLimitSeconds,
+                    [ref]$timeLimitSeconds
+                ) -and
+                $timeLimitSeconds -ge 3 -and
+                $timeLimitSeconds -le 300
+            ) {
+                $settings.DefaultTimeLimitSeconds = $timeLimitSeconds
+            }
+
+            if (-not [string]::IsNullOrWhiteSpace([string]$saved.DataDirectory)) {
+                $settings.DataDirectory = [string]$saved.DataDirectory
+            }
+
+            $billCoinMode = $saved.PSObject.Properties['ClickableBillCoinModeEnabled']
+            if ($null -ne $billCoinMode) {
+                $settings.ClickableBillCoinModeEnabled = [bool]$billCoinMode.Value
+            }
+        }
+        catch {
+            Write-Host 'Saved settings could not be read. Default settings will be used.' -ForegroundColor Yellow
+            Write-Host $_.Exception.Message -ForegroundColor DarkGray
+        }
+
+        return $settings
+    }
+    function Save-QuizSettings {
+        param(
+            [object]$Settings,
+            [string]$Path
+        )
+
+        $settingsDirectory = Split-Path -Path $Path -Parent
+        if (-not (Test-Path -LiteralPath $settingsDirectory)) {
+            New-Item -ItemType Directory -Path $settingsDirectory -Force | Out-Null
+        }
+
+        $Settings |
+            ConvertTo-Json -Depth 4 |
+            Set-Content -LiteralPath $Path -Encoding UTF8
+    }
+    function Resolve-QuizDataDirectory {
+        param([string]$Directory)
+
+        if ([string]::IsNullOrWhiteSpace($Directory)) {
+            throw 'A quiz data folder is required.'
+        }
+
+        $userProfile = [Environment]::GetFolderPath('UserProfile')
+        if ([string]::IsNullOrWhiteSpace($userProfile)) {
+            $userProfile = $env:USERPROFILE
+        }
+
+        $selectedDirectory = [Environment]::ExpandEnvironmentVariables(
+            $Directory.Trim().Trim('"')
+        )
+        if ($selectedDirectory -eq '~') {
+            $selectedDirectory = $userProfile
+        }
+        elseif ($selectedDirectory.StartsWith('~\')) {
+            $selectedDirectory = Join-Path $userProfile $selectedDirectory.Substring(2)
+        }
+
+        if (-not (Test-Path -LiteralPath $selectedDirectory)) {
+            New-Item `
+                -ItemType Directory `
+                -Path $selectedDirectory `
+                -Force | Out-Null
+        }
+
+        return (Resolve-Path -LiteralPath $selectedDirectory).Path
+    }
     function Read-QuizDataDirectory {
         $userProfile = [Environment]::GetFolderPath('UserProfile')
 
@@ -60,8 +188,22 @@
         }
     }
 
-    $dataDirectory = Read-QuizDataDirectory
-    $historyPath = Join-Path $dataDirectory 'Cash-Handling-Quiz-History.csv'
+    $settingsPath = Get-QuizSettingsPath
+    $settings = Read-QuizSettings -Path $settingsPath
+    $resolvedDataDirectory = Resolve-QuizDataDirectory `
+        -Directory $settings.DataDirectory
+
+    $settings.DataDirectory = $resolvedDataDirectory
+    $appState = [pscustomobject]@{
+        Settings = $settings
+        DataDirectory = $resolvedDataDirectory
+        HistoryPath = Join-Path `
+            $resolvedDataDirectory `
+            'Cash-Handling-Quiz-History.csv'
+    }
+    $script:dataDirectory = $appState.DataDirectory
+    $script:historyPath = $appState.HistoryPath
+    Save-QuizSettings -Settings $settings -Path $settingsPath
 
     $allDenominations = @(
         [pscustomobject]@{
@@ -718,7 +860,7 @@
     }
 
     function Show-AnswerSyntaxNote {
-        param([bool]$ClickableMode)
+        param([bool]$BillCoinModeEnabled)
 
         Write-Host ''
         Write-Host 'ANSWER NOTE' -ForegroundColor Cyan
@@ -726,20 +868,16 @@
         Write-Host 'C = Change' -ForegroundColor White
         Write-Host 'S = Short' -ForegroundColor White
 
-        if ($ClickableMode) {
+        Write-Host ''
+        Write-Host 'Answer examples:' -ForegroundColor Cyan
+        Write-Host 'E          = exact amount'
+        Write-Host 'C 12.35    = give $12.35 in change'
+        Write-Host 'S 4.10     = customer is $4.10 short'
+        if ($BillCoinModeEnabled) {
             Write-Host ''
-            Write-Host 'Clickable mode:' -ForegroundColor Cyan
-            Write-Host '1. Choose E, C, or S.'
-            Write-Host '2. For C or S, type the total amount.'
-            Write-Host '3. Click bills and coins until the selected cash equals that total.'
-            Write-Host 'For C, the cash is what you give back. For S, it is what the customer still needs to give.'
-        }
-        else {
-            Write-Host ''
-            Write-Host 'Typed mode examples:' -ForegroundColor Cyan
-            Write-Host 'E          = exact amount'
-            Write-Host 'C 12.35    = give $12.35 in change'
-            Write-Host 'S 4.10     = customer is $4.10 short'
+            Write-Host 'Final cash-construction step:' -ForegroundColor Cyan
+            Write-Host 'After a valid answer, build your declared amount with + and - bill and coin controls.'
+            Write-Host 'The selected total must match the amount you declared before the transaction can be submitted.'
         }
 
         Write-Host ''
@@ -747,13 +885,22 @@
     }
 
     function Read-ClickableModeSetting {
+        param([bool]$Default = $false)
+
         while ($true) {
+            $prompt = if ($Default) {
+                'Use clickable bill/coin mode? [Y/N] [Y]'
+            }
+            else {
+                'Use clickable bill/coin mode? [Y/N] [N]'
+            }
+
             $raw = (
-                Read-Host 'Turn clickable denomination mode ON? [Y/N] [N]'
+                Read-Host $prompt
             ).Trim().ToLowerInvariant()
 
             if (
-                [string]::IsNullOrWhiteSpace($raw) -or
+                ([string]::IsNullOrWhiteSpace($raw) -and -not $Default) -or
                 $raw -eq 'n' -or
                 $raw -eq 'no' -or
                 $raw -eq 'off'
@@ -762,6 +909,7 @@
             }
 
             if (
+                ([string]::IsNullOrWhiteSpace($raw) -and $Default) -or
                 $raw -eq 'y' -or
                 $raw -eq 'yes' -or
                 $raw -eq 'on'
@@ -972,7 +1120,11 @@
     function Read-ClickableCashAnswer {
         param(
             [int]$Seconds,
-            [object]$Question
+            [object]$Question,
+            [object]$DeclaredAnswer = $null,
+            [double]$ElapsedSecondsBefore = 0,
+            [string]$PreviewScreenshotPath = '',
+            [switch]$PreviewOnly
         )
 
         Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
@@ -1105,125 +1257,325 @@
 
         $stopwatch = [Diagnostics.Stopwatch]::StartNew()
 
+        $uiBackground = [System.Drawing.Color]::FromArgb(15, 23, 42)
+        $uiSurface = [System.Drawing.Color]::FromArgb(30, 41, 59)
+        $uiSurfaceRaised = [System.Drawing.Color]::FromArgb(51, 65, 85)
+        $uiText = [System.Drawing.Color]::FromArgb(248, 250, 252)
+        $uiMutedText = [System.Drawing.Color]::FromArgb(203, 213, 225)
+        $uiAccent = [System.Drawing.Color]::FromArgb(20, 184, 166)
+        $uiAccentDark = [System.Drawing.Color]::FromArgb(15, 118, 110)
+        $uiSuccess = [System.Drawing.Color]::FromArgb(52, 211, 153)
+        $uiDanger = [System.Drawing.Color]::FromArgb(253, 164, 175)
+
         $form = New-Object System.Windows.Forms.Form
-        $form.Text = 'Cash Handling Quiz - Clickable Denomination Mode'
+        $form.Text = 'Cash Handling Quiz - Clickable Bill/Coin Mode'
         $form.StartPosition = 'CenterScreen'
-        $form.ClientSize = New-Object System.Drawing.Size(960, 735)
+        $form.ClientSize = New-Object System.Drawing.Size(1040, 790)
+        $form.AutoScaleMode = 'Dpi'
+        $form.Font = New-Object System.Drawing.Font('Segoe UI', 10)
+        $form.BackColor = $uiBackground
+        $form.ForeColor = $uiText
         $form.FormBorderStyle = 'FixedDialog'
         $form.MaximizeBox = $false
         $form.MinimizeBox = $false
         $form.TopMost = $true
 
+        $headerPanel = New-Object System.Windows.Forms.Panel
+        $headerPanel.Location = New-Object System.Drawing.Point(20, 18)
+        $headerPanel.Size = New-Object System.Drawing.Size(1000, 108)
+        $headerPanel.BackColor = $uiSurface
+        $headerPanel.BorderStyle = 'FixedSingle'
+        $form.Controls.Add($headerPanel)
+
         $questionLabel = New-Object System.Windows.Forms.Label
         $questionLabel.Location = New-Object System.Drawing.Point(20, 15)
-        $questionLabel.Size = New-Object System.Drawing.Size(700, 90)
-        $questionLabel.Font = New-Object System.Drawing.Font('Segoe UI', 11, [System.Drawing.FontStyle]::Bold)
+        $questionLabel.Size = New-Object System.Drawing.Size(720, 78)
+        $questionLabel.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 11.5)
+        $questionLabel.ForeColor = $uiText
         $questionLabel.Text = (
             'Customer owes: ' +
             (Format-Money $Question.DueCents) +
             "`r`nCustomer hands you:`r`n" +
             $Question.BreakdownText
         )
-        $form.Controls.Add($questionLabel)
+        $headerPanel.Controls.Add($questionLabel)
+
+        $timerPanel = New-Object System.Windows.Forms.Panel
+        $timerPanel.Location = New-Object System.Drawing.Point(760, 18)
+        $timerPanel.Size = New-Object System.Drawing.Size(215, 68)
+        $timerPanel.BackColor = $uiAccentDark
+        $headerPanel.Controls.Add($timerPanel)
 
         $timerLabel = New-Object System.Windows.Forms.Label
-        $timerLabel.Location = New-Object System.Drawing.Point(735, 20)
-        $timerLabel.Size = New-Object System.Drawing.Size(205, 45)
+        $timerLabel.Dock = 'Fill'
         $timerLabel.TextAlign = 'MiddleCenter'
-        $timerLabel.Font = New-Object System.Drawing.Font('Segoe UI', 12, [System.Drawing.FontStyle]::Bold)
+        $timerLabel.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 12)
+        $timerLabel.ForeColor = $uiText
         $timerLabel.Text = "Time remaining: $Seconds"
-        $form.Controls.Add($timerLabel)
+        $timerPanel.Controls.Add($timerLabel)
+
+        $answerPanel = New-Object System.Windows.Forms.Panel
+        $answerPanel.Location = New-Object System.Drawing.Point(20, 138)
+        $answerPanel.Size = New-Object System.Drawing.Size(1000, 142)
+        $answerPanel.BackColor = $uiSurface
+        $answerPanel.BorderStyle = 'FixedSingle'
+        $form.Controls.Add($answerPanel)
 
         $instructionLabel = New-Object System.Windows.Forms.Label
-        $instructionLabel.Location = New-Object System.Drawing.Point(20, 108)
-        $instructionLabel.Size = New-Object System.Drawing.Size(920, 42)
+        $instructionLabel.Location = New-Object System.Drawing.Point(20, 12)
+        $instructionLabel.Size = New-Object System.Drawing.Size(960, 38)
+        $instructionLabel.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 10.5)
+        $instructionLabel.ForeColor = $uiMutedText
         $instructionLabel.Text = 'Choose E, C, or S. For C or S, enter the total and build the same amount with the bill and coin buttons.'
-        $form.Controls.Add($instructionLabel)
+        $answerPanel.Controls.Add($instructionLabel)
 
         $exactRadio = New-Object System.Windows.Forms.RadioButton
-        $exactRadio.Location = New-Object System.Drawing.Point(25, 150)
-        $exactRadio.Size = New-Object System.Drawing.Size(150, 30)
+        $exactRadio.Location = New-Object System.Drawing.Point(20, 54)
+        $exactRadio.Size = New-Object System.Drawing.Size(160, 30)
+        $exactRadio.ForeColor = $uiText
         $exactRadio.Text = 'E - Exact amount'
-        $form.Controls.Add($exactRadio)
+        $answerPanel.Controls.Add($exactRadio)
 
         $changeRadio = New-Object System.Windows.Forms.RadioButton
-        $changeRadio.Location = New-Object System.Drawing.Point(205, 150)
+        $changeRadio.Location = New-Object System.Drawing.Point(190, 54)
         $changeRadio.Size = New-Object System.Drawing.Size(145, 30)
+        $changeRadio.ForeColor = $uiText
         $changeRadio.Text = 'C - Change'
-        $form.Controls.Add($changeRadio)
+        $answerPanel.Controls.Add($changeRadio)
 
         $shortRadio = New-Object System.Windows.Forms.RadioButton
-        $shortRadio.Location = New-Object System.Drawing.Point(380, 150)
-        $shortRadio.Size = New-Object System.Drawing.Size(145, 30)
+        $shortRadio.Location = New-Object System.Drawing.Point(345, 54)
+        $shortRadio.Size = New-Object System.Drawing.Size(135, 30)
+        $shortRadio.ForeColor = $uiText
         $shortRadio.Text = 'S - Short'
-        $form.Controls.Add($shortRadio)
+        $answerPanel.Controls.Add($shortRadio)
 
         $amountLabel = New-Object System.Windows.Forms.Label
-        $amountLabel.Location = New-Object System.Drawing.Point(25, 190)
-        $amountLabel.Size = New-Object System.Drawing.Size(250, 25)
-        $amountLabel.Text = 'Total change or shortage amount:'
-        $form.Controls.Add($amountLabel)
+        $amountLabel.Location = New-Object System.Drawing.Point(505, 58)
+        $amountLabel.Size = New-Object System.Drawing.Size(180, 25)
+        $amountLabel.ForeColor = $uiMutedText
+        $amountLabel.Text = 'Change or shortage amount:'
+        $answerPanel.Controls.Add($amountLabel)
 
         $amountTextBox = New-Object System.Windows.Forms.TextBox
-        $amountTextBox.Location = New-Object System.Drawing.Point(285, 187)
-        $amountTextBox.Size = New-Object System.Drawing.Size(150, 30)
+        $amountTextBox.Location = New-Object System.Drawing.Point(690, 54)
+        $amountTextBox.Size = New-Object System.Drawing.Size(130, 30)
         $amountTextBox.Font = New-Object System.Drawing.Font('Segoe UI', 11)
-        $form.Controls.Add($amountTextBox)
+        $amountTextBox.BackColor = $uiSurfaceRaised
+        $amountTextBox.ForeColor = $uiText
+        $amountTextBox.BorderStyle = 'FixedSingle'
+        $answerPanel.Controls.Add($amountTextBox)
 
         $selectedTotalLabel = New-Object System.Windows.Forms.Label
-        $selectedTotalLabel.Location = New-Object System.Drawing.Point(475, 188)
-        $selectedTotalLabel.Size = New-Object System.Drawing.Size(300, 30)
-        $selectedTotalLabel.Font = New-Object System.Drawing.Font('Segoe UI', 11, [System.Drawing.FontStyle]::Bold)
-        $selectedTotalLabel.Text = 'Selected cash total: $0.00'
-        $form.Controls.Add($selectedTotalLabel)
+        $selectedTotalLabel.Location = New-Object System.Drawing.Point(830, 53)
+        $selectedTotalLabel.Size = New-Object System.Drawing.Size(150, 34)
+        $selectedTotalLabel.TextAlign = 'MiddleRight'
+        $selectedTotalLabel.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 11)
+        $selectedTotalLabel.ForeColor = $uiAccent
+        $selectedTotalLabel.Text = 'Selected: $0.00'
+        $answerPanel.Controls.Add($selectedTotalLabel)
 
         $purposeLabel = New-Object System.Windows.Forms.Label
-        $purposeLabel.Location = New-Object System.Drawing.Point(25, 222)
-        $purposeLabel.Size = New-Object System.Drawing.Size(900, 30)
+        $purposeLabel.Location = New-Object System.Drawing.Point(20, 100)
+        $purposeLabel.Size = New-Object System.Drawing.Size(475, 28)
+        $purposeLabel.ForeColor = $uiMutedText
         $purposeLabel.Text = 'C: select what you give back. S: select what the customer still needs to give. E: select no cash.'
-        $form.Controls.Add($purposeLabel)
+        $answerPanel.Controls.Add($purposeLabel)
+
+        $selectionStatusLabel = New-Object System.Windows.Forms.Label
+        $selectionStatusLabel.Location = New-Object System.Drawing.Point(505, 96)
+        $selectionStatusLabel.Size = New-Object System.Drawing.Size(475, 32)
+        $selectionStatusLabel.TextAlign = 'MiddleRight'
+        $selectionStatusLabel.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 10)
+        $selectionStatusLabel.ForeColor = $uiMutedText
+        $selectionStatusLabel.Text = 'Selected cash total updates as you build it.'
+        $answerPanel.Controls.Add($selectionStatusLabel)
+
+        if ($null -ne $DeclaredAnswer) {
+            switch ($DeclaredAnswer.Type) {
+                'Exact' {
+                    $exactRadio.Checked = $true
+                }
+                'Change' {
+                    $changeRadio.Checked = $true
+                }
+                'Short' {
+                    $shortRadio.Checked = $true
+                }
+                default {
+                    throw 'The cash-construction step needs a valid declared answer.'
+                }
+            }
+
+            $amountTextBox.Text = (
+                ([decimal]$DeclaredAnswer.AmountCents / 100).ToString(
+                    '0.00',
+                    [CultureInfo]::InvariantCulture
+                )
+            )
+            $exactRadio.AutoCheck = $false
+            $changeRadio.AutoCheck = $false
+            $shortRadio.AutoCheck = $false
+            $exactRadio.TabStop = $false
+            $changeRadio.TabStop = $false
+            $shortRadio.TabStop = $false
+            $amountTextBox.ReadOnly = $true
+            $amountTextBox.TabStop = $false
+            $amountLabel.Text = 'Your declared amount:'
+            $instructionLabel.Text = (
+                'FINAL STEP: Construct ' +
+                (& $formatLocalMoney $DeclaredAnswer.AmountCents) +
+                ' using bills and coins. The selected total must match your declared amount.'
+            )
+            $purposeLabel.Text = if ($DeclaredAnswer.Type -eq 'Change') {
+                'Build the change you would give back to the customer.'
+            }
+            elseif ($DeclaredAnswer.Type -eq 'Short') {
+                'Build the additional cash the customer still needs to give.'
+            }
+            else {
+                'Exact amount requires no selected bills or coins.'
+            }
+            $form.Text = 'Cash Handling Quiz - Final Cash Construction'
+        }
+
+        $refreshSelectionStatus = {
+            param([long]$SelectedCents)
+
+            if ($null -eq $DeclaredAnswer) {
+                return
+            }
+
+            [long]$targetCents = [long]$DeclaredAnswer.AmountCents
+            [long]$differenceCents = $SelectedCents - $targetCents
+
+            if ($differenceCents -eq 0) {
+                $selectionStatusLabel.Text = 'Selected cash matches the declared amount.'
+                $selectionStatusLabel.ForeColor = $uiSuccess
+            }
+            elseif ($differenceCents -gt 0) {
+                $selectionStatusLabel.Text = (
+                    'Selected cash is ' +
+                    (& $formatLocalMoney $differenceCents) +
+                    ' over the declared amount.'
+                )
+                $selectionStatusLabel.ForeColor = $uiDanger
+            }
+            else {
+                $selectionStatusLabel.Text = (
+                    'Selected cash is ' +
+                    (& $formatLocalMoney (-$differenceCents)) +
+                    ' short of the declared amount.'
+                )
+                $selectionStatusLabel.ForeColor = $uiDanger
+            }
+        }.GetNewClosure()
+
+        & $refreshSelectionStatus 0
+
+        $styleFlatButton = {
+            param(
+                [System.Windows.Forms.Button]$Button,
+                [System.Drawing.Color]$BackColor,
+                [System.Drawing.Color]$ForeColor
+            )
+
+            $Button.FlatStyle = 'Flat'
+            $Button.FlatAppearance.BorderSize = 0
+            $Button.BackColor = $BackColor
+            $Button.ForeColor = $ForeColor
+            $Button.UseVisualStyleBackColor = $false
+            $Button.Cursor = [System.Windows.Forms.Cursors]::Hand
+        }.GetNewClosure()
+
+        $billsGroup = New-Object System.Windows.Forms.GroupBox
+        $billsGroup.Text = 'BILLS'
+        $billsGroup.Location = New-Object System.Drawing.Point(20, 294)
+        $billsGroup.Size = New-Object System.Drawing.Size(620, 345)
+        $billsGroup.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 11)
+        $billsGroup.BackColor = $uiSurface
+        $billsGroup.ForeColor = $uiMutedText
+        $form.Controls.Add($billsGroup)
+
+        $coinsGroup = New-Object System.Windows.Forms.GroupBox
+        $coinsGroup.Text = 'COINS'
+        $coinsGroup.Location = New-Object System.Drawing.Point(655, 294)
+        $coinsGroup.Size = New-Object System.Drawing.Size(365, 345)
+        $coinsGroup.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 11)
+        $coinsGroup.BackColor = $uiSurface
+        $coinsGroup.ForeColor = $uiMutedText
+        $form.Controls.Add($coinsGroup)
 
         $countLabels = @{}
-        $rowHeight = 68
+        $billIndex = 0
+        $coinIndex = 0
 
         for ($index = 0; $index -lt $allDenominations.Count; $index++) {
             $denomination = $allDenominations[$index]
-            $column = $index % 2
-            $row = [Math]::Floor($index / 2)
-            $x = 20 + ($column * 465)
-            $y = 255 + ($row * $rowHeight)
+
+            if ($denomination.Category -eq 'Bill') {
+                $parentGroup = $billsGroup
+                $cardWidth = 280
+                $cardHeight = 82
+                $column = $billIndex % 2
+                $row = [Math]::Floor($billIndex / 2)
+                $x = 18 + ($column * 292)
+                $y = 36 + ($row * 94)
+                $billIndex++
+            }
+            else {
+                $parentGroup = $coinsGroup
+                $cardWidth = 325
+                $cardHeight = 64
+                $x = 18
+                $y = 36 + ($coinIndex * 70)
+                $coinIndex++
+            }
 
             $panel = New-Object System.Windows.Forms.Panel
             $panel.Location = New-Object System.Drawing.Point($x, $y)
-            $panel.Size = New-Object System.Drawing.Size(445, 60)
-            $panel.BorderStyle = 'FixedSingle'
-            $form.Controls.Add($panel)
+            $panel.Size = New-Object System.Drawing.Size($cardWidth, $cardHeight)
+            $panel.BackColor = $uiSurfaceRaised
+            $parentGroup.Controls.Add($panel)
 
             $nameLabel = New-Object System.Windows.Forms.Label
-            $nameLabel.Location = New-Object System.Drawing.Point(10, 18)
-            $nameLabel.Size = New-Object System.Drawing.Size(145, 27)
-            $nameLabel.Font = New-Object System.Drawing.Font('Segoe UI', 10, [System.Drawing.FontStyle]::Bold)
+            $nameLabel.Location = New-Object System.Drawing.Point(14, 8)
+            $nameLabel.Size = New-Object System.Drawing.Size(110, ($cardHeight - 16))
+            $nameLabel.TextAlign = 'MiddleLeft'
+            $nameLabel.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 10.5)
+            $nameLabel.ForeColor = $uiText
             $nameLabel.Text = $denomination.Singular
             $panel.Controls.Add($nameLabel)
 
-            $addButton = New-Object System.Windows.Forms.Button
-            $addButton.Location = New-Object System.Drawing.Point(160, 10)
-            $addButton.Size = New-Object System.Drawing.Size(100, 38)
-            $addButton.Text = 'Add one'
-            $panel.Controls.Add($addButton)
-
             $removeButton = New-Object System.Windows.Forms.Button
-            $removeButton.Location = New-Object System.Drawing.Point(270, 10)
-            $removeButton.Size = New-Object System.Drawing.Size(80, 38)
-            $removeButton.Text = 'Remove'
+            $removeButton.Location = New-Object System.Drawing.Point(($cardWidth - 148), (($cardHeight - 44) / 2))
+            $removeButton.Size = New-Object System.Drawing.Size(44, 44)
+            $removeButton.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 15)
+            $removeButton.Text = '-'
+            $removeButton.AccessibleName = 'Remove one ' + $denomination.Singular
+            $removeButton.TabIndex = 10 + ($index * 2)
+            & $styleFlatButton $removeButton $uiBackground $uiText
             $panel.Controls.Add($removeButton)
 
             $countLabel = New-Object System.Windows.Forms.Label
-            $countLabel.Location = New-Object System.Drawing.Point(360, 17)
-            $countLabel.Size = New-Object System.Drawing.Size(75, 28)
-            $countLabel.Font = New-Object System.Drawing.Font('Segoe UI', 10, [System.Drawing.FontStyle]::Bold)
-            $countLabel.Text = 'Count: 0'
+            $countLabel.Location = New-Object System.Drawing.Point(($cardWidth - 100), (($cardHeight - 36) / 2))
+            $countLabel.Size = New-Object System.Drawing.Size(48, 36)
+            $countLabel.TextAlign = 'MiddleCenter'
+            $countLabel.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 13)
+            $countLabel.ForeColor = $uiText
+            $countLabel.Text = '0'
+            $countLabel.AccessibleName = $denomination.Singular + ' count'
             $panel.Controls.Add($countLabel)
+
+            $addButton = New-Object System.Windows.Forms.Button
+            $addButton.Location = New-Object System.Drawing.Point(($cardWidth - 48), (($cardHeight - 44) / 2))
+            $addButton.Size = New-Object System.Drawing.Size(44, 44)
+            $addButton.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 15)
+            $addButton.Text = '+'
+            $addButton.AccessibleName = 'Add one ' + $denomination.Singular
+            $addButton.TabIndex = 11 + ($index * 2)
+            & $styleFlatButton $addButton $uiAccentDark $uiText
+            $panel.Controls.Add($addButton)
 
             $keyCopy = [string]$denomination.Cents
             $countLabels[$keyCopy] = $countLabel
@@ -1232,11 +1584,12 @@
                 $state.Counts[$keyCopy] = [long]$state.Counts[$keyCopy] + 1
 
                 [long]$newTotal = & $getLocalCashTotal $state.Counts
-                $selectedTotalLabel.Text = 'Selected cash total: ' + (& $formatLocalMoney $newTotal)
+                $selectedTotalLabel.Text = 'Selected: ' + (& $formatLocalMoney $newTotal)
+                & $refreshSelectionStatus $newTotal
 
                 foreach ($item in $allDenominations) {
                     $itemKey = [string]$item.Cents
-                    $countLabels[$itemKey].Text = 'Count: ' + [string]$state.Counts[$itemKey]
+                    $countLabels[$itemKey].Text = [string]$state.Counts[$itemKey]
                 }
             }.GetNewClosure())
 
@@ -1246,56 +1599,90 @@
                 }
 
                 [long]$newTotal = & $getLocalCashTotal $state.Counts
-                $selectedTotalLabel.Text = 'Selected cash total: ' + (& $formatLocalMoney $newTotal)
+                $selectedTotalLabel.Text = 'Selected: ' + (& $formatLocalMoney $newTotal)
+                & $refreshSelectionStatus $newTotal
 
                 foreach ($item in $allDenominations) {
                     $itemKey = [string]$item.Cents
-                    $countLabels[$itemKey].Text = 'Count: ' + [string]$state.Counts[$itemKey]
+                    $countLabels[$itemKey].Text = [string]$state.Counts[$itemKey]
                 }
             }.GetNewClosure())
         }
 
         $errorLabel = New-Object System.Windows.Forms.Label
-        $errorLabel.Location = New-Object System.Drawing.Point(25, 600)
-        $errorLabel.Size = New-Object System.Drawing.Size(910, 42)
-        $errorLabel.ForeColor = [System.Drawing.Color]::DarkRed
-        $errorLabel.Font = New-Object System.Drawing.Font('Segoe UI', 10, [System.Drawing.FontStyle]::Bold)
+        $errorLabel.Location = New-Object System.Drawing.Point(28, 652)
+        $errorLabel.Size = New-Object System.Drawing.Size(992, 42)
+        $errorLabel.TextAlign = 'MiddleLeft'
+        $errorLabel.BackColor = $uiSurface
+        $errorLabel.ForeColor = $uiMutedText
+        $errorLabel.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 10)
+        $keyboardHintText = 'Tip: Press Enter to submit | Press Esc to stop the quiz.'
+        $errorLabel.Text = $keyboardHintText
         $form.Controls.Add($errorLabel)
 
+        $actionPanel = New-Object System.Windows.Forms.Panel
+        $actionPanel.Location = New-Object System.Drawing.Point(20, 706)
+        $actionPanel.Size = New-Object System.Drawing.Size(1000, 64)
+        $actionPanel.BackColor = $uiBackground
+        $form.Controls.Add($actionPanel)
+
         $submitButton = New-Object System.Windows.Forms.Button
-        $submitButton.Location = New-Object System.Drawing.Point(25, 655)
-        $submitButton.Size = New-Object System.Drawing.Size(215, 50)
+        $submitButton.Location = New-Object System.Drawing.Point(0, 4)
+        $submitButton.Size = New-Object System.Drawing.Size(280, 56)
         $submitButton.Text = 'Submit answer'
-        $submitButton.Font = New-Object System.Drawing.Font('Segoe UI', 10, [System.Drawing.FontStyle]::Bold)
-        $form.Controls.Add($submitButton)
+        $submitButton.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 11)
+        $submitButton.AccessibleName = 'Submit cash answer'
+        $submitButton.TabIndex = 40
+        & $styleFlatButton $submitButton $uiAccentDark $uiText
+        $actionPanel.Controls.Add($submitButton)
 
         $clearButton = New-Object System.Windows.Forms.Button
-        $clearButton.Location = New-Object System.Drawing.Point(265, 655)
-        $clearButton.Size = New-Object System.Drawing.Size(190, 50)
+        $clearButton.Location = New-Object System.Drawing.Point(296, 4)
+        $clearButton.Size = New-Object System.Drawing.Size(210, 56)
         $clearButton.Text = 'Clear selections'
-        $form.Controls.Add($clearButton)
+        $clearButton.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 10.5)
+        $clearButton.AccessibleName = 'Clear selected bills and coins'
+        $clearButton.TabIndex = 41
+        & $styleFlatButton $clearButton $uiSurfaceRaised $uiText
+        $actionPanel.Controls.Add($clearButton)
 
         $cancelButton = New-Object System.Windows.Forms.Button
-        $cancelButton.Location = New-Object System.Drawing.Point(480, 655)
-        $cancelButton.Size = New-Object System.Drawing.Size(190, 50)
+        $cancelButton.Location = New-Object System.Drawing.Point(820, 4)
+        $cancelButton.Size = New-Object System.Drawing.Size(180, 56)
         $cancelButton.Text = 'Stop quiz'
-        $form.Controls.Add($cancelButton)
+        $cancelButton.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 10.5)
+        $cancelButton.AccessibleName = 'Stop the quiz'
+        $cancelButton.TabIndex = 42
+        & $styleFlatButton $cancelButton $uiSurfaceRaised $uiText
+        $actionPanel.Controls.Add($cancelButton)
+
+        if ($null -ne $DeclaredAnswer) {
+            $submitButton.Text = 'Submit cash construction'
+            $clearButton.Text = 'Clear cash selections'
+        }
+
+        $form.AcceptButton = $submitButton
+        $form.CancelButton = $cancelButton
 
         $clearButton.Add_Click({
             foreach ($key in @($state.Counts.Keys)) {
                 $state.Counts[$key] = [long]0
             }
 
-            $exactRadio.Checked = $false
-            $changeRadio.Checked = $false
-            $shortRadio.Checked = $false
-            $amountTextBox.Text = ''
-            $errorLabel.Text = ''
-            $selectedTotalLabel.Text = 'Selected cash total: $0.00'
+            if ($null -eq $DeclaredAnswer) {
+                $exactRadio.Checked = $false
+                $changeRadio.Checked = $false
+                $shortRadio.Checked = $false
+                $amountTextBox.Text = ''
+            }
+            $errorLabel.ForeColor = $uiMutedText
+            $errorLabel.Text = $keyboardHintText
+            $selectedTotalLabel.Text = 'Selected: $0.00'
+            & $refreshSelectionStatus 0
 
             foreach ($item in $allDenominations) {
                 $itemKey = [string]$item.Cents
-                $countLabels[$itemKey].Text = 'Count: 0'
+                $countLabels[$itemKey].Text = '0'
             }
         }.GetNewClosure())
 
@@ -1305,7 +1692,8 @@
         }.GetNewClosure())
 
         $submitButton.Add_Click({
-            $errorLabel.Text = ''
+            $errorLabel.ForeColor = $uiMutedText
+            $errorLabel.Text = $keyboardHintText
 
             $selectedType = if ($exactRadio.Checked) {
                 'Exact'
@@ -1321,6 +1709,7 @@
             }
 
             if ([string]::IsNullOrWhiteSpace($selectedType)) {
+                $errorLabel.ForeColor = $uiDanger
                 $errorLabel.Text = 'Choose E, C, or S before submitting.'
                 return
             }
@@ -1328,16 +1717,11 @@
             if ($selectedType -eq 'Exact') {
                 [long]$exactCashTotal = & $getLocalCashTotal $state.Counts
 
-                if ($exactCashTotal -ne 0) {
-                    $errorLabel.Text = 'Exact means no change or additional cash. Clear the selected bills and coins.'
-                    return
-                }
-
                 $state.Type = 'Exact'
                 $state.AmountCents = [long]0
-                $state.CashTotalCents = [long]0
-                $state.CashBreakdown = '<NONE>'
-                $state.BreakdownMatchesAmount = $true
+                $state.CashTotalCents = $exactCashTotal
+                $state.CashBreakdown = & $formatLocalBreakdown $state.Counts
+                $state.BreakdownMatchesAmount = ($exactCashTotal -eq 0)
                 $state.Text = 'E'
                 $state.ValidationMessage = ''
                 $state.Submitted = $true
@@ -1348,33 +1732,18 @@
             $parsedAmount = & $parseLocalAmount $amountTextBox.Text
 
             if (-not $parsedAmount.Valid -or $parsedAmount.Cents -le 0) {
+                $errorLabel.ForeColor = $uiDanger
                 $errorLabel.Text = 'Enter a valid amount, such as 12.35.'
                 return
             }
 
             [long]$cashTotal = & $getLocalCashTotal $state.Counts
 
-            if ($cashTotal -le 0) {
-                $errorLabel.Text = 'Add bills or coins to build the amount.'
-                return
-            }
-
-            if ($cashTotal -ne $parsedAmount.Cents) {
-                $errorLabel.Text = (
-                    'The typed amount is ' +
-                    (& $formatLocalMoney $parsedAmount.Cents) +
-                    ', but the selected cash equals ' +
-                    (& $formatLocalMoney $cashTotal) +
-                    '. Make them match.'
-                )
-                return
-            }
-
             $state.Type = $selectedType
             $state.AmountCents = [long]$parsedAmount.Cents
             $state.CashTotalCents = $cashTotal
             $state.CashBreakdown = & $formatLocalBreakdown $state.Counts
-            $state.BreakdownMatchesAmount = $true
+            $state.BreakdownMatchesAmount = ($cashTotal -eq $parsedAmount.Cents)
             $state.Text = if ($selectedType -eq 'Change') {
                 'C ' + (([decimal]$parsedAmount.Cents / 100).ToString('0.00', [CultureInfo]::InvariantCulture))
             }
@@ -1417,6 +1786,55 @@
             }
         }.GetNewClosure())
 
+        if (-not [string]::IsNullOrWhiteSpace($PreviewScreenshotPath)) {
+            $form.Add_Shown({
+                $form.Refresh()
+                [System.Windows.Forms.Application]::DoEvents()
+
+                $previewDirectory = Split-Path `
+                    -Path $PreviewScreenshotPath `
+                    -Parent
+
+                if (
+                    -not [string]::IsNullOrWhiteSpace($previewDirectory) -and
+                    -not (Test-Path -LiteralPath $previewDirectory)
+                ) {
+                    New-Item `
+                        -ItemType Directory `
+                        -Path $previewDirectory `
+                        -Force | Out-Null
+                }
+
+                $previewBitmap = New-Object System.Drawing.Bitmap(
+                    $form.Width,
+                    $form.Height
+                )
+
+                try {
+                    $previewBounds = New-Object System.Drawing.Rectangle(
+                        0,
+                        0,
+                        $form.Width,
+                        $form.Height
+                    )
+                    $form.DrawToBitmap($previewBitmap, $previewBounds)
+                    $previewBitmap.Save(
+                        $PreviewScreenshotPath,
+                        [System.Drawing.Imaging.ImageFormat]::Png
+                    )
+                }
+                finally {
+                    $previewBitmap.Dispose()
+                }
+
+                if ($PreviewOnly) {
+                    $state.Cancelled = $true
+                    $state.ValidationMessage = 'Visual preview captured.'
+                    $form.Close()
+                }
+            }.GetNewClosure())
+        }
+
         $timer.Start()
         [void]$form.ShowDialog()
         $timer.Stop()
@@ -1432,7 +1850,9 @@
                 Text = [string]$state.Text
                 TimedOut = $false
                 Cancelled = $false
-                ElapsedSeconds = [double]$elapsed
+                ElapsedSeconds = [double](
+                    $elapsed + $ElapsedSecondsBefore
+                )
                 Valid = $true
                 Type = [string]$state.Type
                 AmountCents = [long]$state.AmountCents
@@ -1447,7 +1867,9 @@
             Text = ''
             TimedOut = [bool]$state.TimedOut
             Cancelled = [bool]$state.Cancelled
-            ElapsedSeconds = [double]$elapsed
+            ElapsedSeconds = [double](
+                $elapsed + $ElapsedSecondsBefore
+            )
             Valid = $false
             Type = ''
             AmountCents = [long]0
@@ -1503,7 +1925,7 @@
             '<INVALID OR NOT ENTERED>'
         }
 
-        $selectedCashTotal = if ($AnswerMode -eq 'Clickable denominations') {
+        $selectedCashTotal = if ($AnswerMode -eq 'Typed + bill/coin buttons') {
             Format-Money $AnswerResult.CashTotalCents
         }
         else {
@@ -1559,10 +1981,51 @@
 
         $row |
             Export-Csv `
-                -LiteralPath $historyPath `
+                -LiteralPath $appState.HistoryPath `
                 -NoTypeInformation `
                 -Append `
                 -Encoding UTF8
+    }
+
+    function Show-CashConstructionFeedback {
+        param(
+            [object]$Question,
+            [object]$AnswerResult,
+            [bool]$Correct
+        )
+
+        [long]$requiredCents = [long]$Question.ExpectedAmountCents
+        [long]$selectedCents = [long]$AnswerResult.CashTotalCents
+
+        Write-Host ''
+        Write-Host 'BILL/COIN RESULT' -ForegroundColor Cyan
+        Write-Host ('Required amount: ' + (Format-Money $requiredCents))
+        Write-Host ('Selected amount: ' + (Format-Money $selectedCents))
+        Write-Host ('Selected bills/coins: ' + $AnswerResult.CashBreakdown)
+
+        if (-not $Correct) {
+            [long]$differenceCents = $selectedCents - $requiredCents
+
+            $differenceText = if ($differenceCents -gt 0) {
+                (Format-Money $differenceCents) + ' over the required amount'
+            }
+            elseif ($differenceCents -lt 0) {
+                (Format-Money (-$differenceCents)) + ' short of the required amount'
+            }
+            else {
+                '$0.00 (selected amount matches the required amount, but the declared answer was incorrect)'
+            }
+
+            Write-Host ('Difference: ' + $differenceText) -ForegroundColor Yellow
+        }
+
+        $resultText = if ($Correct) { 'Correct' } else { 'Incorrect' }
+        $resultColor = if ($Correct) { 'Green' } else { 'Red' }
+        Write-Host ('Result: ' + $resultText) -ForegroundColor $resultColor
+        Write-Host (
+            'Example correct breakdown: ' +
+            (Get-RecommendedAnswerGuidance -Question $Question)
+        ) -ForegroundColor Cyan
     }
 
     function Get-OptionalPropertyValue {
@@ -1582,16 +2045,16 @@
     }
 
     function Ensure-HistorySchema {
-        if (-not (Test-Path -LiteralPath $historyPath)) {
+        if (-not (Test-Path -LiteralPath $appState.HistoryPath)) {
             return
         }
 
         $header = Get-Content `
-            -LiteralPath $historyPath `
+            -LiteralPath $appState.HistoryPath `
             -TotalCount 1
 
         if ([string]::IsNullOrWhiteSpace($header)) {
-            Remove-Item -LiteralPath $historyPath -Force
+            Remove-Item -LiteralPath $appState.HistoryPath -Force
             return
         }
 
@@ -1616,11 +2079,11 @@
         }
 
         $legacyRows = @(
-            Import-Csv -LiteralPath $historyPath
+            Import-Csv -LiteralPath $appState.HistoryPath
         )
 
         $backupPath = Join-Path `
-            $dataDirectory `
+            $appState.DataDirectory `
             (
                 'Cash-Handling-Quiz-History-Legacy-' +
                 (Get-Date).ToString('yyyyMMdd-HHmmss') +
@@ -1628,12 +2091,12 @@
             )
 
         Copy-Item `
-            -LiteralPath $historyPath `
+            -LiteralPath $appState.HistoryPath `
             -Destination $backupPath `
             -Force
 
         if ($legacyRows.Count -eq 0) {
-            Remove-Item -LiteralPath $historyPath -Force
+            Remove-Item -LiteralPath $appState.HistoryPath -Force
             return
         }
 
@@ -1669,7 +2132,7 @@
 
         $migratedRows |
             Export-Csv `
-                -LiteralPath $historyPath `
+                -LiteralPath $appState.HistoryPath `
                 -NoTypeInformation `
                 -Encoding UTF8
 
@@ -1712,6 +2175,94 @@
         }
     }
 
+    function Read-DataDirectorySetting {
+        param([string]$CurrentDirectory)
+
+        while ($true) {
+            Write-Host ''
+            Write-Host "Current data folder: $CurrentDirectory" -ForegroundColor DarkGray
+            $rawDirectory = Read-Host 'Press Enter to keep it, or type a new data folder path'
+
+            if ([string]::IsNullOrWhiteSpace($rawDirectory)) {
+                return $CurrentDirectory
+            }
+
+            try {
+                return Resolve-QuizDataDirectory -Directory $rawDirectory
+            }
+            catch {
+                Write-Host 'That folder could not be used. Please enter another location.' -ForegroundColor Yellow
+                Write-Host $_.Exception.Message -ForegroundColor DarkGray
+            }
+        }
+    }
+    function Show-QuizSettings {
+        while ($true) {
+            Write-Host ''
+            Write-Host 'SETTINGS' -ForegroundColor Cyan
+            Write-Host "[1] Default number of questions: $($appState.Settings.DefaultQuestionCount)"
+            Write-Host "[2] Default seconds per transaction: $($appState.Settings.DefaultTimeLimitSeconds)"
+            Write-Host "[3] Stats and history folder: $($appState.DataDirectory)"
+            Write-Host "[4] Clickable bill/coin mode default: $(if ($appState.Settings.ClickableBillCoinModeEnabled) { 'ON' } else { 'OFF' })"
+            Write-Host '[B] Back to main menu'
+
+            $choice = (Read-Host 'Choose a setting').Trim().ToLowerInvariant()
+            $changed = $false
+
+            switch ($choice) {
+                '1' {
+                    $appState.Settings.DefaultQuestionCount = Read-IntegerSetting `
+                        -Prompt 'Default number of questions' `
+                        -Default $appState.Settings.DefaultQuestionCount `
+                        -Minimum 1 `
+                        -Maximum 100
+                    $changed = $true
+                }
+                '2' {
+                    $appState.Settings.DefaultTimeLimitSeconds = Read-IntegerSetting `
+                        -Prompt 'Default seconds allowed for each transaction' `
+                        -Default $appState.Settings.DefaultTimeLimitSeconds `
+                        -Minimum 3 `
+                        -Maximum 300
+                    $changed = $true
+                }
+                '3' {
+                    $newDataDirectory = Read-DataDirectorySetting `
+                        -CurrentDirectory $appState.DataDirectory
+                    $appState.Settings.DataDirectory = $newDataDirectory
+                    $appState.DataDirectory = $newDataDirectory
+                    $appState.HistoryPath = Join-Path `
+                        $newDataDirectory `
+                        'Cash-Handling-Quiz-History.csv'
+                    $script:dataDirectory = $appState.DataDirectory
+                    $script:historyPath = $appState.HistoryPath
+                    $changed = $true
+                    Ensure-HistorySchema
+                    Write-Host "Future history will be saved in: $($appState.HistoryPath)" -ForegroundColor Green
+                }
+                '4' {
+                    $appState.Settings.ClickableBillCoinModeEnabled = -not [bool]$appState.Settings.ClickableBillCoinModeEnabled
+                    $changed = $true
+                }
+                'b' {
+                    return
+                }
+                'back' {
+                    return
+                }
+                default {
+                    Write-Host 'Choose 1 through 4, or B.' -ForegroundColor Yellow
+                }
+            }
+
+            if ($changed) {
+                Save-QuizSettings `
+                    -Settings $appState.Settings `
+                    -Path $settingsPath
+                Write-Host 'Settings saved.' -ForegroundColor Green
+            }
+        }
+    }
     function Read-Difficulty {
         while ($true) {
             $raw = (
@@ -1985,30 +2536,31 @@
 
     function Start-CashQuiz {
         $difficulty = Read-Difficulty
-        $clickableMode = Read-ClickableModeSetting
+        $cashConstructionForQuiz = Read-ClickableModeSetting `
+            -Default $appState.Settings.ClickableBillCoinModeEnabled
 
         if (
-            $clickableMode -and
+            $cashConstructionForQuiz -and
             -not (Test-ClickableModeAvailable)
         ) {
-            Write-Host 'Switching to typed mode.' -ForegroundColor Yellow
-            $clickableMode = $false
+            Write-Host 'Cash construction is unavailable on this computer. This quiz will use typed answers only.' -ForegroundColor Yellow
+            $cashConstructionForQuiz = $false
         }
 
         $questionCount = Read-IntegerSetting `
             -Prompt 'Number of questions' `
-            -Default 10 `
+            -Default $appState.Settings.DefaultQuestionCount `
             -Minimum 1 `
             -Maximum 100
 
         $timeLimit = Read-IntegerSetting `
             -Prompt 'Seconds allowed for each answer' `
-            -Default 20 `
+            -Default $appState.Settings.DefaultTimeLimitSeconds `
             -Minimum 3 `
             -Maximum 300
 
-        $answerMode = if ($clickableMode) {
-            'Clickable denominations'
+        $answerMode = if ($cashConstructionForQuiz) {
+            'Typed + bill/coin buttons'
         }
         else {
             'Typed'
@@ -2026,7 +2578,8 @@
 
         $sessionResults = @()
 
-        Show-AnswerSyntaxNote -ClickableMode $clickableMode
+        Show-AnswerSyntaxNote `
+            -BillCoinModeEnabled $cashConstructionForQuiz
 
         Write-Host (
             "Starting $difficulty quiz: " +
@@ -2036,9 +2589,9 @@
 
         Write-Host "Answer mode: $answerMode" -ForegroundColor Cyan
 
-        if ($clickableMode) {
-            Write-Host 'A clickable bill-and-coin window will open for each question.' -ForegroundColor DarkGray
-            Write-Host 'Close the window or click Stop quiz to end the session.' -ForegroundColor DarkGray
+        if ($cashConstructionForQuiz) {
+            Write-Host 'Answer the transaction first. A final bill-and-coin button window follows each valid answer.' -ForegroundColor DarkGray
+            Write-Host 'Close that window or click Stop quiz to end the session.' -ForegroundColor DarkGray
         }
         else {
             Write-Host 'Press Esc during an answer to stop the quiz.' -ForegroundColor DarkGray
@@ -2092,27 +2645,68 @@
                 'Give change, report the shortage, or say exact.' `
                 -ForegroundColor White
 
-            $usedClickableForQuestion = $clickableMode
+            $usedCashConstructionForQuestion = $cashConstructionForQuiz
             $questionAnswerMode = $answerMode
 
-            if ($clickableMode) {
+            if ($cashConstructionForQuiz) {
+                $answerResult = $null
                 try {
-                    $answerResult = Read-ClickableCashAnswer `
-                        -Seconds $timeLimit `
-                        -Question $question
-                }
-                catch {
-                    Write-Host 'The clickable window could not open. This question will use typed mode.' -ForegroundColor Yellow
-                    Write-Host $_.Exception.Message -ForegroundColor DarkGray
-
-                    $usedClickableForQuestion = $false
-                    $questionAnswerMode = 'Typed fallback'
-
                     $timedAnswer = Read-TimedAnswer `
                         -Seconds $timeLimit
 
                     $answerResult = ConvertTo-NormalizedTypedAnswer `
                         -TimedAnswer $timedAnswer
+
+                    if (
+                        -not $answerResult.TimedOut -and
+                        -not $answerResult.Cancelled -and
+                        $answerResult.Valid
+                    ) {
+                        $remainingSeconds = [int][Math]::Floor(
+                            $timeLimit - $answerResult.ElapsedSeconds
+                        )
+
+                        if ($remainingSeconds -lt 1) {
+                            $answerResult.TimedOut = $true
+                            $answerResult.Valid = $false
+                            $answerResult.CashBreakdown = '<NOT COMPLETED>'
+                            $answerResult.BreakdownMatchesAmount = $false
+                            $answerResult.ValidationMessage = 'Time expired before the final cash-construction step could start.'
+                        }
+                        else {
+                            $answerResult = Read-ClickableCashAnswer `
+                                -Seconds $remainingSeconds `
+                                -Question $question `
+                                -DeclaredAnswer $answerResult `
+                                -ElapsedSecondsBefore $timedAnswer.ElapsedSeconds
+                        }
+                    }
+                }
+                catch {
+                    Write-Host 'The final cash-construction window could not open. This transaction is not scored.' -ForegroundColor Yellow
+                    Write-Host $_.Exception.Message -ForegroundColor DarkGray
+
+                    if ($null -eq $answerResult) {
+                        $answerResult = [pscustomobject]@{
+                            Text = ''
+                            TimedOut = $false
+                            Cancelled = $false
+                            ElapsedSeconds = [double]0
+                            Valid = $false
+                            Type = ''
+                            AmountCents = [long]0
+                            CashTotalCents = [long]0
+                            CashBreakdown = '<NOT COMPLETED>'
+                            BreakdownMatchesAmount = $false
+                            ValidationMessage = 'Cash construction could not be completed.'
+                        }
+                    }
+                    else {
+                        $answerResult.Valid = $false
+                        $answerResult.CashBreakdown = '<NOT COMPLETED>'
+                        $answerResult.BreakdownMatchesAmount = $false
+                        $answerResult.ValidationMessage = 'Cash construction could not be completed.'
+                    }
                 }
             }
             else {
@@ -2145,7 +2739,7 @@
                     $question.ExpectedAmountCents
                 )
 
-                if ($usedClickableForQuestion) {
+                if ($usedCashConstructionForQuestion) {
                     $correct = (
                         $correct -and
                         $answerResult.BreakdownMatchesAmount -and
@@ -2183,16 +2777,11 @@
                     -ForegroundColor Red
             }
 
-            if (
-                $usedClickableForQuestion -and
-                $answerResult.Valid
-            ) {
-                Write-Host (
-                    'Your selected cash: ' +
-                    $answerResult.CashBreakdown +
-                    ' = ' +
-                    (Format-Money $answerResult.CashTotalCents)
-                ) -ForegroundColor DarkGray
+            if ($usedCashConstructionForQuestion) {
+                Show-CashConstructionFeedback `
+                    -Question $question `
+                    -AnswerResult $answerResult `
+                    -Correct $correct
             }
 
             Write-Host (
@@ -2308,14 +2897,14 @@
         'Random cash questions with typed and clickable denomination modes.'
 
     Write-Host `
-        "History is saved at: $historyPath" `
+        "History is saved at: $($appState.HistoryPath)" `
         -ForegroundColor DarkGray
 
     while ($true) {
         Write-Host ''
 
         Write-Host `
-            '[1] Start quiz  [2] View detailed history  [3] Clear history  [Q] Quit' `
+            '[1] Start quiz  [2] View detailed history  [3] Clear history  [4] Settings  [Q] Quit' `
             -ForegroundColor White
 
         $menuChoice = (
@@ -2334,6 +2923,9 @@
             '3' {
                 Clear-History
             }
+            '4' {
+                Show-QuizSettings
+            }
 
             'q' {
                 break
@@ -2345,7 +2937,7 @@
 
             default {
                 Write-Host `
-                    'Choose 1, 2, 3, or Q.' `
+                    'Choose 1, 2, 3, 4, or Q.' `
                     -ForegroundColor Yellow
             }
         }
