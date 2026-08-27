@@ -131,6 +131,7 @@ input:disabled { background: #edf0ee; color: var(--muted); }
 .currency-input input { margin: 0; border: 0; }
 
 .cash-builder { display: grid; gap: 1rem; padding: 1rem; border: 0.0625rem solid var(--line); border-radius: var(--radius); background: var(--surface-quiet); }
+.cash-builder[hidden] { display: none !important; }
 .cash-builder-heading { align-items: center; }
 .cash-builder-heading .eyebrow { margin-bottom: 0.25rem; }
 .cash-builder-heading h2 { margin: 0; font-size: 1.25rem; }

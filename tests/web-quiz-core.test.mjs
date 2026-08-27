@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 import {
@@ -65,6 +66,24 @@ test('requires a matching cash-builder total only when cash-builder mode is enab
   assert.equal(scoreAnswer(question, { type: 'Change', amountCents: 9003 }, false).correct, true);
   assert.equal(scoreAnswer(question, { type: 'Change', amountCents: 9003, breakdown: wrongBreakdown }, true).correct, false);
   assert.equal(scoreAnswer(question, { type: 'Change', amountCents: 9003, breakdown: validBreakdown }, true).correct, true);
+});
+
+test('scores Exact, Change, and Short answers in normal mode', () => {
+  const cases = [
+    { expectedType: 'Exact', expectedAmountCents: 0, answer: { type: 'Exact', amountCents: 0 } },
+    { expectedType: 'Change', expectedAmountCents: 725, answer: { type: 'Change', amountCents: 725 } },
+    { expectedType: 'Short', expectedAmountCents: 340, answer: { type: 'Short', amountCents: 340 } },
+  ];
+
+  for (const { expectedType, expectedAmountCents, answer } of cases) {
+    const score = scoreAnswer({ expectedType, expectedAmountCents }, answer, false);
+    assert.equal(score.correct, true, `${expectedType} should be accepted without the cash builder`);
+  }
+});
+
+test('cash-builder styling honors the hidden attribute when the mode is off', async () => {
+  const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
+  assert.match(css, /\.cash-builder\[hidden\]\s*\{[^}]*display:\s*none\s*!important/s);
 });
 
 test('exports history as escaped CSV with a header row', () => {
