@@ -1,0 +1,6 @@
+# Local quiz data and optional static-build output
+Cash-Handling-Quiz-History.csv
+Cash-Handling-Quiz-Data/
+Settings.json
+_site/
+node_modules/

@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="A browser-based cash handling practice quiz with local-only history.">
+    <meta name="theme-color" content="#12343b">
+    <title>Cash Handling Trainer</title>
+    <link rel="stylesheet" href="style.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="site-header">
+        <div>
+          <p class="eyebrow">Cash handling practice</p>
+          <h1>Cash Handling Trainer</h1>
+          <p class="subtitle">Practice exact, change, and short transactions. Your history stays on this device.</p>
+        </div>
+        <button class="secondary-button" id="open-history" type="button">History &amp; statistics</button>
+      </header>
+
+      <p class="screen-reader-only" id="message" role="status" aria-live="polite"></p>
+
+      <section class="screen" id="setup-screen" aria-labelledby="setup-heading">
+        <div class="section-heading">
+          <p class="eyebrow">Start a session</p>
+          <h2 id="setup-heading" tabindex="-1">Set up your quiz</h2>
+        </div>
+
+        <form id="setup-form" class="setup-form">
+          <fieldset>
+            <legend>Difficulty</legend>
+            <div class="choice-grid">
+              <label class="choice-card"><input type="radio" name="difficulty" value="Easy" checked><span><strong>Easy</strong><small>Up to $200, quarter increments</small></span></label>
+              <label class="choice-card"><input type="radio" name="difficulty" value="Medium"><span><strong>Medium</strong><small>Up to $1,000, exact cents</small></span></label>
+              <label class="choice-card"><input type="radio" name="difficulty" value="Hard"><span><strong>Hard</strong><small>Up to $5,000, larger differences</small></span></label>
+            </div>
+          </fieldset>
+
+          <div class="form-grid">
+            <label for="question-count">Questions
+              <input id="question-count" name="questionCount" type="number" value="10" min="1" max="100" inputmode="numeric" required>
+            </label>
+            <label for="time-limit">Seconds per question
+              <input id="time-limit" name="timeLimit" type="number" value="30" min="3" max="300" inputmode="numeric" required>
+            </label>
+          </div>
+
+          <label class="toggle-row" for="cash-builder-toggle">
+            <input id="cash-builder-toggle" name="cashBuilder" type="checkbox">
+            <span><strong>Use cash builder</strong><small>After choosing Exact, Change, or Short, build the amount with bills and coins.</small></span>
+          </label>
+
+          <button class="primary-button" type="submit">Start quiz</button>
+        </form>
+      </section>
+
+      <section class="screen" id="quiz-screen" hidden aria-labelledby="question-heading">
+        <div class="question-header">
+          <p class="eyebrow" id="question-progress">Question 1 of 10</p>
+          <time class="timer" id="timer" aria-label="Time remaining">0:30</time>
+        </div>
+
+        <div class="transaction-card">
+          <p class="transaction-label">Customer owes</p>
+          <p class="money-value" id="amount-due">$0.00</p>
+          <div class="transaction-rule" aria-hidden="true"></div>
+          <p class="transaction-label">Customer gives you</p>
+          <p class="money-value" id="amount-tendered">$0.00</p>
+          <p class="breakdown" id="tender-breakdown"></p>
+        </div>
+
+        <form id="answer-form" class="answer-form">
+          <fieldset>
+            <legend id="question-heading">What should you do?</legend>
+            <div class="answer-choices">
+              <label><input type="radio" name="answerType" value="Exact"><span>Exact</span></label>
+              <label><input type="radio" name="answerType" value="Change"><span>Change</span></label>
+              <label><input type="radio" name="answerType" value="Short"><span>Short</span></label>
+            </div>
+          </fieldset>
+
+          <label for="answer-amount">Change or shortage amount
+            <div class="currency-input"><span aria-hidden="true">$</span><input id="answer-amount" name="amount" type="text" inputmode="decimal" autocomplete="off" placeholder="0.00" disabled></div>
+          </label>
+
+          <section class="cash-builder" id="cash-builder-section" hidden aria-labelledby="cash-builder-heading">
+            <div class="cash-builder-heading">
+              <div>
+                <p class="eyebrow">Cash builder</p>
+                <h2 id="cash-builder-heading">Build the declared amount</h2>
+              </div>
+              <button class="text-button" id="clear-builder" type="button">Clear selection</button>
+            </div>
+            <p class="selected-total" id="selected-total">Selected: $0.00</p>
+            <p class="builder-status" id="builder-status">Choose an answer to compare your cash selection.</p>
+            <div class="denomination-list" id="cash-builder" aria-label="Cash denominations"></div>
+          </section>
+
+          <button class="primary-button" id="submit-answer" type="submit">Submit answer</button>
+        </form>
+      </section>
+
+      <section class="screen feedback-screen" id="feedback-screen" hidden aria-labelledby="feedback-heading">
+        <p class="eyebrow" id="feedback-kicker">Answer result</p>
+        <h2 id="feedback-heading" tabindex="-1">Correct</h2>
+        <p class="feedback-lead" id="feedback-lead"></p>
+        <dl class="feedback-details" id="feedback-details"></dl>
+        <button class="primary-button" id="next-question" type="button">Next question</button>
+      </section>
+
+      <section class="screen" id="summary-screen" hidden aria-labelledby="summary-heading">
+        <p class="eyebrow">Session complete</p>
+        <h2 id="summary-heading" tabindex="-1">Your results</h2>
+        <div class="metric-grid" id="session-metrics"></div>
+        <div class="action-row">
+          <button class="primary-button" id="start-another" type="button">Start another quiz</button>
+          <button class="secondary-button" id="summary-history" type="button">View all history</button>
+        </div>
+      </section>
+
+      <section class="screen" id="history-screen" hidden aria-labelledby="history-heading">
+        <div class="screen-title-row">
+          <div>
+            <p class="eyebrow">Saved on this device</p>
+            <h2 id="history-heading" tabindex="-1">History &amp; statistics</h2>
+          </div>
+          <button class="text-button" id="back-to-setup" type="button">Back to setup</button>
+        </div>
+        <div class="metric-grid" id="history-metrics"></div>
+        <div class="action-row">
+          <button class="secondary-button" id="download-csv" type="button">Download CSV</button>
+          <button class="danger-button" id="clear-history" type="button">Clear history</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th scope="col">When</th><th scope="col">Level</th><th scope="col">Result</th><th scope="col">Time</th><th scope="col">Expected</th></tr></thead>
+            <tbody id="history-rows"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <footer>Browser edition. The original PowerShell quiz remains in this repository.</footer>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
