@@ -169,6 +169,38 @@ export function scoreAnswer(question, answer, cashBuilderEnabled) {
   };
 }
 
+export function summarizeHistory(records) {
+  const history = Array.isArray(records) ? records : [];
+  const answered = history.length;
+  const correct = history.filter((record) => record?.outcome === 'Correct').length;
+  const timedOut = history.filter((record) => record?.outcome === 'Timed Out').length;
+  const incorrect = Math.max(0, answered - correct - timedOut);
+  const percent = (count) => answered ? Math.round((count / answered) * 100) : 0;
+
+  return {
+    answered,
+    correct,
+    timedOut,
+    incorrect,
+    accuracyPercent: percent(correct),
+    outcomes: [
+      { key: 'correct', label: 'Correct', count: correct, percent: percent(correct) },
+      { key: 'incorrect', label: 'Incorrect', count: incorrect, percent: percent(incorrect) },
+      { key: 'timedOut', label: 'Timed out', count: timedOut, percent: percent(timedOut) },
+    ],
+    byDifficulty: ['Easy', 'Medium', 'Hard'].map((level) => {
+      const recordsForLevel = history.filter((record) => record?.difficulty === level);
+      const correctForLevel = recordsForLevel.filter((record) => record?.outcome === 'Correct').length;
+      return {
+        level,
+        answered: recordsForLevel.length,
+        correct: correctForLevel,
+        accuracyPercent: recordsForLevel.length ? Math.round((correctForLevel / recordsForLevel.length) * 100) : 0,
+      };
+    }),
+  };
+}
+
 function escapeCsv(value) {
   const text = String(value ?? '');
   return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;

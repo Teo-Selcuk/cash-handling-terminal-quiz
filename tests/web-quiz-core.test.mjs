@@ -11,6 +11,7 @@ import {
   formatMoney,
   parseAmountToCents,
   scoreAnswer,
+  summarizeHistory,
   toCsv,
 } from '../quiz-core.mjs';
 
@@ -79,6 +80,26 @@ test('scores Exact, Change, and Short answers in normal mode', () => {
     const score = scoreAnswer({ expectedType, expectedAmountCents }, answer, false);
     assert.equal(score.correct, true, `${expectedType} should be accepted without the cash builder`);
   }
+});
+
+test('summarizes saved answers for outcome diagrams and the accuracy chart', () => {
+  const summary = summarizeHistory([
+    { difficulty: 'Easy', outcome: 'Correct' },
+    { difficulty: 'Easy', outcome: 'Incorrect' },
+    { difficulty: 'Medium', outcome: 'Timed Out' },
+    { difficulty: 'Hard', outcome: 'Correct' },
+  ]);
+
+  assert.deepEqual(summary.outcomes, [
+    { key: 'correct', label: 'Correct', count: 2, percent: 50 },
+    { key: 'incorrect', label: 'Incorrect', count: 1, percent: 25 },
+    { key: 'timedOut', label: 'Timed out', count: 1, percent: 25 },
+  ]);
+  assert.deepEqual(summary.byDifficulty, [
+    { level: 'Easy', answered: 2, correct: 1, accuracyPercent: 50 },
+    { level: 'Medium', answered: 1, correct: 0, accuracyPercent: 0 },
+    { level: 'Hard', answered: 1, correct: 1, accuracyPercent: 100 },
+  ]);
 });
 
 test('cash-builder styling honors the hidden attribute when the mode is off', async () => {
