@@ -1,11 +1,15 @@
 import {
   DENOMINATIONS,
+  MEMORY_MODE_CONFIG,
   buildBreakdown,
   countTotalCents,
+  createMemoryChallenge,
   createQuestion,
   formatBreakdown,
   formatMoney,
+  parseCashShorthand,
   parseAmountToCents,
+  scoreMemoryAnswer,
   scoreAnswer,
   summarizeHistory,
   toCsv,
@@ -13,20 +17,26 @@ import {
 
 const HISTORY_KEY = 'cash-handling-terminal-quiz-history-v1';
 const THEME_KEY = 'cash-handling-terminal-quiz-theme-v1';
-const screens = ['setup', 'quiz', 'feedback', 'summary', 'history'];
+const screens = ['setup', 'quiz', 'memory-read', 'memory-answer', 'feedback', 'summary', 'history'];
 const refs = Object.fromEntries([
   'setup-form', 'setup-screen', 'quiz-screen', 'feedback-screen', 'summary-screen', 'history-screen',
+  'memory-read-screen', 'memory-answer-screen', 'cash-setup-options', 'memory-setup-options',
   'question-count', 'time-limit', 'cash-builder-toggle', 'question-progress', 'timer', 'amount-due',
   'amount-tendered', 'tender-breakdown', 'answer-form', 'answer-amount', 'cash-builder-section',
-  'cash-builder', 'selected-total', 'builder-status', 'clear-builder', 'feedback-heading',
+  'cash-builder', 'selected-total', 'builder-status', 'clear-builder', 'quick-cash-entry', 'apply-quick-cash', 'feedback-heading',
   'feedback-kicker', 'feedback-lead', 'feedback-details', 'next-question', 'session-metrics',
   'start-another', 'summary-history', 'open-history', 'back-to-setup', 'history-metrics',
   'history-outcome-diagram', 'history-outcome-legend', 'history-outcomes-summary', 'history-accuracy-chart',
   'history-rows', 'download-csv', 'clear-history', 'message', 'submit-answer', 'theme-toggle',
+  'memory-question-count', 'memory-digits', 'memory-read-time', 'memory-write-time', 'memory-read-progress',
+  'memory-read-timer', 'memory-number', 'memory-read-hint', 'memory-answer-form', 'memory-answer-progress',
+  'memory-answer-timer', 'memory-answer', 'memory-answer-heading', 'summary-heading',
+  'easy-description', 'medium-description', 'hard-description',
 ].map((id) => [id, document.getElementById(id)]));
 
 const state = {
   activeScreen: 'setup',
+  game: 'cash',
   sessionId: '',
   difficulty: 'Easy',
   questionCount: 10,
@@ -39,6 +49,12 @@ const state = {
   timerId: null,
   deadline: 0,
   answerSubmitted: false,
+  memoryChallenge: null,
+  memoryDigits: MEMORY_MODE_CONFIG.Easy.digits,
+  memoryReadSeconds: MEMORY_MODE_CONFIG.Easy.readSeconds,
+  memoryWriteSeconds: MEMORY_MODE_CONFIG.Easy.writeSeconds,
+  timerTarget: null,
+  timerExpiryAction: null,
 };
 
 function setMessage(message) {
@@ -80,10 +96,15 @@ function makeSessionId() {
 function showScreen(name) {
   for (const screen of screens) refs[`${screen}-screen`].hidden = screen !== name;
   state.activeScreen = name;
-  refs['open-history'].disabled = name === 'quiz';
-  if (name !== 'quiz') stopTimer();
+  const roundInProgress = ['quiz', 'memory-read', 'memory-answer'].includes(name);
+  refs['open-history'].disabled = roundInProgress;
+  if (!roundInProgress) stopTimer();
   if (name === 'quiz') {
     window.setTimeout(() => document.querySelector('input[name="answerType"]')?.focus({ preventScroll: true }), 0);
+    return;
+  }
+  if (name === 'memory-answer') {
+    window.setTimeout(() => refs['memory-answer'].focus({ preventScroll: true }), 0);
     return;
   }
   const heading = document.querySelector(`#${name}-screen h2`);
@@ -124,8 +145,45 @@ function selectedAnswerType() {
   return document.querySelector('input[name="answerType"]:checked')?.value ?? '';
 }
 
+function selectedGame() {
+  return document.querySelector('input[name="game"]:checked')?.value ?? 'cash';
+}
+
+function selectedDifficulty() {
+  return document.querySelector('input[name="difficulty"]:checked')?.value ?? 'Easy';
+}
+
+function applyMemoryModeDefaults() {
+  const defaults = MEMORY_MODE_CONFIG[selectedDifficulty()];
+  refs['memory-digits'].value = String(defaults.digits);
+  refs['memory-read-time'].value = String(defaults.readSeconds);
+  refs['memory-write-time'].value = String(defaults.writeSeconds);
+}
+
+function updateGameSetup() {
+  const game = selectedGame();
+  const memoryGame = game === 'memory';
+  refs['cash-setup-options'].hidden = memoryGame;
+  refs['memory-setup-options'].hidden = !memoryGame;
+  const descriptions = memoryGame
+    ? {
+      Easy: '4 digits, 5 seconds to read, 10 seconds to write',
+      Medium: '7 digits, 4 seconds to read, 8 seconds to write',
+      Hard: '10 digits, 3 seconds to read, 6 seconds to write',
+    }
+    : {
+      Easy: 'Up to $200, quarter increments',
+      Medium: 'Up to $1,000, exact cents',
+      Hard: 'Up to $5,000, larger differences',
+    };
+  refs['easy-description'].textContent = descriptions.Easy;
+  refs['medium-description'].textContent = descriptions.Medium;
+  refs['hard-description'].textContent = descriptions.Hard;
+}
+
 function resetBuilder() {
   state.builderCounts = new Map(DENOMINATIONS.map((item) => [item.cents, 0]));
+  refs['quick-cash-entry'].value = '';
   refs['cash-builder'].replaceChildren(...DENOMINATIONS.map(createDenominationRow));
   updateCashBuilder();
 }
@@ -161,6 +219,21 @@ function createDenominationRow(denomination) {
 function changeBuilderCount(cents, change) {
   state.builderCounts.set(cents, Math.max(0, state.builderCounts.get(cents) + change));
   updateCashBuilder();
+}
+
+function applyQuickCashEntry() {
+  const parsed = parseCashShorthand(refs['quick-cash-entry'].value);
+  if (!parsed.valid) {
+    setMessage(`${parsed.error} Use entries such as 2x$10, 1x$1, 2d, 2q.`);
+    refs['quick-cash-entry'].focus();
+    return;
+  }
+
+  state.builderCounts = new Map(DENOMINATIONS.map((item) => [item.cents, 0]));
+  for (const item of parsed.breakdown) state.builderCounts.set(item.cents, item.count);
+  refs['quick-cash-entry'].value = '';
+  updateCashBuilder();
+  setMessage(`Cash builder updated to ${formatMoney(parsed.totalCents)}. You can still adjust any bill or coin button.`);
 }
 
 function selectedBreakdown() {
@@ -206,9 +279,11 @@ function renderQuestion() {
   resetBuilder();
 }
 
-function startTimer() {
+function startTimer(seconds, target, expiryAction) {
   stopTimer();
-  state.deadline = Date.now() + (state.timeLimitSeconds * 1000);
+  state.deadline = Date.now() + (seconds * 1000);
+  state.timerTarget = target;
+  state.timerExpiryAction = expiryAction;
   updateTimer();
   state.timerId = window.setInterval(updateTimer, 250);
 }
@@ -216,14 +291,21 @@ function startTimer() {
 function stopTimer() {
   if (state.timerId !== null) window.clearInterval(state.timerId);
   state.timerId = null;
+  state.timerTarget = null;
+  state.timerExpiryAction = null;
 }
 
 function updateTimer() {
   const remainingMilliseconds = Math.max(0, state.deadline - Date.now());
   const remainingSeconds = remainingMilliseconds / 1000;
-  refs.timer.textContent = formatSeconds(remainingSeconds);
-  refs.timer.classList.toggle('urgent', remainingSeconds <= 5);
-  if (remainingMilliseconds === 0 && !state.answerSubmitted) submitCurrentAnswer(true);
+  const target = state.timerTarget ?? refs.timer;
+  target.textContent = formatSeconds(remainingSeconds);
+  target.classList.toggle('urgent', remainingSeconds <= 5);
+  if (remainingMilliseconds === 0 && state.timerExpiryAction) {
+    const expiryAction = state.timerExpiryAction;
+    state.timerExpiryAction = null;
+    expiryAction();
+  }
 }
 
 function expectedAnswerText(question) {
@@ -256,6 +338,7 @@ function recordAnswer(answer, score, timedOut, elapsedSeconds) {
   return {
     timestamp: new Date().toISOString(),
     sessionId: state.sessionId,
+    gameType: 'Cash handling',
     difficulty: state.difficulty,
     questionNumber: state.questionNumber,
     answerMode: state.cashBuilderEnabled ? 'Cash builder' : 'Normal',
@@ -335,7 +418,94 @@ function showNextQuestion() {
   state.answerSubmitted = false;
   renderQuestion();
   showScreen('quiz');
-  startTimer();
+  startTimer(state.timeLimitSeconds, refs.timer, () => submitCurrentAnswer(true));
+}
+
+function showMemoryAnswer() {
+  refs['memory-answer'].value = '';
+  refs['memory-answer-progress'].textContent = `Round ${state.questionNumber} of ${state.questionCount}`;
+  showScreen('memory-answer');
+  startTimer(state.memoryWriteSeconds, refs['memory-answer-timer'], () => submitMemoryAnswer(true));
+}
+
+function recordMemoryAnswer(answer, score, timedOut, elapsedSeconds) {
+  const challenge = state.memoryChallenge;
+  return {
+    timestamp: new Date().toISOString(),
+    sessionId: state.sessionId,
+    gameType: 'Number memory',
+    difficulty: state.difficulty,
+    questionNumber: state.questionNumber,
+    numberLength: challenge.digits,
+    readTimeSeconds: challenge.readSeconds,
+    writeTimeSeconds: challenge.writeSeconds,
+    timeUsedSeconds: Number(elapsedSeconds.toFixed(1)),
+    expectedAnswer: `Number: ${challenge.value}`,
+    userAnswer: answer,
+    outcome: timedOut ? 'Timed Out' : score.correct ? 'Correct' : 'Incorrect',
+  };
+}
+
+function populateMemoryFeedback(record, score) {
+  const correct = score.correct;
+  refs['feedback-kicker'].textContent = record.outcome === 'Timed Out' ? 'Time expired' : 'Memory result';
+  refs['feedback-heading'].textContent = correct ? 'Correct' : record.outcome === 'Timed Out' ? 'Time expired' : 'Not quite';
+  refs['feedback-heading'].dataset.result = correct ? 'correct' : 'incorrect';
+  refs['feedback-lead'].textContent = correct
+    ? 'You recalled the number in the correct order.'
+    : `The number was ${state.memoryChallenge.value}.`;
+  const details = [
+    ['Number to remember', state.memoryChallenge.value],
+    ['Your entry', record.userAnswer || 'No entry'],
+    ['Digits', `${state.memoryChallenge.digits}`],
+    ['Reading time', `${state.memoryChallenge.readSeconds} seconds`],
+    ['Writing time used', `${record.timeUsedSeconds.toFixed(1)} seconds`],
+  ];
+  refs['feedback-details'].replaceChildren();
+  for (const [term, description] of details) {
+    const dt = document.createElement('dt');
+    const dd = document.createElement('dd');
+    dt.textContent = term;
+    dd.textContent = description;
+    refs['feedback-details'].append(dt, dd);
+  }
+}
+
+function submitMemoryAnswer(timedOut = false) {
+  if (state.answerSubmitted) return;
+  state.answerSubmitted = true;
+  const elapsedSeconds = Math.min(
+    state.memoryWriteSeconds,
+    Math.max(0, (Date.now() - (state.deadline - state.memoryWriteSeconds * 1000)) / 1000),
+  );
+  stopTimer();
+  const answer = timedOut ? '' : refs['memory-answer'].value;
+  const score = scoreMemoryAnswer(state.memoryChallenge, answer);
+  const record = recordMemoryAnswer(answer, score, timedOut, elapsedSeconds);
+  state.results.push(record);
+  persistRecord(record);
+  populateMemoryFeedback(record, score);
+  showScreen('feedback');
+}
+
+function showNextMemoryQuestion() {
+  state.questionNumber += 1;
+  if (state.questionNumber > state.questionCount) {
+    renderSummary();
+    showScreen('summary');
+    return;
+  }
+  state.memoryChallenge = createMemoryChallenge(state.difficulty, {
+    digits: state.memoryDigits,
+    readSeconds: state.memoryReadSeconds,
+    writeSeconds: state.memoryWriteSeconds,
+  });
+  state.answerSubmitted = false;
+  refs['memory-read-progress'].textContent = `Round ${state.questionNumber} of ${state.questionCount}`;
+  refs['memory-number'].textContent = state.memoryChallenge.value;
+  refs['memory-read-hint'].textContent = `${state.memoryChallenge.digits} digits`;
+  showScreen('memory-read');
+  startTimer(state.memoryReadSeconds, refs['memory-read-timer'], showMemoryAnswer);
 }
 
 function makeMetrics(records) {
@@ -362,6 +532,7 @@ function renderMetrics(target, metrics) {
 }
 
 function renderSummary() {
+  refs['summary-heading'].textContent = state.game === 'memory' ? 'Your memory results' : 'Your cash results';
   renderMetrics(refs['session-metrics'], makeMetrics(state.results));
 }
 
@@ -429,8 +600,8 @@ function renderHistory() {
     const row = document.createElement('tr');
     const cell = document.createElement('td');
     cell.className = 'empty-row';
-    cell.colSpan = 5;
-    cell.textContent = 'No saved answers yet. Complete a quiz to see history here.';
+    cell.colSpan = 6;
+    cell.textContent = 'No saved answers yet. Complete a game to see history here.';
     row.append(cell);
     refs['history-rows'].append(row);
     return;
@@ -439,6 +610,7 @@ function renderHistory() {
     const row = document.createElement('tr');
     const cells = [
       new Date(record.timestamp).toLocaleString(),
+      record.gameType ?? 'Cash handling',
       record.difficulty,
       record.outcome,
       `${Number(record.timeUsedSeconds || 0).toFixed(1)}s`,
@@ -454,8 +626,8 @@ function renderHistory() {
 }
 
 function openHistory() {
-  if (state.activeScreen === 'quiz') {
-    setMessage('Finish the current question before opening history.');
+  if (['quiz', 'memory-read', 'memory-answer'].includes(state.activeScreen)) {
+    setMessage('Finish the current round before opening history.');
     return;
   }
   renderHistory();
@@ -473,7 +645,7 @@ function downloadHistory() {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = 'Cash-Handling-Quiz-History.csv';
+  link.download = 'Cash-and-Memory-Game-History.csv';
   link.click();
   window.setTimeout(() => URL.revokeObjectURL(url), 0);
   setMessage('History CSV download started.');
@@ -481,7 +653,47 @@ function downloadHistory() {
 
 refs['setup-form'].addEventListener('submit', (event) => {
   event.preventDefault();
-  const difficulty = document.querySelector('input[name="difficulty"]:checked').value;
+  const game = selectedGame();
+  const difficulty = selectedDifficulty();
+  state.sessionId = makeSessionId();
+  state.game = game;
+  state.difficulty = difficulty;
+  state.questionNumber = 0;
+  state.results = [];
+
+  if (game === 'memory') {
+    const questionCount = Number(refs['memory-question-count'].value);
+    const digits = Number(refs['memory-digits'].value);
+    const readSeconds = Number(refs['memory-read-time'].value);
+    const writeSeconds = Number(refs['memory-write-time'].value);
+    if (!Number.isInteger(questionCount) || questionCount < 1 || questionCount > 100) {
+      setMessage('Choose between 1 and 100 memory rounds.');
+      refs['memory-question-count'].focus();
+      return;
+    }
+    if (!Number.isInteger(digits) || digits < 1 || digits > 24) {
+      setMessage('Choose from 1 to 24 digits to remember.');
+      refs['memory-digits'].focus();
+      return;
+    }
+    if (!Number.isInteger(readSeconds) || readSeconds < 1 || readSeconds > 60) {
+      setMessage('Choose from 1 to 60 seconds to read the number.');
+      refs['memory-read-time'].focus();
+      return;
+    }
+    if (!Number.isInteger(writeSeconds) || writeSeconds < 1 || writeSeconds > 300) {
+      setMessage('Choose from 1 to 300 seconds to write the number.');
+      refs['memory-write-time'].focus();
+      return;
+    }
+    state.questionCount = questionCount;
+    state.memoryDigits = digits;
+    state.memoryReadSeconds = readSeconds;
+    state.memoryWriteSeconds = writeSeconds;
+    showNextMemoryQuestion();
+    return;
+  }
+
   const questionCount = Number(refs['question-count'].value);
   const timeLimitSeconds = Number(refs['time-limit'].value);
   if (!Number.isInteger(questionCount) || questionCount < 1 || questionCount > 100) {
@@ -494,17 +706,14 @@ refs['setup-form'].addEventListener('submit', (event) => {
     refs['time-limit'].focus();
     return;
   }
-  state.sessionId = makeSessionId();
-  state.difficulty = difficulty;
   state.questionCount = questionCount;
   state.timeLimitSeconds = timeLimitSeconds;
   state.cashBuilderEnabled = refs['cash-builder-toggle'].checked;
-  state.questionNumber = 0;
-  state.results = [];
   showNextQuestion();
 });
 
 applyTheme(initialTheme());
+updateGameSetup();
 
 refs['answer-form'].addEventListener('submit', (event) => {
   event.preventDefault();
@@ -519,7 +728,22 @@ document.querySelectorAll('input[name="answerType"]').forEach((input) => input.a
 }));
 refs['answer-amount'].addEventListener('input', updateCashBuilder);
 refs['clear-builder'].addEventListener('click', resetBuilder);
-refs['next-question'].addEventListener('click', showNextQuestion);
+refs['apply-quick-cash'].addEventListener('click', applyQuickCashEntry);
+refs['next-question'].addEventListener('click', () => {
+  if (state.game === 'memory') showNextMemoryQuestion();
+  else showNextQuestion();
+});
+refs['memory-answer-form'].addEventListener('submit', (event) => {
+  event.preventDefault();
+  submitMemoryAnswer();
+});
+document.querySelectorAll('input[name="game"]').forEach((input) => input.addEventListener('change', () => {
+  updateGameSetup();
+  if (selectedGame() === 'memory') applyMemoryModeDefaults();
+}));
+document.querySelectorAll('input[name="difficulty"]').forEach((input) => input.addEventListener('change', () => {
+  if (selectedGame() === 'memory') applyMemoryModeDefaults();
+}));
 refs['start-another'].addEventListener('click', () => showScreen('setup'));
 refs['open-history'].addEventListener('click', openHistory);
 refs['summary-history'].addEventListener('click', openHistory);

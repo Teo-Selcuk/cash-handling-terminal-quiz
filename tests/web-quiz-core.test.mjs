@@ -5,11 +5,15 @@ import test from 'node:test';
 import {
   DENOMINATIONS,
   DIFFICULTY_CONFIG,
+  MEMORY_MODE_CONFIG,
   buildBreakdown,
   countTotalCents,
+  createMemoryChallenge,
   createQuestion,
   formatMoney,
+  parseCashShorthand,
   parseAmountToCents,
+  scoreMemoryAnswer,
   scoreAnswer,
   summarizeHistory,
   toCsv,
@@ -67,6 +71,34 @@ test('requires a matching cash-builder total only when cash-builder mode is enab
   assert.equal(scoreAnswer(question, { type: 'Change', amountCents: 9003 }, false).correct, true);
   assert.equal(scoreAnswer(question, { type: 'Change', amountCents: 9003, breakdown: wrongBreakdown }, true).correct, false);
   assert.equal(scoreAnswer(question, { type: 'Change', amountCents: 9003, breakdown: validBreakdown }, true).correct, true);
+});
+
+test('parses fast cash-builder shorthand with bill and coin acronyms', () => {
+  const parsed = parseCashShorthand('2x$10, one $1 bill, 2d, two quarters');
+
+  assert.equal(parsed.valid, true);
+  assert.equal(parsed.totalCents, 2170);
+  assert.deepEqual(parsed.breakdown.map(({ cents, count }) => ({ cents, count })), [
+    { cents: 1000, count: 2 },
+    { cents: 100, count: 1 },
+    { cents: 25, count: 2 },
+    { cents: 10, count: 2 },
+  ]);
+  assert.equal(parseCashShorthand('2x$10, mystery-token').valid, false);
+});
+
+test('creates configurable memory challenges for each mode and scores normalized answers', () => {
+  assert.equal(MEMORY_MODE_CONFIG.Easy.digits, 4);
+  assert.equal(MEMORY_MODE_CONFIG.Medium.digits, 7);
+  assert.equal(MEMORY_MODE_CONFIG.Hard.digits, 10);
+
+  const challenge = createMemoryChallenge('Medium', { digits: 6, readSeconds: 4, writeSeconds: 8 }, () => 0.25);
+  assert.equal(challenge.value, '322222');
+  assert.equal(challenge.digits, 6);
+  assert.equal(challenge.readSeconds, 4);
+  assert.equal(challenge.writeSeconds, 8);
+  assert.equal(scoreMemoryAnswer(challenge, '322 222').correct, true);
+  assert.equal(scoreMemoryAnswer(challenge, '322223').correct, false);
 });
 
 test('scores Exact, Change, and Short answers in normal mode', () => {

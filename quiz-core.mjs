@@ -17,6 +17,25 @@ export const DIFFICULTY_CONFIG = Object.freeze({
   Hard: { minDue: 100, maxDue: 500000, step: 1, maxDifference: 75000, splitCount: 8, allowed: DENOMINATIONS.map((item) => item.cents) },
 });
 
+export const MEMORY_MODE_CONFIG = Object.freeze({
+  Easy: Object.freeze({ digits: 4, readSeconds: 5, writeSeconds: 10 }),
+  Medium: Object.freeze({ digits: 7, readSeconds: 4, writeSeconds: 8 }),
+  Hard: Object.freeze({ digits: 10, readSeconds: 3, writeSeconds: 6 }),
+});
+
+const NUMBER_WORD_COUNTS = Object.freeze({
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+  seven: 7,
+  eight: 8,
+  nine: 9,
+  ten: 10,
+});
+
 function randomIndex(length, rng) {
   const value = Number(rng());
   const normalized = Number.isFinite(value) ? Math.max(0, Math.min(value, 0.9999999999999999)) : 0;
@@ -56,6 +75,102 @@ export function countTotalCents(breakdown = []) {
     assertCents(item.count, 'Denomination count');
     return total + (item.cents * item.count);
   }, 0);
+}
+
+function cashTokenToCents(token) {
+  const normalized = token.toLowerCase().replaceAll(' ', '');
+  const coinAliases = {
+    q: 25,
+    quarter: 25,
+    quarters: 25,
+    d: 10,
+    dime: 10,
+    dimes: 10,
+    n: 5,
+    nickel: 5,
+    nickels: 5,
+    p: 1,
+    penny: 1,
+    pennies: 1,
+  };
+  if (Object.hasOwn(coinAliases, normalized)) return coinAliases[normalized];
+
+  const bill = normalized.match(/^\$?(100|50|20|10|5|1)(?:b|bill|bills)?$/);
+  return bill ? Number(bill[1]) * 100 : null;
+}
+
+function parsedCount(value) {
+  const normalized = value.toLowerCase();
+  if (Object.hasOwn(NUMBER_WORD_COUNTS, normalized)) return NUMBER_WORD_COUNTS[normalized];
+  const count = Number(normalized);
+  return Number.isSafeInteger(count) ? count : null;
+}
+
+export function parseCashShorthand(value) {
+  if (typeof value !== 'string' || value.trim() === '') {
+    return { valid: false, breakdown: [], totalCents: 0, error: 'Enter at least one bill or coin.' };
+  }
+
+  const counts = new Map(DENOMINATIONS.map((item) => [item.cents, 0]));
+  const parts = value.split(/[,;\n]+/).map((part) => part.trim()).filter(Boolean);
+  if (parts.length === 0) return { valid: false, breakdown: [], totalCents: 0, error: 'Enter at least one bill or coin.' };
+
+  for (const part of parts) {
+    let count = 1;
+    let token = part;
+    const compactCoin = part.match(/^(\d+)([qdnp])$/i);
+    const explicitCount = part.match(/^(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s*[x*]\s*(.+)$/i);
+    const spacedCount = part.match(/^(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(.+)$/i);
+
+    if (compactCoin) {
+      count = Number(compactCoin[1]);
+      token = compactCoin[2];
+    } else if (explicitCount || spacedCount) {
+      const match = explicitCount ?? spacedCount;
+      count = parsedCount(match[1]);
+      token = match[2];
+    }
+
+    const cents = cashTokenToCents(token);
+    if (!Number.isSafeInteger(count) || count < 1 || count > 10000 || cents === null) {
+      return { valid: false, breakdown: [], totalCents: 0, error: `Could not read "${part}".` };
+    }
+    counts.set(cents, counts.get(cents) + count);
+  }
+
+  const breakdown = DENOMINATIONS
+    .filter((item) => counts.get(item.cents) > 0)
+    .map((item) => ({ ...item, count: counts.get(item.cents) }));
+  return { valid: true, breakdown, totalCents: countTotalCents(breakdown), error: '' };
+}
+
+function requireMemoryInteger(value, name, minimum, maximum) {
+  if (!Number.isInteger(value) || value < minimum || value > maximum) {
+    throw new RangeError(`${name} must be a whole number from ${minimum} to ${maximum}.`);
+  }
+}
+
+export function createMemoryChallenge(level, options = {}, rng = Math.random) {
+  const defaults = MEMORY_MODE_CONFIG[level];
+  if (!defaults) throw new RangeError(`Unknown memory difficulty: ${level}`);
+  const digits = options.digits ?? defaults.digits;
+  const readSeconds = options.readSeconds ?? defaults.readSeconds;
+  const writeSeconds = options.writeSeconds ?? defaults.writeSeconds;
+  requireMemoryInteger(digits, 'Digits', 1, 24);
+  requireMemoryInteger(readSeconds, 'Read seconds', 1, 60);
+  requireMemoryInteger(writeSeconds, 'Write seconds', 1, 300);
+
+  let value = String(randomIndex(9, rng) + 1);
+  for (let index = 1; index < digits; index += 1) value += String(randomIndex(10, rng));
+  return { level, digits, readSeconds, writeSeconds, value };
+}
+
+export function scoreMemoryAnswer(challenge, answer) {
+  const normalizedAnswer = typeof answer === 'string' ? answer.replace(/[^\d]/g, '') : '';
+  return {
+    correct: normalizedAnswer === challenge.value,
+    normalizedAnswer,
+  };
 }
 
 export function buildBreakdown(amountCents, denominations = DENOMINATIONS, splitCount = 0, rng = Math.random) {
