@@ -144,6 +144,20 @@ test('cash-builder controls meet the 44px mobile touch-target minimum', async ()
   assert.match(css, /\.quantity-button\s*\{[^}]*width:\s*2\.75rem;[^}]*height:\s*2\.75rem;/s);
 });
 
+test('makes learners total the tendered cash and explains which cash to build', async () => {
+  const [html, app] = await Promise.all([
+    readFile(new URL('../index.html', import.meta.url), 'utf8'),
+    readFile(new URL('../app.js', import.meta.url), 'utf8'),
+  ]);
+
+  assert.doesNotMatch(html, /id="amount-tendered"/);
+  assert.match(html, /Add these bills and coins yourself/);
+  assert.match(html, /id="cash-builder-purpose"/);
+  assert.doesNotMatch(app, /amount-tendered/);
+  assert.match(app, /Build the change you would give the customer in bills and coins\./);
+  assert.match(app, /Build the additional bills and coins the customer still needs to give\./);
+});
+
 test('cache-busts the stylesheet so mobile fixes reach returning visitors', async () => {
   const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
   assert.match(html, /href="style\.css\?v=[^"]+"/);

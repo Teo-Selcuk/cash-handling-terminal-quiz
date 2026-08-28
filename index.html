@@ -6,7 +6,7 @@
     <meta name="description" content="Fast, local-only cash-handling and number-memory practice games.">
     <meta name="theme-color" content="#12343b">
     <title>Cash &amp; Memory Trainer</title>
-    <link rel="stylesheet" href="style.css?v=20260827-cash-memory">
+    <link rel="stylesheet" href="style.css?v=20260827-self-total">
   </head>
   <body>
     <main class="app-shell">
@@ -97,8 +97,8 @@
           <p class="money-value" id="amount-due">$0.00</p>
           <div class="transaction-rule" aria-hidden="true"></div>
           <p class="transaction-label">Customer gives you</p>
-          <p class="money-value" id="amount-tendered">$0.00</p>
           <p class="breakdown" id="tender-breakdown"></p>
+          <p class="tender-instruction">Add these bills and coins yourself to find the customer total.</p>
         </div>
 
         <form id="answer-form" class="answer-form">
@@ -119,10 +119,11 @@
             <div class="cash-builder-heading">
               <div>
                 <p class="eyebrow">Cash builder</p>
-                <h2 id="cash-builder-heading">Build the declared amount</h2>
+                <h2 id="cash-builder-heading">Choose an answer first</h2>
               </div>
               <button class="text-button" id="clear-builder" type="button">Clear selection</button>
             </div>
+            <p class="builder-purpose" id="cash-builder-purpose" aria-live="polite">Choose Exact, Change, or Short to see what cash to build.</p>
             <p class="selected-total" id="selected-total">Selected: $0.00</p>
             <p class="builder-status" id="builder-status" aria-live="polite">Choose an answer to compare your cash selection.</p>
             <label class="quick-entry" for="quick-cash-entry">Fast cash entry

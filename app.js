@@ -22,8 +22,8 @@ const refs = Object.fromEntries([
   'setup-form', 'setup-screen', 'quiz-screen', 'feedback-screen', 'summary-screen', 'history-screen',
   'memory-read-screen', 'memory-answer-screen', 'cash-setup-options', 'memory-setup-options',
   'question-count', 'time-limit', 'cash-builder-toggle', 'question-progress', 'timer', 'amount-due',
-  'amount-tendered', 'tender-breakdown', 'answer-form', 'answer-amount', 'cash-builder-section',
-  'cash-builder', 'selected-total', 'builder-status', 'clear-builder', 'quick-cash-entry', 'apply-quick-cash', 'feedback-heading',
+  'tender-breakdown', 'answer-form', 'answer-amount', 'cash-builder-section', 'cash-builder-heading',
+  'cash-builder-purpose', 'cash-builder', 'selected-total', 'builder-status', 'clear-builder', 'quick-cash-entry', 'apply-quick-cash', 'feedback-heading',
   'feedback-kicker', 'feedback-lead', 'feedback-details', 'next-question', 'session-metrics',
   'start-another', 'summary-history', 'open-history', 'back-to-setup', 'history-metrics',
   'history-outcome-diagram', 'history-outcome-legend', 'history-outcomes-summary', 'history-accuracy-chart',
@@ -242,6 +242,30 @@ function selectedBreakdown() {
     .map((item) => ({ ...item, count: state.builderCounts.get(item.cents) }));
 }
 
+function updateCashBuilderPurpose(type) {
+  const copyByType = {
+    Exact: {
+      heading: 'No cash to build',
+      purpose: 'The customer paid the exact amount, so select no bills or coins.',
+    },
+    Change: {
+      heading: 'Build the change to give the customer',
+      purpose: 'Build the change you would give the customer in bills and coins.',
+    },
+    Short: {
+      heading: 'Build the cash the customer still owes',
+      purpose: 'Build the additional bills and coins the customer still needs to give.',
+    },
+  };
+  const copy = copyByType[type] ?? {
+    heading: 'Choose an answer first',
+    purpose: 'Choose Exact, Change, or Short to see what cash to build.',
+  };
+
+  refs['cash-builder-heading'].textContent = copy.heading;
+  refs['cash-builder-purpose'].textContent = copy.purpose;
+}
+
 function updateCashBuilder() {
   const breakdown = selectedBreakdown();
   const total = countTotalCents(breakdown);
@@ -252,6 +276,7 @@ function updateCashBuilder() {
   }
 
   const type = selectedAnswerType();
+  updateCashBuilderPurpose(type);
   const declaredAmount = type === 'Exact' ? 0 : parseAmountToCents(refs['answer-amount'].value);
   if (!type) {
     refs['builder-status'].textContent = 'Choose an answer to compare your cash selection.';
@@ -271,7 +296,6 @@ function renderQuestion() {
   const question = state.question;
   refs['question-progress'].textContent = `Question ${state.questionNumber} of ${state.questionCount}`;
   refs['amount-due'].textContent = formatMoney(question.dueCents);
-  refs['amount-tendered'].textContent = formatMoney(question.tenderedCents);
   refs['tender-breakdown'].textContent = question.breakdownText;
   refs['answer-form'].reset();
   refs['answer-amount'].disabled = true;
