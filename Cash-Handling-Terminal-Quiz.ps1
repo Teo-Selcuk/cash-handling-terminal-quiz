@@ -833,6 +833,110 @@
         }
     }
 
+    function ConvertFrom-CashBuilderShorthand {
+        param([string]$Text)
+
+        $counts = @{}
+
+        foreach ($denomination in $allDenominations) {
+            $counts[[string]$denomination.Cents] = [long]0
+        }
+
+        if ([string]::IsNullOrWhiteSpace($Text)) {
+            return [pscustomobject]@{
+                Valid = $false
+                Counts = $counts
+                Error = 'Enter at least one bill or coin.'
+            }
+        }
+
+        $wordCounts = @{
+            one = 1; two = 2; three = 3; four = 4; five = 5
+            six = 6; seven = 7; eight = 8; nine = 9; ten = 10
+        }
+
+        $parts = @(
+            $Text -split '[,;\r\n]' |
+                ForEach-Object { $_.Trim() } |
+                Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+        )
+
+        if ($parts.Count -eq 0) {
+            return [pscustomobject]@{
+                Valid = $false
+                Counts = $counts
+                Error = 'Enter at least one bill or coin.'
+            }
+        }
+
+        foreach ($part in $parts) {
+            [long]$count = 1
+            $token = $part
+            $compactCoin = [regex]::Match($part, '^(?<count>\d+)(?<token>[qdnp])$', 'IgnoreCase')
+            $explicitCount = [regex]::Match($part, '^(?<count>\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s*[x\*]\s*(?<token>.+)$', 'IgnoreCase')
+            $spacedCount = [regex]::Match($part, '^(?<count>\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?<token>.+)$', 'IgnoreCase')
+
+            $countMatch = if ($compactCoin.Success) {
+                $compactCoin
+            }
+            elseif ($explicitCount.Success) {
+                $explicitCount
+            }
+            elseif ($spacedCount.Success) {
+                $spacedCount
+            }
+            else {
+                $null
+            }
+
+            if ($null -ne $countMatch) {
+                $rawCount = $countMatch.Groups['count'].Value.ToLowerInvariant()
+                $token = $countMatch.Groups['token'].Value
+
+                if ($wordCounts.ContainsKey($rawCount)) {
+                    $count = [long]$wordCounts[$rawCount]
+                }
+                elseif (-not [long]::TryParse($rawCount, [ref]$count)) {
+                    $count = [long]0
+                }
+            }
+
+            $normalizedToken = ($token.ToLowerInvariant() -replace '\s', '')
+            [long]$cents = 0
+
+            switch ($normalizedToken) {
+                { $_ -in @('q', 'quarter', 'quarters') } { $cents = 25; break }
+                { $_ -in @('d', 'dime', 'dimes') } { $cents = 10; break }
+                { $_ -in @('n', 'nickel', 'nickels') } { $cents = 5; break }
+                { $_ -in @('p', 'penny', 'pennies') } { $cents = 1; break }
+                default {
+                    $billMatch = [regex]::Match($normalizedToken, '^\$?(100|50|20|10|5|1)(?:b|bill|bills)?$')
+
+                    if ($billMatch.Success) {
+                        $cents = [long]([int]$billMatch.Groups[1].Value * 100)
+                    }
+                }
+            }
+
+            if ($count -lt 1 -or $count -gt 10000 -or $cents -le 0) {
+                return [pscustomobject]@{
+                    Valid = $false
+                    Counts = $counts
+                    Error = "Could not read '$part'."
+                }
+            }
+
+            $key = [string]$cents
+            $counts[$key] = [long]$counts[$key] + $count
+        }
+
+        return [pscustomobject]@{
+            Valid = $true
+            Counts = $counts
+            Error = ''
+        }
+    }
+
     function Get-ExpectedAnswerText {
         param([object]$Question)
 
@@ -1270,7 +1374,7 @@
         $form = New-Object System.Windows.Forms.Form
         $form.Text = 'Cash Handling Quiz - Clickable Bill/Coin Mode'
         $form.StartPosition = 'CenterScreen'
-        $form.ClientSize = New-Object System.Drawing.Size(1040, 790)
+        $form.ClientSize = New-Object System.Drawing.Size(1040, 840)
         $form.AutoScaleMode = 'Dpi'
         $form.Font = New-Object System.Drawing.Font('Segoe UI', 10)
         $form.BackColor = $uiBackground
@@ -1316,7 +1420,7 @@
 
         $answerPanel = New-Object System.Windows.Forms.Panel
         $answerPanel.Location = New-Object System.Drawing.Point(20, 138)
-        $answerPanel.Size = New-Object System.Drawing.Size(1000, 142)
+        $answerPanel.Size = New-Object System.Drawing.Size(1000, 196)
         $answerPanel.BackColor = $uiSurface
         $answerPanel.BorderStyle = 'FixedSingle'
         $form.Controls.Add($answerPanel)
@@ -1390,6 +1494,46 @@
         $selectionStatusLabel.ForeColor = $uiMutedText
         $selectionStatusLabel.Text = 'Selected cash total updates as you build it.'
         $answerPanel.Controls.Add($selectionStatusLabel)
+
+        $fastEntryLabel = New-Object System.Windows.Forms.Label
+        $fastEntryLabel.Location = New-Object System.Drawing.Point(20, 140)
+        $fastEntryLabel.Size = New-Object System.Drawing.Size(185, 30)
+        $fastEntryLabel.ForeColor = $uiMutedText
+        $fastEntryLabel.Text = 'Fast cash entry:'
+        $answerPanel.Controls.Add($fastEntryLabel)
+
+        $fastEntryTextBox = New-Object System.Windows.Forms.TextBox
+        $fastEntryTextBox.Location = New-Object System.Drawing.Point(170, 136)
+        $fastEntryTextBox.Size = New-Object System.Drawing.Size(525, 32)
+        $fastEntryTextBox.Font = New-Object System.Drawing.Font('Consolas', 10.5)
+        $fastEntryTextBox.BackColor = $uiSurfaceRaised
+        $fastEntryTextBox.ForeColor = $uiText
+        $fastEntryTextBox.BorderStyle = 'FixedSingle'
+        $fastEntryTextBox.AccessibleName = 'Fast bill and coin entry'
+        $fastEntryTextBox.AccessibleDescription = 'Examples: 2x$10, one $1 bill, 2d, 2q.'
+        $answerPanel.Controls.Add($fastEntryTextBox)
+
+        $applyFastEntryButton = New-Object System.Windows.Forms.Button
+        $applyFastEntryButton.Location = New-Object System.Drawing.Point(710, 132)
+        $applyFastEntryButton.Size = New-Object System.Drawing.Size(170, 40)
+        $applyFastEntryButton.Text = 'Apply fast entry'
+        $applyFastEntryButton.AccessibleName = 'Apply fast cash entry'
+        $applyFastEntryButton.TabIndex = 8
+        $applyFastEntryButton.FlatStyle = 'Flat'
+        $applyFastEntryButton.FlatAppearance.BorderSize = 0
+        $applyFastEntryButton.BackColor = $uiSurfaceRaised
+        $applyFastEntryButton.ForeColor = $uiText
+        $applyFastEntryButton.UseVisualStyleBackColor = $false
+        $applyFastEntryButton.Cursor = [System.Windows.Forms.Cursors]::Hand
+        $answerPanel.Controls.Add($applyFastEntryButton)
+
+        $fastEntryHintLabel = New-Object System.Windows.Forms.Label
+        $fastEntryHintLabel.Location = New-Object System.Drawing.Point(20, 170)
+        $fastEntryHintLabel.Size = New-Object System.Drawing.Size(960, 20)
+        $fastEntryHintLabel.ForeColor = $uiMutedText
+        $fastEntryHintLabel.Font = New-Object System.Drawing.Font('Segoe UI', 9)
+        $fastEntryHintLabel.Text = 'Use commas: 2x$10, one $1 bill, 2d, 2q. Fast entry replaces the selection; you can still adjust every button.'
+        $answerPanel.Controls.Add($fastEntryHintLabel)
 
         if ($null -ne $DeclaredAnswer) {
             switch ($DeclaredAnswer.Type) {
@@ -1490,7 +1634,7 @@
 
         $billsGroup = New-Object System.Windows.Forms.GroupBox
         $billsGroup.Text = 'BILLS'
-        $billsGroup.Location = New-Object System.Drawing.Point(20, 294)
+        $billsGroup.Location = New-Object System.Drawing.Point(20, 350)
         $billsGroup.Size = New-Object System.Drawing.Size(620, 345)
         $billsGroup.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 11)
         $billsGroup.BackColor = $uiSurface
@@ -1499,7 +1643,7 @@
 
         $coinsGroup = New-Object System.Windows.Forms.GroupBox
         $coinsGroup.Text = 'COINS'
-        $coinsGroup.Location = New-Object System.Drawing.Point(655, 294)
+        $coinsGroup.Location = New-Object System.Drawing.Point(655, 350)
         $coinsGroup.Size = New-Object System.Drawing.Size(365, 345)
         $coinsGroup.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 11)
         $coinsGroup.BackColor = $uiSurface
@@ -1609,19 +1753,62 @@
             }.GetNewClosure())
         }
 
+        $refreshCashSelection = {
+            [long]$newTotal = & $getLocalCashTotal $state.Counts
+            $selectedTotalLabel.Text = 'Selected: ' + (& $formatLocalMoney $newTotal)
+            & $refreshSelectionStatus $newTotal
+
+            foreach ($item in $allDenominations) {
+                $itemKey = [string]$item.Cents
+                $countLabels[$itemKey].Text = [string]$state.Counts[$itemKey]
+            }
+        }.GetNewClosure()
+
         $errorLabel = New-Object System.Windows.Forms.Label
-        $errorLabel.Location = New-Object System.Drawing.Point(28, 652)
+        $errorLabel.Location = New-Object System.Drawing.Point(28, 708)
         $errorLabel.Size = New-Object System.Drawing.Size(992, 42)
         $errorLabel.TextAlign = 'MiddleLeft'
         $errorLabel.BackColor = $uiSurface
         $errorLabel.ForeColor = $uiMutedText
         $errorLabel.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 10)
-        $keyboardHintText = 'Tip: Press Enter to submit | Press Esc to stop the quiz.'
+        $keyboardHintText = 'Tip: Press Enter to submit | Press Esc to stop the quiz. Apply fast entry before submitting, or press Enter in its field to apply it.'
         $errorLabel.Text = $keyboardHintText
         $form.Controls.Add($errorLabel)
 
+        $applyFastEntryButton.Add_Click({
+            $parsedFastEntry = ConvertFrom-CashBuilderShorthand `
+                -Text $fastEntryTextBox.Text
+
+            if (-not $parsedFastEntry.Valid) {
+                $errorLabel.ForeColor = $uiDanger
+                $errorLabel.Text = $parsedFastEntry.Error + ' Use entries such as 2x$10, one $1 bill, 2d, 2q.'
+                $fastEntryTextBox.Focus()
+                return
+            }
+
+            foreach ($item in $allDenominations) {
+                $itemKey = [string]$item.Cents
+                $state.Counts[$itemKey] = [long]$parsedFastEntry.Counts[$itemKey]
+            }
+
+            $fastEntryTextBox.Clear()
+            $errorLabel.ForeColor = $uiMutedText
+            $errorLabel.Text = 'Fast entry applied. You can still adjust any bill or coin button.'
+            & $refreshCashSelection
+        }.GetNewClosure())
+
+        $fastEntryTextBox.Add_KeyDown({
+            param($sender, $eventArgs)
+
+            if ($eventArgs.KeyCode -eq [System.Windows.Forms.Keys]::Enter) {
+                $eventArgs.SuppressKeyPress = $true
+                $eventArgs.Handled = $true
+                $applyFastEntryButton.PerformClick()
+            }
+        }.GetNewClosure())
+
         $actionPanel = New-Object System.Windows.Forms.Panel
-        $actionPanel.Location = New-Object System.Drawing.Point(20, 706)
+        $actionPanel.Location = New-Object System.Drawing.Point(20, 762)
         $actionPanel.Size = New-Object System.Drawing.Size(1000, 64)
         $actionPanel.BackColor = $uiBackground
         $form.Controls.Add($actionPanel)
@@ -1668,6 +1855,8 @@
             foreach ($key in @($state.Counts.Keys)) {
                 $state.Counts[$key] = [long]0
             }
+
+            $fastEntryTextBox.Clear()
 
             if ($null -eq $DeclaredAnswer) {
                 $exactRadio.Checked = $false
@@ -2298,6 +2487,182 @@
         }
     }
 
+    function Get-MemoryModeConfig {
+        param(
+            [ValidateSet('Easy', 'Medium', 'Hard')]
+            [string]$Level
+        )
+
+        switch ($Level) {
+            'Easy' {
+                return [pscustomobject]@{
+                    Digits = 4
+                    ReadSeconds = 5
+                    WriteSeconds = 10
+                }
+            }
+            'Medium' {
+                return [pscustomobject]@{
+                    Digits = 7
+                    ReadSeconds = 4
+                    WriteSeconds = 8
+                }
+            }
+            'Hard' {
+                return [pscustomobject]@{
+                    Digits = 10
+                    ReadSeconds = 3
+                    WriteSeconds = 6
+                }
+            }
+        }
+    }
+
+    function New-MemoryChallenge {
+        param(
+            [ValidateSet('Easy', 'Medium', 'Hard')]
+            [string]$Level,
+            [ValidateRange(1, 24)]
+            [int]$Digits
+        )
+
+        $number = [string](Get-Random -Minimum 1 -Maximum 10)
+
+        for ($index = 1; $index -lt $Digits; $index++) {
+            $number += [string](Get-Random -Minimum 0 -Maximum 10)
+        }
+
+        return [pscustomobject]@{
+            Level = $Level
+            Digits = $Digits
+            Value = $number
+        }
+    }
+
+    function ConvertTo-NormalizedMemoryAnswer {
+        param([string]$Text)
+
+        if ($null -eq $Text) {
+            return ''
+        }
+
+        return ($Text -replace '[^\d]', '')
+    }
+
+    function Start-MemoryQuiz {
+        $difficulty = Read-Difficulty
+        $defaults = Get-MemoryModeConfig -Level $difficulty
+        $questionCount = Read-IntegerSetting `
+            -Prompt 'Number of memory rounds' `
+            -Default $appState.Settings.DefaultQuestionCount `
+            -Minimum 1 `
+            -Maximum 100
+        $digits = Read-IntegerSetting `
+            -Prompt 'Digits to remember' `
+            -Default $defaults.Digits `
+            -Minimum 1 `
+            -Maximum 24
+        $readSeconds = Read-IntegerSetting `
+            -Prompt 'Seconds to read each number' `
+            -Default $defaults.ReadSeconds `
+            -Minimum 1 `
+            -Maximum 60
+        $writeSeconds = Read-IntegerSetting `
+            -Prompt 'Seconds to write each number from memory' `
+            -Default $defaults.WriteSeconds `
+            -Minimum 1 `
+            -Maximum 300
+
+        $results = @()
+
+        Write-Host ''
+        Write-Host 'NUMBER MEMORY GAME' -ForegroundColor Cyan
+        Write-Host "Mode: $difficulty | $digits digits | read: $readSeconds seconds | write: $writeSeconds seconds" -ForegroundColor Cyan
+        Write-Host 'Read each number, then type it after the screen clears. Spaces are allowed in your answer.' -ForegroundColor DarkGray
+
+        for ($round = 1; $round -le $questionCount; $round++) {
+            $challenge = New-MemoryChallenge `
+                -Level $difficulty `
+                -Digits $digits
+
+            Write-Host ''
+            Write-Host ('=' * 72) -ForegroundColor DarkGray
+            Write-Host "MEMORY ROUND $round OF $questionCount | $difficulty" -ForegroundColor Cyan
+            Write-Host "Read this $digits-digit number. It hides in $readSeconds seconds:" -ForegroundColor White
+            Write-Host ''
+            Write-Host $challenge.Value -ForegroundColor Green
+
+            for ($secondsRemaining = $readSeconds; $secondsRemaining -gt 0; $secondsRemaining--) {
+                $percentComplete = [Math]::Round(
+                    (($readSeconds - $secondsRemaining) * 100.0) / $readSeconds,
+                    0
+                )
+                Write-Progress `
+                    -Activity 'Memorize the number' `
+                    -Status "$secondsRemaining seconds remaining" `
+                    -PercentComplete $percentComplete
+                Start-Sleep -Seconds 1
+            }
+            Write-Progress -Activity 'Memorize the number' -Completed
+            Clear-Host
+
+            Write-Host 'NUMBER MEMORY GAME' -ForegroundColor Cyan
+            Write-Host "Round $round of $questionCount | The number is hidden." -ForegroundColor White
+            Write-Host "Type the number from memory within $writeSeconds seconds. Press Esc to stop the game." -ForegroundColor DarkGray
+
+            $timedAnswer = Read-TimedAnswer -Seconds $writeSeconds
+
+            if ($timedAnswer.Cancelled) {
+                Write-Host 'Memory game stopped.' -ForegroundColor Yellow
+                break
+            }
+
+            $normalizedAnswer = ConvertTo-NormalizedMemoryAnswer `
+                -Text $timedAnswer.Text
+            $correct = (
+                -not $timedAnswer.TimedOut -and
+                $normalizedAnswer -eq $challenge.Value
+            )
+
+            if ($correct) {
+                Write-Host 'CORRECT - You recalled the number in order.' -ForegroundColor Green
+            }
+            elseif ($timedAnswer.TimedOut) {
+                Write-Host "TIME EXPIRED - The number was $($challenge.Value)." -ForegroundColor Yellow
+            }
+            else {
+                Write-Host "NOT QUITE - The number was $($challenge.Value)." -ForegroundColor Red
+            }
+
+            Write-Host "Your entry: $(if ([string]::IsNullOrWhiteSpace($normalizedAnswer)) { '<NONE>' } else { $normalizedAnswer })" -ForegroundColor DarkGray
+            Write-Host ("Time used: " + $timedAnswer.ElapsedSeconds.ToString('N2') + ' seconds') -ForegroundColor DarkGray
+
+            $results += [pscustomobject]@{
+                Correct = $correct
+                TimedOut = [bool]$timedAnswer.TimedOut
+                ElapsedSeconds = [double]$timedAnswer.ElapsedSeconds
+            }
+
+            if ($round -lt $questionCount) {
+                [void](Read-Host 'Press Enter for the next memory round')
+                Clear-Host
+            }
+        }
+
+        if ($results.Count -gt 0) {
+            $correctCount = @($results | Where-Object { $_.Correct }).Count
+            $timedOutCount = @($results | Where-Object { $_.TimedOut }).Count
+            $accuracy = [Math]::Round(($correctCount * 100.0) / $results.Count, 1)
+            $averageTime = [Math]::Round(($results | Measure-Object -Property ElapsedSeconds -Average).Average, 2)
+
+            Write-Host ''
+            Write-Host 'MEMORY SESSION RESULTS' -ForegroundColor Cyan
+            Write-Host "Score: $correctCount / $($results.Count) ($accuracy%)"
+            Write-Host "Timed out: $timedOutCount"
+            Write-Host "Average writing time: $averageTime seconds"
+        }
+    }
+
     function Show-History {
         if (-not (Test-Path -LiteralPath $historyPath)) {
             Write-Host `
@@ -2894,7 +3259,7 @@
         -ForegroundColor Cyan
 
     Write-Host `
-        'Random cash questions with typed and clickable denomination modes.'
+        'Cash handling practice plus a configurable number memory game.'
 
     Write-Host `
         "History is saved at: $($appState.HistoryPath)" `
@@ -2904,7 +3269,7 @@
         Write-Host ''
 
         Write-Host `
-            '[1] Start quiz  [2] View detailed history  [3] Clear history  [4] Settings  [Q] Quit' `
+            '[1] Cash handling quiz  [2] Number memory game  [3] View detailed history  [4] Clear history  [5] Settings  [Q] Quit' `
             -ForegroundColor White
 
         $menuChoice = (
@@ -2917,13 +3282,16 @@
             }
 
             '2' {
-                Show-History
+                Start-MemoryQuiz
             }
 
             '3' {
-                Clear-History
+                Show-History
             }
             '4' {
+                Clear-History
+            }
+            '5' {
                 Show-QuizSettings
             }
 
@@ -2937,7 +3305,7 @@
 
             default {
                 Write-Host `
-                    'Choose 1, 2, 3, 4, or Q.' `
+                    'Choose 1, 2, 3, 4, 5, or Q.' `
                     -ForegroundColor Yellow
             }
         }
