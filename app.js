@@ -1,5 +1,6 @@
 import {
   DENOMINATIONS,
+  DIFFICULTY_CONFIG,
   MEMORY_MODE_CONFIG,
   buildBreakdown,
   countTotalCents,
@@ -9,6 +10,8 @@ import {
   formatMoney,
   parseCashShorthand,
   parseAmountToCents,
+  resolveCashDifficultyPreset,
+  resolveMemoryDifficultyPreset,
   scoreMemoryAnswer,
   scoreAnswer,
   summarizeHistory,
@@ -17,6 +20,7 @@ import {
 
 const HISTORY_KEY = 'cash-handling-terminal-quiz-history-v1';
 const THEME_KEY = 'cash-handling-terminal-quiz-theme-v1';
+const PRESET_KEY = 'cash-handling-terminal-quiz-presets-v1';
 const screens = ['setup', 'quiz', 'memory-read', 'memory-answer', 'feedback', 'summary', 'history'];
 const refs = Object.fromEntries([
   'setup-form', 'setup-screen', 'quiz-screen', 'feedback-screen', 'summary-screen', 'history-screen',
@@ -32,7 +36,14 @@ const refs = Object.fromEntries([
   'memory-read-time', 'memory-write-time', 'memory-read-progress', 'memory-read-timer', 'memory-number', 'memory-read-hint',
   'memory-answer-form', 'memory-answer-list', 'memory-answer-progress', 'memory-answer-timer', 'memory-answer-heading', 'summary-heading',
   'easy-description', 'medium-description', 'hard-description',
+  'preset-editor', 'preset-level', 'preset-cash-fields', 'preset-memory-fields',
+  'preset-cash-min-due', 'preset-cash-max-due', 'preset-cash-step', 'preset-cash-max-difference', 'preset-cash-split-count',
+  'preset-memory-value-min', 'preset-memory-value-max', 'preset-memory-digit-min', 'preset-memory-digit-max',
+  'preset-memory-read-time', 'preset-memory-write-time', 'preset-memory-decimals',
+  'save-preset', 'reset-selected-preset', 'reset-all-presets',
 ].map((id) => [id, document.getElementById(id)]));
+
+const savedPresetState = loadPresetState();
 
 const state = {
   activeScreen: 'setup',
@@ -43,6 +54,8 @@ const state = {
   timeLimitSeconds: 30,
   cashBuilderEnabled: false,
   autoContinueOnTimeout: false,
+  cashPresets: savedPresetState.cash,
+  memoryPresets: savedPresetState.memory,
   questionNumber: 0,
   question: null,
   results: [],
@@ -64,6 +77,41 @@ const state = {
 
 function setMessage(message) {
   refs.message.textContent = message;
+}
+
+function builtInCashPresets() {
+  return Object.fromEntries(Object.keys(DIFFICULTY_CONFIG).map((level) => [level, resolveCashDifficultyPreset(level)]));
+}
+
+function builtInMemoryPresets() {
+  return Object.fromEntries(Object.keys(MEMORY_MODE_CONFIG).map((level) => [level, resolveMemoryDifficultyPreset(level)]));
+}
+
+function loadPresetState() {
+  const presets = {
+    cash: builtInCashPresets(),
+    memory: builtInMemoryPresets(),
+  };
+  try {
+    const saved = JSON.parse(localStorage.getItem(PRESET_KEY) ?? 'null');
+    for (const level of Object.keys(DIFFICULTY_CONFIG)) {
+      if (saved?.cash?.[level]) presets.cash[level] = resolveCashDifficultyPreset(level, saved.cash[level]);
+      if (saved?.memory?.[level]) presets.memory[level] = resolveMemoryDifficultyPreset(level, saved.memory[level]);
+    }
+  } catch {
+    // Keep the shipped presets if a browser has an old or invalid saved value.
+  }
+  return presets;
+}
+
+function persistPresetState() {
+  try {
+    localStorage.setItem(PRESET_KEY, JSON.stringify({ cash: state.cashPresets, memory: state.memoryPresets }));
+    return true;
+  } catch {
+    setMessage('The preset is active for this visit, but this browser could not save it locally.');
+    return false;
+  }
 }
 
 function savedTheme() {
@@ -159,14 +207,71 @@ function selectedDifficulty() {
 }
 
 function applyMemoryModeDefaults() {
-  const defaults = MEMORY_MODE_CONFIG[selectedDifficulty()];
-  refs['memory-value-min'].value = String(defaults.minimumValues);
-  refs['memory-value-max'].value = String(defaults.maximumValues);
-  refs['memory-digit-min'].value = String(defaults.minimumDigits);
-  refs['memory-digit-max'].value = String(defaults.maximumDigits);
-  refs['memory-decimals'].checked = defaults.decimals;
-  refs['memory-read-time'].value = String(defaults.readSeconds);
-  refs['memory-write-time'].value = String(defaults.writeSeconds);
+  const preset = state.memoryPresets[selectedDifficulty()];
+  refs['memory-value-min'].value = String(preset.minimumValues);
+  refs['memory-value-max'].value = String(preset.maximumValues);
+  refs['memory-digit-min'].value = String(preset.minimumDigits);
+  refs['memory-digit-max'].value = String(preset.maximumDigits);
+  refs['memory-decimals'].checked = preset.decimals;
+  refs['memory-read-time'].value = String(preset.readSeconds);
+  refs['memory-write-time'].value = String(preset.writeSeconds);
+}
+
+function hasPresetValues(preset, defaults, fields) {
+  return fields.every((field) => preset[field] === defaults[field]);
+}
+
+function cashPresetDescription(level) {
+  const preset = state.cashPresets[level];
+  const defaults = DIFFICULTY_CONFIG[level];
+  const defaultDescriptions = {
+    Easy: 'Up to $200, quarter increments',
+    Medium: 'Up to $1,000, exact cents',
+    Hard: 'Up to $5,000, larger differences',
+  };
+  if (hasPresetValues(preset, defaults, ['minDue', 'maxDue', 'step', 'maxDifference', 'splitCount'])) return defaultDescriptions[level];
+  const increment = preset.step === 1 ? 'exact cents' : `${formatMoney(preset.step)} increments`;
+  return `Up to ${formatMoney(preset.maxDue)}, ${increment}, up to ${formatMoney(preset.maxDifference)} difference`;
+}
+
+function memoryPresetDescription(level) {
+  const preset = state.memoryPresets[level];
+  const defaults = MEMORY_MODE_CONFIG[level];
+  const defaultDescriptions = {
+    Easy: '1–2 values, 4–6 digits each',
+    Medium: '2–3 values, 6–8 digits each',
+    Hard: '3–5 values, 8–10 digits each',
+  };
+  if (hasPresetValues(preset, defaults, ['minimumValues', 'maximumValues', 'minimumDigits', 'maximumDigits', 'decimals', 'readSeconds', 'writeSeconds'])) return defaultDescriptions[level];
+  return `${preset.minimumValues}–${preset.maximumValues} values, ${preset.minimumDigits}–${preset.maximumDigits} digits each`;
+}
+
+function renderPresetEditor() {
+  const game = selectedGame();
+  const level = selectedDifficulty();
+  const cashGame = game === 'cash';
+  refs['preset-level'].textContent = level;
+  refs['preset-cash-fields'].hidden = !cashGame;
+  refs['preset-memory-fields'].hidden = cashGame;
+
+  if (cashGame) {
+    const preset = state.cashPresets[level];
+    refs['preset-cash-min-due'].value = (preset.minDue / 100).toFixed(2);
+    refs['preset-cash-max-due'].value = (preset.maxDue / 100).toFixed(2);
+    refs['preset-cash-step'].value = String(preset.step);
+    refs['preset-cash-max-difference'].value = (preset.maxDifference / 100).toFixed(2);
+    refs['preset-cash-split-count'].value = String(preset.splitCount);
+    return;
+  }
+
+  const preset = state.memoryPresets[level];
+  refs['preset-memory-value-min'].value = String(preset.minimumValues);
+  refs['preset-memory-value-max'].value = String(preset.maximumValues);
+  refs['preset-memory-digit-min'].value = String(preset.minimumDigits);
+  refs['preset-memory-digit-max'].value = String(preset.maximumDigits);
+  refs['preset-memory-read-time'].value = String(preset.readSeconds);
+  refs['preset-memory-write-time'].value = String(preset.writeSeconds);
+  refs['preset-memory-decimals'].checked = preset.decimals;
 }
 
 function updateGameSetup() {
@@ -174,20 +279,83 @@ function updateGameSetup() {
   const memoryGame = game === 'memory';
   refs['cash-setup-options'].hidden = memoryGame;
   refs['memory-setup-options'].hidden = !memoryGame;
-  const descriptions = memoryGame
-    ? {
-      Easy: '1–2 values, 4–6 digits each',
-      Medium: '2–3 values, 6–8 digits each',
-      Hard: '3–5 values, 8–10 digits each',
-    }
-    : {
-      Easy: 'Up to $200, quarter increments',
-      Medium: 'Up to $1,000, exact cents',
-      Hard: 'Up to $5,000, larger differences',
-    };
+  const descriptions = Object.fromEntries(['Easy', 'Medium', 'Hard'].map((level) => [
+    level,
+    memoryGame ? memoryPresetDescription(level) : cashPresetDescription(level),
+  ]));
   refs['easy-description'].textContent = descriptions.Easy;
   refs['medium-description'].textContent = descriptions.Medium;
   refs['hard-description'].textContent = descriptions.Hard;
+  renderPresetEditor();
+}
+
+function readPresetCents(ref, label) {
+  const cents = parseAmountToCents(ref.value);
+  if (cents === null) throw new RangeError(`${label} must be a dollar amount with up to two decimal places.`);
+  return cents;
+}
+
+function readPresetInteger(ref, label) {
+  const value = Number(ref.value);
+  if (!Number.isInteger(value)) throw new RangeError(`${label} must be a whole number.`);
+  return value;
+}
+
+function saveSelectedPreset() {
+  const level = selectedDifficulty();
+  const cashGame = selectedGame() === 'cash';
+  try {
+    if (cashGame) {
+      state.cashPresets[level] = resolveCashDifficultyPreset(level, {
+        minDue: readPresetCents(refs['preset-cash-min-due'], 'Minimum amount due'),
+        maxDue: readPresetCents(refs['preset-cash-max-due'], 'Maximum amount due'),
+        step: readPresetInteger(refs['preset-cash-step'], 'Increment'),
+        maxDifference: readPresetCents(refs['preset-cash-max-difference'], 'Maximum difference'),
+        splitCount: readPresetInteger(refs['preset-cash-split-count'], 'Cash item count'),
+      });
+    } else {
+      state.memoryPresets[level] = resolveMemoryDifficultyPreset(level, {
+        minimumValues: readPresetInteger(refs['preset-memory-value-min'], 'Minimum values'),
+        maximumValues: readPresetInteger(refs['preset-memory-value-max'], 'Maximum values'),
+        minimumDigits: readPresetInteger(refs['preset-memory-digit-min'], 'Minimum digits'),
+        maximumDigits: readPresetInteger(refs['preset-memory-digit-max'], 'Maximum digits'),
+        decimals: refs['preset-memory-decimals'].checked,
+        readSeconds: readPresetInteger(refs['preset-memory-read-time'], 'Reading seconds'),
+        writeSeconds: readPresetInteger(refs['preset-memory-write-time'], 'Writing seconds'),
+      });
+      applyMemoryModeDefaults();
+    }
+    const saved = persistPresetState();
+    updateGameSetup();
+    refs['preset-editor'].open = true;
+    if (saved) setMessage(`Saved the ${level} ${cashGame ? 'cash handling' : 'number memory'} preset on this device.`);
+  } catch (error) {
+    setMessage(error instanceof Error ? error.message : 'The preset could not be saved.');
+  }
+}
+
+function resetSelectedPreset() {
+  const level = selectedDifficulty();
+  const cashGame = selectedGame() === 'cash';
+  if (cashGame) state.cashPresets[level] = resolveCashDifficultyPreset(level);
+  else {
+    state.memoryPresets[level] = resolveMemoryDifficultyPreset(level);
+    applyMemoryModeDefaults();
+  }
+  const saved = persistPresetState();
+  updateGameSetup();
+  refs['preset-editor'].open = true;
+  if (saved) setMessage(`Restored the normal ${level} ${cashGame ? 'cash handling' : 'number memory'} preset.`);
+}
+
+function resetAllPresets() {
+  state.cashPresets = builtInCashPresets();
+  state.memoryPresets = builtInMemoryPresets();
+  if (selectedGame() === 'memory') applyMemoryModeDefaults();
+  const saved = persistPresetState();
+  updateGameSetup();
+  refs['preset-editor'].open = true;
+  if (saved) setMessage('Restored all Easy, Medium, and Hard presets to their normal amounts and ranges.');
 }
 
 function resetBuilder() {
@@ -451,7 +619,7 @@ function showNextQuestion() {
     showScreen('summary');
     return;
   }
-  state.question = createQuestion(state.difficulty);
+  state.question = createQuestion(state.difficulty, Math.random, state.cashPresets[state.difficulty]);
   state.answerSubmitted = false;
   renderQuestion();
   showScreen('quiz');
@@ -581,6 +749,7 @@ function showNextMemoryQuestion() {
     return;
   }
   state.memoryChallenge = createMemoryChallenge(state.difficulty, {
+    ...state.memoryPresets[state.difficulty],
     minimumDigits: state.memoryMinimumDigits,
     maximumDigits: state.memoryMaximumDigits,
     minimumValues: state.memoryMinimumValues,
@@ -860,12 +1029,16 @@ refs['memory-answer-form'].addEventListener('submit', (event) => {
   submitMemoryAnswer();
 });
 document.querySelectorAll('input[name="game"]').forEach((input) => input.addEventListener('change', () => {
-  updateGameSetup();
   if (selectedGame() === 'memory') applyMemoryModeDefaults();
+  updateGameSetup();
 }));
 document.querySelectorAll('input[name="difficulty"]').forEach((input) => input.addEventListener('change', () => {
   if (selectedGame() === 'memory') applyMemoryModeDefaults();
+  updateGameSetup();
 }));
+refs['save-preset'].addEventListener('click', saveSelectedPreset);
+refs['reset-selected-preset'].addEventListener('click', resetSelectedPreset);
+refs['reset-all-presets'].addEventListener('click', resetAllPresets);
 refs['start-another'].addEventListener('click', () => showScreen('setup'));
 refs['open-history'].addEventListener('click', openHistory);
 refs['summary-history'].addEventListener('click', openHistory);

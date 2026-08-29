@@ -18,6 +18,11 @@ Assert-Contains 'Apply fast entry' 'cash-builder fast-entry control'
 Assert-Contains '[2] Number memory game' 'memory-game main menu option'
 Assert-Contains 'AutoContinueOnTimeoutEnabled = $false' 'off-by-default auto-continue setting'
 Assert-Contains 'function Read-AutoContinueOnTimeoutSetting' 'auto-continue setup prompt'
+Assert-Contains 'function New-DefaultCashDifficultyPresets' 'cash difficulty preset defaults'
+Assert-Contains 'function New-DefaultMemoryDifficultyPresets' 'memory difficulty preset defaults'
+Assert-Contains 'function Set-CashDifficultyPreset' 'cash difficulty preset editor'
+Assert-Contains 'function Set-MemoryDifficultyPreset' 'memory difficulty preset editor'
+Assert-Contains 'Restore all difficulty presets' 'difficulty preset reset action'
 
 $tokens = $null
 $parseErrors = $null
@@ -143,6 +148,16 @@ if ($memoryWorkflow.Extent.Text -notmatch 'Minimum values per round' -or
     $memoryWorkflow.Extent.Text -notmatch 'Maximum values per round' -or
     $memoryWorkflow.Extent.Text -notmatch 'Maximum 100') {
     throw 'Number Memory does not expose the 100-value range in the PowerShell workflow.'
+}
+
+$cashWorkflow = $ast.FindAll({
+    param($node)
+    $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+    $node.Name -eq 'Start-CashQuiz'
+}, $true) | Select-Object -First 1
+
+if ($cashWorkflow.Extent.Text -notmatch 'Get-LevelConfig') {
+    throw 'Cash Handling does not use the saved selected-difficulty preset.'
 }
 
 Write-Host 'Memory and shorthand structural tests passed.' -ForegroundColor Green

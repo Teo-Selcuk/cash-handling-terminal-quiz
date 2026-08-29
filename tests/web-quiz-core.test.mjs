@@ -13,6 +13,8 @@ import {
   formatMoney,
   parseCashShorthand,
   parseAmountToCents,
+  resolveCashDifficultyPreset,
+  resolveMemoryDifficultyPreset,
   scoreMemoryAnswer,
   scoreAnswer,
   summarizeHistory,
@@ -61,6 +63,57 @@ test('generates questions that obey each difficulty contract', () => {
       }
     }
   }
+});
+
+test('resolves editable cash and memory presets without changing the built-in defaults', () => {
+  const cashPreset = resolveCashDifficultyPreset('Easy', {
+    minDue: 2500,
+    maxDue: 40000,
+    step: 5,
+    maxDifference: 12000,
+    splitCount: 3,
+  });
+  const customCashQuestion = createQuestion('Easy', () => 0.25, cashPreset);
+
+  assert.equal(DIFFICULTY_CONFIG.Easy.maxDue, 20000);
+  assert.deepEqual(cashPreset, {
+    minDue: 2500,
+    maxDue: 40000,
+    step: 5,
+    maxDifference: 12000,
+    splitCount: 3,
+    allowed: DENOMINATIONS.map((denomination) => denomination.cents),
+  });
+  assert.ok(customCashQuestion.dueCents >= 2500);
+  assert.ok(customCashQuestion.dueCents <= 40000);
+  assert.equal(customCashQuestion.dueCents % 5, 0);
+  assert.throws(() => resolveCashDifficultyPreset('Easy', { minDue: 50000, maxDue: 40000 }), RangeError);
+
+  const memoryPreset = resolveMemoryDifficultyPreset('Medium', {
+    minimumDigits: 12,
+    maximumDigits: 12,
+    minimumValues: 4,
+    maximumValues: 4,
+    decimals: false,
+    readSeconds: 9,
+    writeSeconds: 20,
+  });
+  const customMemoryChallenge = createMemoryChallenge('Medium', memoryPreset, () => 0.25);
+
+  assert.deepEqual(MEMORY_MODE_CONFIG.Medium, {
+    minimumDigits: 6,
+    maximumDigits: 8,
+    minimumValues: 2,
+    maximumValues: 3,
+    decimals: true,
+    readSeconds: 4,
+    writeSeconds: 8,
+  });
+  assert.equal(customMemoryChallenge.valueCount, 4);
+  assert.deepEqual(customMemoryChallenge.digitsByValue, [12, 12, 12, 12]);
+  assert.equal(customMemoryChallenge.readSeconds, 9);
+  assert.equal(customMemoryChallenge.writeSeconds, 20);
+  assert.throws(() => resolveMemoryDifficultyPreset('Medium', { minimumValues: 8, maximumValues: 4 }), RangeError);
 });
 
 test('requires a matching cash-builder total only when cash-builder mode is enabled', () => {
@@ -277,6 +330,25 @@ test('offers 100-item memory ranges and mobile-ready answer fields', async () =>
   assert.match(css, /\.memory-values li > span:last-child\s*\{[^}]*overflow-wrap:\s*anywhere;/s);
   assert.match(css, /\.currency-input:focus-within\s*\{[^}]*outline:/s);
   assert.match(css, /\.currency-input input:focus-visible\s*\{[^}]*outline:\s*none;/s);
+});
+
+test('offers saved, resettable presets for the selected game and difficulty', async () => {
+  const [html, app] = await Promise.all([
+    readFile(new URL('../index.html', import.meta.url), 'utf8'),
+    readFile(new URL('../app.js', import.meta.url), 'utf8'),
+  ]);
+
+  assert.match(html, /id="preset-editor"/);
+  assert.match(html, /id="save-preset"/);
+  assert.match(html, /id="reset-selected-preset"/);
+  assert.match(html, /id="reset-all-presets"/);
+  assert.match(html, /id="preset-cash-max-due"/);
+  assert.match(html, /id="preset-memory-digit-max"/);
+  assert.match(app, /PRESET_KEY/);
+  assert.match(app, /resolveCashDifficultyPreset/);
+  assert.match(app, /resolveMemoryDifficultyPreset/);
+  assert.match(app, /saveSelectedPreset/);
+  assert.match(app, /resetAllPresets/);
 });
 
 test('cache-busts updated static assets so returning visitors receive new behavior', async () => {

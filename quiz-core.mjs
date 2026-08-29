@@ -55,6 +55,74 @@ function assertCents(value, name) {
   }
 }
 
+function requireBoundedInteger(value, name, minimum, maximum) {
+  if (!Number.isSafeInteger(value) || value < minimum || value > maximum) {
+    throw new RangeError(`${name} must be a whole number from ${minimum} to ${maximum}.`);
+  }
+}
+
+function requirePresetOverrides(overrides) {
+  if (overrides === null || typeof overrides !== 'object' || Array.isArray(overrides)) {
+    throw new TypeError('Preset overrides must be an object.');
+  }
+}
+
+function hasNonWholeDollarAmount(minimum, maximum, step) {
+  const firstIndex = Math.ceil(minimum / step);
+  const lastIndex = Math.floor(maximum / step);
+  const possibleValues = Math.min(lastIndex - firstIndex + 1, 100);
+  return Array.from({ length: Math.max(0, possibleValues) }, (_, index) => (firstIndex + index) * step)
+    .some((value) => value % 100 !== 0);
+}
+
+export function resolveCashDifficultyPreset(level, overrides = {}) {
+  const defaults = DIFFICULTY_CONFIG[level];
+  if (!defaults) throw new RangeError(`Unknown difficulty: ${level}`);
+  requirePresetOverrides(overrides);
+
+  const preset = {
+    ...defaults,
+    ...overrides,
+    allowed: [],
+  };
+  requireBoundedInteger(preset.minDue, 'Minimum due amount', 100, 10000000);
+  requireBoundedInteger(preset.maxDue, 'Maximum due amount', 100, 10000000);
+  requireBoundedInteger(preset.step, 'Increment', 1, 99);
+  requireBoundedInteger(preset.maxDifference, 'Maximum difference', preset.step, 10000000);
+  preset.allowed = preset.step % 25 === 0
+    ? [...defaults.allowed]
+    : DENOMINATIONS.map((denomination) => denomination.cents);
+  requireBoundedInteger(preset.splitCount, 'Cash item count', 1, preset.allowed.length);
+  if (preset.minDue > preset.maxDue) {
+    throw new RangeError('Minimum due amount cannot be greater than the maximum due amount.');
+  }
+  if (!hasNonWholeDollarAmount(preset.minDue, preset.maxDue, preset.step)) {
+    throw new RangeError('The amount range and increment must allow at least one amount with cents.');
+  }
+  return preset;
+}
+
+export function resolveMemoryDifficultyPreset(level, overrides = {}) {
+  const defaults = MEMORY_MODE_CONFIG[level];
+  if (!defaults) throw new RangeError(`Unknown memory difficulty: ${level}`);
+  requirePresetOverrides(overrides);
+
+  const preset = {
+    ...defaults,
+    ...overrides,
+  };
+  if (overrides.digits !== undefined) {
+    preset.minimumDigits = overrides.digits;
+    preset.maximumDigits = overrides.digits;
+  }
+  requireMemoryRange(preset.minimumDigits, preset.maximumDigits, 'Digits', 1, 100);
+  requireMemoryRange(preset.minimumValues, preset.maximumValues, 'Values', 1, 100);
+  if (typeof preset.decimals !== 'boolean') throw new TypeError('Decimals must be true or false.');
+  requireMemoryInteger(preset.readSeconds, 'Read seconds', 1, 60);
+  requireMemoryInteger(preset.writeSeconds, 'Write seconds', 1, 300);
+  return preset;
+}
+
 export function formatMoney(cents) {
   if (!Number.isSafeInteger(cents)) throw new RangeError('Money must be expressed as integer cents.');
   const sign = cents < 0 ? '-' : '';
@@ -170,20 +238,16 @@ function createMemoryValue(digits, decimals, rng) {
 }
 
 export function createMemoryChallenge(level, options = {}, rng = Math.random) {
-  const defaults = MEMORY_MODE_CONFIG[level];
-  if (!defaults) throw new RangeError(`Unknown memory difficulty: ${level}`);
-  const minimumDigits = options.minimumDigits ?? options.digits ?? defaults.minimumDigits;
-  const maximumDigits = options.maximumDigits ?? options.digits ?? defaults.maximumDigits;
-  const minimumValues = options.minimumValues ?? defaults.minimumValues;
-  const maximumValues = options.maximumValues ?? defaults.maximumValues;
-  const decimals = options.decimals ?? defaults.decimals;
-  const readSeconds = options.readSeconds ?? defaults.readSeconds;
-  const writeSeconds = options.writeSeconds ?? defaults.writeSeconds;
-  requireMemoryRange(minimumDigits, maximumDigits, 'Digits', 1, 100);
-  requireMemoryRange(minimumValues, maximumValues, 'Values', 1, 100);
-  if (typeof decimals !== 'boolean') throw new TypeError('Decimals must be true or false.');
-  requireMemoryInteger(readSeconds, 'Read seconds', 1, 60);
-  requireMemoryInteger(writeSeconds, 'Write seconds', 1, 300);
+  const preset = resolveMemoryDifficultyPreset(level, options);
+  const {
+    minimumDigits,
+    maximumDigits,
+    minimumValues,
+    maximumValues,
+    decimals,
+    readSeconds,
+    writeSeconds,
+  } = preset;
 
   const valueCount = memoryRandomInteger(minimumValues, maximumValues, rng);
   const digitsByValue = Array.from({ length: valueCount }, () => memoryRandomInteger(minimumDigits, maximumDigits, rng));
@@ -264,10 +328,9 @@ export function formatBreakdown(breakdown) {
   return breakdown.map((item) => `${item.count} x ${item.count === 1 ? item.singular : item.plural}`).join(', ') || 'No cash is needed.';
 }
 
-export function createQuestion(level, rng = Math.random) {
-  const config = DIFFICULTY_CONFIG[level];
-  if (!config) throw new RangeError(`Unknown difficulty: ${level}`);
-  const denominations = denominationsForLevel(level);
+export function createQuestion(level, rng = Math.random, presetOverrides = {}) {
+  const config = resolveCashDifficultyPreset(level, presetOverrides);
+  const denominations = DENOMINATIONS.filter((item) => config.allowed.includes(item.cents));
 
   for (let attempt = 0; attempt < 200; attempt += 1) {
     const dueCents = randomSteppedNumber(config.minDue, config.maxDue, config.step, rng);

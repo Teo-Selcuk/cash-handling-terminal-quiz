@@ -6,7 +6,7 @@
     <meta name="description" content="Fast, local-only cash-handling and number-memory practice games.">
     <meta name="theme-color" content="#12343b">
     <title>Cash &amp; Memory Trainer</title>
-    <link rel="stylesheet" href="style.css?v=20260828-memory-capacity">
+    <link rel="stylesheet" href="style.css?v=20260828-editable-presets">
   </head>
   <body>
     <main class="app-shell">
@@ -52,6 +52,62 @@
             <input id="auto-continue-toggle" name="autoContinueOnTimeout" type="checkbox">
             <span><strong>Auto-continue after timeout</strong><small>For Cash Handling and Number Memory, immediately start the next question when an answer timer expires. The final timeout still shows your session results.</small></span>
           </label>
+
+          <details class="preset-editor" id="preset-editor">
+            <summary>Customize the selected Easy, Medium, or Hard preset</summary>
+            <div class="preset-editor-content">
+              <p class="setup-note">Editing <strong id="preset-level">Easy</strong> changes its saved default on this device. Use reset anytime to return to the normal shipped range.</p>
+
+              <div class="preset-form-grid" id="preset-cash-fields">
+                <label for="preset-cash-min-due">Minimum amount due ($)
+                  <input id="preset-cash-min-due" type="number" min="1" max="100000" step="0.01" inputmode="decimal">
+                </label>
+                <label for="preset-cash-max-due">Maximum amount due ($)
+                  <input id="preset-cash-max-due" type="number" min="1" max="100000" step="0.01" inputmode="decimal">
+                </label>
+                <label for="preset-cash-step">Increment (cents)
+                  <input id="preset-cash-step" type="number" min="1" max="99" step="1" inputmode="numeric">
+                </label>
+                <label for="preset-cash-max-difference">Maximum change or shortfall ($)
+                  <input id="preset-cash-max-difference" type="number" min="0.01" max="100000" step="0.01" inputmode="decimal">
+                </label>
+                <label for="preset-cash-split-count">Cash items shown
+                  <input id="preset-cash-split-count" type="number" min="1" max="10" step="1" inputmode="numeric">
+                </label>
+              </div>
+
+              <div class="preset-form-grid" id="preset-memory-fields" hidden>
+                <label for="preset-memory-value-min">Minimum values per round
+                  <input id="preset-memory-value-min" type="number" min="1" max="100" step="1" inputmode="numeric">
+                </label>
+                <label for="preset-memory-value-max">Maximum values per round
+                  <input id="preset-memory-value-max" type="number" min="1" max="100" step="1" inputmode="numeric">
+                </label>
+                <label for="preset-memory-digit-min">Minimum digits per value
+                  <input id="preset-memory-digit-min" type="number" min="1" max="100" step="1" inputmode="numeric">
+                </label>
+                <label for="preset-memory-digit-max">Maximum digits per value
+                  <input id="preset-memory-digit-max" type="number" min="1" max="100" step="1" inputmode="numeric">
+                </label>
+                <label for="preset-memory-read-time">Seconds to read
+                  <input id="preset-memory-read-time" type="number" min="1" max="60" step="1" inputmode="numeric">
+                </label>
+                <label for="preset-memory-write-time">Seconds to write
+                  <input id="preset-memory-write-time" type="number" min="1" max="300" step="1" inputmode="numeric">
+                </label>
+                <label class="toggle-row" for="preset-memory-decimals">
+                  <input id="preset-memory-decimals" type="checkbox">
+                  <span><strong>Include decimal points</strong><small>Decimal placement counts as part of the value.</small></span>
+                </label>
+              </div>
+
+              <div class="preset-actions">
+                <button class="secondary-button" id="save-preset" type="button">Save selected preset</button>
+                <button class="text-button" id="reset-selected-preset" type="button">Reset selected preset</button>
+                <button class="text-button" id="reset-all-presets" type="button">Restore all difficulty presets</button>
+              </div>
+            </div>
+          </details>
 
           <div id="cash-setup-options">
             <div class="form-grid">
@@ -255,6 +311,6 @@
     </main>
 
     <footer>Browser edition. The original PowerShell quiz remains in this repository.</footer>
-    <script type="module" src="app.js?v=20260828-memory-capacity"></script>
+    <script type="module" src="app.js?v=20260828-editable-presets"></script>
   </body>
 </html>

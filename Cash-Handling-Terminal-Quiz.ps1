@@ -26,15 +26,195 @@
             (Join-Path $localAppData 'Cash-Handling-Terminal-Quiz') `
             'Settings.json'
     }
+    function New-DefaultCashDifficultyPresets {
+        return [pscustomobject]@{
+            Easy = [pscustomobject]@{
+                MinDue = [long]500
+                MaxDue = [long]20000
+                Step = [long]25
+                MaxDifference = [long]3000
+                SplitCount = 1
+            }
+            Medium = [pscustomobject]@{
+                MinDue = [long]100
+                MaxDue = [long]100000
+                Step = [long]1
+                MaxDifference = [long]15000
+                SplitCount = 4
+            }
+            Hard = [pscustomobject]@{
+                MinDue = [long]100
+                MaxDue = [long]500000
+                Step = [long]1
+                MaxDifference = [long]75000
+                SplitCount = 8
+            }
+        }
+    }
+
+    function New-DefaultMemoryDifficultyPresets {
+        return [pscustomobject]@{
+            Easy = [pscustomobject]@{
+                MinimumDigits = 4
+                MaximumDigits = 6
+                MinimumValues = 1
+                MaximumValues = 2
+                ReadSeconds = 5
+                WriteSeconds = 10
+            }
+            Medium = [pscustomobject]@{
+                MinimumDigits = 6
+                MaximumDigits = 8
+                MinimumValues = 2
+                MaximumValues = 3
+                ReadSeconds = 4
+                WriteSeconds = 8
+            }
+            Hard = [pscustomobject]@{
+                MinimumDigits = 8
+                MaximumDigits = 10
+                MinimumValues = 3
+                MaximumValues = 5
+                ReadSeconds = 3
+                WriteSeconds = 6
+            }
+        }
+    }
+
     function Get-DefaultQuizSettings {
+        $cashPresets = if (Get-Command -Name New-DefaultCashDifficultyPresets -ErrorAction SilentlyContinue) {
+            New-DefaultCashDifficultyPresets
+        }
+        else {
+            [pscustomobject]@{
+                Easy = [pscustomobject]@{ MinDue = [long]500; MaxDue = [long]20000; Step = [long]25; MaxDifference = [long]3000; SplitCount = 1 }
+                Medium = [pscustomobject]@{ MinDue = [long]100; MaxDue = [long]100000; Step = [long]1; MaxDifference = [long]15000; SplitCount = 4 }
+                Hard = [pscustomobject]@{ MinDue = [long]100; MaxDue = [long]500000; Step = [long]1; MaxDifference = [long]75000; SplitCount = 8 }
+            }
+        }
+        $memoryPresets = if (Get-Command -Name New-DefaultMemoryDifficultyPresets -ErrorAction SilentlyContinue) {
+            New-DefaultMemoryDifficultyPresets
+        }
+        else {
+            [pscustomobject]@{
+                Easy = [pscustomobject]@{ MinimumDigits = 4; MaximumDigits = 6; MinimumValues = 1; MaximumValues = 2; ReadSeconds = 5; WriteSeconds = 10 }
+                Medium = [pscustomobject]@{ MinimumDigits = 6; MaximumDigits = 8; MinimumValues = 2; MaximumValues = 3; ReadSeconds = 4; WriteSeconds = 8 }
+                Hard = [pscustomobject]@{ MinimumDigits = 8; MaximumDigits = 10; MinimumValues = 3; MaximumValues = 5; ReadSeconds = 3; WriteSeconds = 6 }
+            }
+        }
+
         return [pscustomobject]@{
             DefaultQuestionCount = 10
             DefaultTimeLimitSeconds = 20
             DataDirectory = Get-RecommendedQuizDataDirectory
             ClickableBillCoinModeEnabled = $false
             AutoContinueOnTimeoutEnabled = $false
+            CashDifficultyPresets = $cashPresets
+            MemoryDifficultyPresets = $memoryPresets
         }
     }
+
+    function Get-RequiredPresetProperty {
+        param(
+            [object]$Preset,
+            [string]$Name
+        )
+
+        $property = $Preset.PSObject.Properties[$Name]
+        if ($null -eq $property) {
+            throw "The preset is missing $Name."
+        }
+
+        return $property.Value
+    }
+
+    function ConvertTo-PresetInteger {
+        param(
+            [object]$Value,
+            [string]$Name,
+            [long]$Minimum,
+            [long]$Maximum
+        )
+
+        [long]$number = 0
+        if (-not [long]::TryParse([string]$Value, [ref]$number) -or $number -lt $Minimum -or $number -gt $Maximum) {
+            throw "$Name must be a whole number from $Minimum to $Maximum."
+        }
+
+        return $number
+    }
+
+    function Test-CashDifficultyPreset {
+        param(
+            [ValidateSet('Easy', 'Medium', 'Hard')]
+            [string]$Level,
+            [object]$Preset
+        )
+
+        $minimumDue = ConvertTo-PresetInteger -Value (Get-RequiredPresetProperty -Preset $Preset -Name 'MinDue') -Name 'Minimum due amount' -Minimum 100 -Maximum 10000000
+        $maximumDue = ConvertTo-PresetInteger -Value (Get-RequiredPresetProperty -Preset $Preset -Name 'MaxDue') -Name 'Maximum due amount' -Minimum 100 -Maximum 10000000
+        $step = ConvertTo-PresetInteger -Value (Get-RequiredPresetProperty -Preset $Preset -Name 'Step') -Name 'Increment' -Minimum 1 -Maximum 99
+        $maximumDifference = ConvertTo-PresetInteger -Value (Get-RequiredPresetProperty -Preset $Preset -Name 'MaxDifference') -Name 'Maximum difference' -Minimum $step -Maximum 10000000
+        $splitCount = [int](ConvertTo-PresetInteger -Value (Get-RequiredPresetProperty -Preset $Preset -Name 'SplitCount') -Name 'Cash item count' -Minimum 1 -Maximum 10)
+
+        if ($minimumDue -gt $maximumDue) {
+            throw 'Minimum due amount cannot be greater than the maximum due amount.'
+        }
+
+        $denominationCount = if ($step % 25 -eq 0 -and $Level -eq 'Easy') { 5 } else { 10 }
+        if ($splitCount -gt $denominationCount) {
+            throw "Cash item count cannot be greater than $denominationCount for this increment."
+        }
+
+        $firstIndex = [long][Math]::Ceiling(([double]$minimumDue) / ([double]$step))
+        $lastIndex = [long][Math]::Floor(([double]$maximumDue) / ([double]$step))
+        $hasCents = $false
+        for ($index = $firstIndex; $index -le $lastIndex -and $index -lt ($firstIndex + 100); $index++) {
+            if (([long]($index * $step)) % 100 -ne 0) {
+                $hasCents = $true
+                break
+            }
+        }
+        if (-not $hasCents) {
+            throw 'The amount range and increment must allow at least one amount with cents.'
+        }
+
+        return [pscustomobject]@{
+            MinDue = $minimumDue
+            MaxDue = $maximumDue
+            Step = $step
+            MaxDifference = $maximumDifference
+            SplitCount = $splitCount
+        }
+    }
+
+    function Test-MemoryDifficultyPreset {
+        param([object]$Preset)
+
+        $minimumDigits = [int](ConvertTo-PresetInteger -Value (Get-RequiredPresetProperty -Preset $Preset -Name 'MinimumDigits') -Name 'Minimum digits' -Minimum 1 -Maximum 100)
+        $maximumDigits = [int](ConvertTo-PresetInteger -Value (Get-RequiredPresetProperty -Preset $Preset -Name 'MaximumDigits') -Name 'Maximum digits' -Minimum 1 -Maximum 100)
+        $minimumValues = [int](ConvertTo-PresetInteger -Value (Get-RequiredPresetProperty -Preset $Preset -Name 'MinimumValues') -Name 'Minimum values' -Minimum 1 -Maximum 100)
+        $maximumValues = [int](ConvertTo-PresetInteger -Value (Get-RequiredPresetProperty -Preset $Preset -Name 'MaximumValues') -Name 'Maximum values' -Minimum 1 -Maximum 100)
+        $readSeconds = [int](ConvertTo-PresetInteger -Value (Get-RequiredPresetProperty -Preset $Preset -Name 'ReadSeconds') -Name 'Read seconds' -Minimum 1 -Maximum 60)
+        $writeSeconds = [int](ConvertTo-PresetInteger -Value (Get-RequiredPresetProperty -Preset $Preset -Name 'WriteSeconds') -Name 'Write seconds' -Minimum 1 -Maximum 300)
+
+        if ($minimumDigits -gt $maximumDigits) {
+            throw 'Minimum digits cannot be greater than the maximum.'
+        }
+        if ($minimumValues -gt $maximumValues) {
+            throw 'Minimum values cannot be greater than the maximum.'
+        }
+
+        return [pscustomobject]@{
+            MinimumDigits = $minimumDigits
+            MaximumDigits = $maximumDigits
+            MinimumValues = $minimumValues
+            MaximumValues = $maximumValues
+            ReadSeconds = $readSeconds
+            WriteSeconds = $writeSeconds
+        }
+    }
+
     function Read-QuizSettings {
         param([string]$Path)
 
@@ -84,6 +264,36 @@
             if ($null -ne $autoContinue) {
                 $settings.AutoContinueOnTimeoutEnabled = [bool]$autoContinue.Value
             }
+
+            $cashPresets = $saved.PSObject.Properties['CashDifficultyPresets']
+            if ($null -ne $cashPresets -and (Get-Command -Name Test-CashDifficultyPreset -ErrorAction SilentlyContinue)) {
+                foreach ($level in @('Easy', 'Medium', 'Hard')) {
+                    $savedPreset = $cashPresets.Value.PSObject.Properties[$level]
+                    if ($null -ne $savedPreset) {
+                        try {
+                            $settings.CashDifficultyPresets.$level = Test-CashDifficultyPreset -Level $level -Preset $savedPreset.Value
+                        }
+                        catch {
+                            Write-Host "The saved $level cash preset was invalid and was restored to its normal values." -ForegroundColor Yellow
+                        }
+                    }
+                }
+            }
+
+            $memoryPresets = $saved.PSObject.Properties['MemoryDifficultyPresets']
+            if ($null -ne $memoryPresets -and (Get-Command -Name Test-MemoryDifficultyPreset -ErrorAction SilentlyContinue)) {
+                foreach ($level in @('Easy', 'Medium', 'Hard')) {
+                    $savedPreset = $memoryPresets.Value.PSObject.Properties[$level]
+                    if ($null -ne $savedPreset) {
+                        try {
+                            $settings.MemoryDifficultyPresets.$level = Test-MemoryDifficultyPreset -Preset $savedPreset.Value
+                        }
+                        catch {
+                            Write-Host "The saved $level number-memory preset was invalid and was restored to its normal values." -ForegroundColor Yellow
+                        }
+                    }
+                }
+            }
         }
         catch {
             Write-Host 'Saved settings could not be read. Default settings will be used.' -ForegroundColor Yellow
@@ -104,7 +314,7 @@
         }
 
         $Settings |
-            ConvertTo-Json -Depth 4 |
+            ConvertTo-Json -Depth 6 |
             Set-Content -LiteralPath $Path -Encoding UTF8
     }
     function Resolve-QuizDataDirectory {
@@ -287,37 +497,12 @@
             [string]$Level
         )
 
-        switch ($Level) {
-            'Easy' {
-                return [pscustomobject]@{
-                    MinDue = [long]500
-                    MaxDue = [long]20000
-                    Step = [long]25
-                    MaxDifference = [long]3000
-                    SplitCount = 1
-                }
-            }
-
-            'Medium' {
-                return [pscustomobject]@{
-                    MinDue = [long]100
-                    MaxDue = [long]100000
-                    Step = [long]1
-                    MaxDifference = [long]15000
-                    SplitCount = 4
-                }
-            }
-
-            'Hard' {
-                return [pscustomobject]@{
-                    MinDue = [long]100
-                    MaxDue = [long]500000
-                    Step = [long]1
-                    MaxDifference = [long]75000
-                    SplitCount = 8
-                }
-            }
+        $preset = $appState.Settings.CashDifficultyPresets.PSObject.Properties[$Level]
+        if ($null -eq $preset) {
+            throw "The $Level cash preset is missing."
         }
+
+        return Test-CashDifficultyPreset -Level $Level -Preset $preset.Value
     }
 
     function Get-DenominationsForLevel {
@@ -326,7 +511,15 @@
             [string]$Level
         )
 
-        switch ($Level) {
+        $config = Get-LevelConfig -Level $Level
+        if ($config.Step % 25 -ne 0) {
+            $allowed = @(
+                10000, 5000, 2000, 1000, 500,
+                100, 25, 10, 5, 1
+            )
+        }
+        else {
+            switch ($Level) {
             'Easy' {
                 $allowed = @(2000, 1000, 500, 100, 25)
                 break
@@ -347,6 +540,7 @@
                 )
                 break
             }
+        }
         }
 
         return @(
@@ -2405,6 +2599,108 @@
         }
     }
 
+    function Read-MoneySetting {
+        param(
+            [string]$Prompt,
+            [long]$DefaultCents,
+            [long]$MinimumCents,
+            [long]$MaximumCents
+        )
+
+        while ($true) {
+            $raw = Read-Host "$Prompt [$(Format-Money -Cents $DefaultCents)]"
+            if ([string]::IsNullOrWhiteSpace($raw)) {
+                return $DefaultCents
+            }
+
+            [decimal]$amount = [decimal]0
+            $normalized = $raw.Trim().Replace('$', '').Replace(',', '')
+            if (
+                [decimal]::TryParse(
+                    $normalized,
+                    [System.Globalization.NumberStyles]::Number,
+                    $culture,
+                    [ref]$amount
+                )
+            ) {
+                $centsDecimal = $amount * [decimal]100
+                if ($centsDecimal -eq [decimal]::Truncate($centsDecimal)) {
+                    [long]$cents = [long]$centsDecimal
+                    if ($cents -ge $MinimumCents -and $cents -le $MaximumCents) {
+                        return $cents
+                    }
+                }
+            }
+
+            Write-Host "Enter an amount from $(Format-Money -Cents $MinimumCents) to $(Format-Money -Cents $MaximumCents), with no more than two decimal places." -ForegroundColor Yellow
+        }
+    }
+
+    function Set-CashDifficultyPreset {
+        $level = Read-Difficulty
+        $current = Get-LevelConfig -Level $level
+        Write-Host ''
+        Write-Host "CUSTOMIZE $($level.ToUpperInvariant()) CASH PRESET" -ForegroundColor Cyan
+        Write-Host 'Press Enter to keep each current value.' -ForegroundColor DarkGray
+
+        $candidate = [pscustomobject]@{
+            MinDue = Read-MoneySetting -Prompt 'Minimum amount due' -DefaultCents $current.MinDue -MinimumCents 100 -MaximumCents 10000000
+            MaxDue = Read-MoneySetting -Prompt 'Maximum amount due' -DefaultCents $current.MaxDue -MinimumCents 100 -MaximumCents 10000000
+            Step = Read-IntegerSetting -Prompt 'Increment in cents' -Default ([int]$current.Step) -Minimum 1 -Maximum 99
+            MaxDifference = Read-MoneySetting -Prompt 'Maximum change or shortfall' -DefaultCents $current.MaxDifference -MinimumCents 1 -MaximumCents 10000000
+            SplitCount = Read-IntegerSetting -Prompt 'Cash items shown' -Default $current.SplitCount -Minimum 1 -Maximum 10
+        }
+
+        try {
+            $appState.Settings.CashDifficultyPresets.$level = Test-CashDifficultyPreset -Level $level -Preset $candidate
+            Write-Host "Saved the $level cash preset." -ForegroundColor Green
+            return $true
+        }
+        catch {
+            Write-Host 'The cash preset was not changed.' -ForegroundColor Yellow
+            Write-Host $_.Exception.Message -ForegroundColor DarkGray
+            return $false
+        }
+    }
+
+    function Set-MemoryDifficultyPreset {
+        $level = Read-Difficulty
+        $current = Get-MemoryModeConfig -Level $level
+        Write-Host ''
+        Write-Host "CUSTOMIZE $($level.ToUpperInvariant()) NUMBER-MEMORY PRESET" -ForegroundColor Cyan
+        Write-Host 'Press Enter to keep each current value.' -ForegroundColor DarkGray
+
+        $minimumValues = Read-IntegerSetting -Prompt 'Minimum values per round' -Default $current.MinimumValues -Minimum 1 -Maximum 100
+        $maximumValues = Read-IntegerSetting -Prompt 'Maximum values per round' -Default $current.MaximumValues -Minimum $minimumValues -Maximum 100
+        $minimumDigits = Read-IntegerSetting -Prompt 'Minimum digits in each value' -Default $current.MinimumDigits -Minimum 1 -Maximum 100
+        $maximumDigits = Read-IntegerSetting -Prompt 'Maximum digits in each value' -Default $current.MaximumDigits -Minimum $minimumDigits -Maximum 100
+        $candidate = [pscustomobject]@{
+            MinimumDigits = $minimumDigits
+            MaximumDigits = $maximumDigits
+            MinimumValues = $minimumValues
+            MaximumValues = $maximumValues
+            ReadSeconds = Read-IntegerSetting -Prompt 'Seconds to read each number' -Default $current.ReadSeconds -Minimum 1 -Maximum 60
+            WriteSeconds = Read-IntegerSetting -Prompt 'Seconds to write each number from memory' -Default $current.WriteSeconds -Minimum 1 -Maximum 300
+        }
+
+        try {
+            $appState.Settings.MemoryDifficultyPresets.$level = Test-MemoryDifficultyPreset -Preset $candidate
+            Write-Host "Saved the $level number-memory preset." -ForegroundColor Green
+            return $true
+        }
+        catch {
+            Write-Host 'The number-memory preset was not changed.' -ForegroundColor Yellow
+            Write-Host $_.Exception.Message -ForegroundColor DarkGray
+            return $false
+        }
+    }
+
+    function Restore-DifficultyPresets {
+        $appState.Settings.CashDifficultyPresets = New-DefaultCashDifficultyPresets
+        $appState.Settings.MemoryDifficultyPresets = New-DefaultMemoryDifficultyPresets
+        Write-Host 'Restored all Easy, Medium, and Hard difficulty presets to their normal values.' -ForegroundColor Green
+    }
+
     function Read-DataDirectorySetting {
         param([string]$CurrentDirectory)
 
@@ -2435,6 +2731,9 @@
             Write-Host "[3] Stats and history folder: $($appState.DataDirectory)"
             Write-Host "[4] Clickable bill/coin mode default: $(if ($appState.Settings.ClickableBillCoinModeEnabled) { 'ON' } else { 'OFF' })"
             Write-Host "[5] Auto-continue after timeout default: $(if ($appState.Settings.AutoContinueOnTimeoutEnabled) { 'ON' } else { 'OFF' })"
+            Write-Host '[6] Customize a Cash Handling Easy, Medium, or Hard preset'
+            Write-Host '[7] Customize a Number Memory Easy, Medium, or Hard preset'
+            Write-Host '[8] Restore all difficulty presets to normal values'
             Write-Host '[B] Back to main menu'
 
             $choice = (Read-Host 'Choose a setting').Trim().ToLowerInvariant()
@@ -2479,6 +2778,16 @@
                     $appState.Settings.AutoContinueOnTimeoutEnabled = -not [bool]$appState.Settings.AutoContinueOnTimeoutEnabled
                     $changed = $true
                 }
+                '6' {
+                    $changed = Set-CashDifficultyPreset
+                }
+                '7' {
+                    $changed = Set-MemoryDifficultyPreset
+                }
+                '8' {
+                    Restore-DifficultyPresets
+                    $changed = $true
+                }
                 'b' {
                     return
                 }
@@ -2486,7 +2795,7 @@
                     return
                 }
                 default {
-                    Write-Host 'Choose 1 through 5, or B.' -ForegroundColor Yellow
+                    Write-Host 'Choose 1 through 8, or B.' -ForegroundColor Yellow
                 }
             }
 
@@ -2539,38 +2848,12 @@
             [string]$Level
         )
 
-        switch ($Level) {
-            'Easy' {
-                return [pscustomobject]@{
-                    MinimumDigits = 4
-                    MaximumDigits = 6
-                    MinimumValues = 1
-                    MaximumValues = 2
-                    ReadSeconds = 5
-                    WriteSeconds = 10
-                }
-            }
-            'Medium' {
-                return [pscustomobject]@{
-                    MinimumDigits = 6
-                    MaximumDigits = 8
-                    MinimumValues = 2
-                    MaximumValues = 3
-                    ReadSeconds = 4
-                    WriteSeconds = 8
-                }
-            }
-            'Hard' {
-                return [pscustomobject]@{
-                    MinimumDigits = 8
-                    MaximumDigits = 10
-                    MinimumValues = 3
-                    MaximumValues = 5
-                    ReadSeconds = 3
-                    WriteSeconds = 6
-                }
-            }
+        $preset = $appState.Settings.MemoryDifficultyPresets.PSObject.Properties[$Level]
+        if ($null -eq $preset) {
+            throw "The $Level number-memory preset is missing."
         }
+
+        return Test-MemoryDifficultyPreset -Preset $preset.Value
     }
 
     function New-MemoryChallenge {
@@ -3035,6 +3318,7 @@
 
     function Start-CashQuiz {
         $difficulty = Read-Difficulty
+        $cashPreset = Get-LevelConfig -Level $difficulty
         $cashConstructionForQuiz = Read-ClickableModeSetting `
             -Default $appState.Settings.ClickableBillCoinModeEnabled
 
@@ -3089,6 +3373,7 @@
         ) -ForegroundColor Cyan
 
         Write-Host "Answer mode: $answerMode" -ForegroundColor Cyan
+        Write-Host "Preset: $(Format-Money -Cents $cashPreset.MinDue) to $(Format-Money -Cents $cashPreset.MaxDue), $($cashPreset.Step)-cent increments, up to $(Format-Money -Cents $cashPreset.MaxDifference) difference." -ForegroundColor DarkGray
         Write-Host "Auto-continue after timeouts: $(if ($autoContinueOnTimeout) { 'ON' } else { 'OFF' })" -ForegroundColor Cyan
 
         if ($cashConstructionForQuiz) {
