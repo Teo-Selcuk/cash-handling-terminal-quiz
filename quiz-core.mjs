@@ -36,6 +36,13 @@ const TASK_PEOPLE = Object.freeze([
 ]);
 const TASK_STATUS_OPTIONS = Object.freeze(['New', 'Review', 'Approved', 'On hold']);
 const TASK_PRIORITY_OPTIONS = Object.freeze(['Low', 'Normal', 'High', 'Urgent']);
+const TASK_WORKSPACE_KINDS = Object.freeze(['records', 'casework', 'invoice']);
+const TASK_CASE_TAB_LABELS = Object.freeze(['Intake', 'Case details', 'Notes', 'History', 'Archive']);
+const TASK_CASE_STATUS_OPTIONS = Object.freeze(['Open', 'Needs review', 'Escalated', 'Resolved']);
+const TASK_CASE_QUEUE_OPTIONS = Object.freeze(['General', 'Billing', 'Compliance', 'Priority']);
+const TASK_INVOICE_TAB_LABELS = Object.freeze(['Invoices', 'Calculations', 'Approvals', 'Suppliers', 'Archive']);
+const TASK_INVOICE_STATUS_OPTIONS = Object.freeze(['Draft', 'Ready for review', 'Approved', 'On hold']);
+const TASK_INVOICE_CATEGORY_OPTIONS = Object.freeze(['Services', 'Materials', 'Travel', 'Operations']);
 
 const NUMBER_WORD_COUNTS = Object.freeze({
   one: 1,
@@ -368,12 +375,28 @@ function taskActionCandidates(rows, rng) {
   });
 }
 
-export function createTaskChallenge(level, options = {}, rng = Math.random) {
-  const preset = resolveTaskDifficultyPreset(level, options);
-  const tabs = TASK_TAB_LABELS.slice(0, preset.tabs).map((label) => ({
+function createTaskTabs(labels, count) {
+  return labels.slice(0, count).map((label) => ({
     id: `task-tab-${label.toLowerCase()}`,
     label,
   }));
+}
+
+function taskChallengeBase(level, preset, title, workspace, steps, rng) {
+  return {
+    id: `task-${level.toLowerCase()}-${randomIndex(1000000, rng)}`,
+    level,
+    title,
+    briefingSeconds: preset.briefingSeconds,
+    recallSeconds: preset.recallSeconds,
+    demoStepMilliseconds: preset.demoStepMilliseconds,
+    workspace,
+    steps,
+  };
+}
+
+function createRecordsTaskChallenge(level, preset, stepCount, rng) {
+  const tabs = createTaskTabs(TASK_TAB_LABELS, preset.tabs);
   const names = chooseTaskEntries(TASK_PEOPLE, preset.rows, rng);
   const rows = names.map((name, index) => ({
     id: String(index + 1),
@@ -383,7 +406,6 @@ export function createTaskChallenge(level, options = {}, rng = Math.random) {
     priority: 'Normal',
     complete: false,
   }));
-  const stepCount = memoryRandomInteger(preset.minimumSteps, preset.maximumSteps, rng);
   const needsTab = stepCount >= 3;
   const dataStepCount = stepCount - (needsTab ? 2 : 1);
   const dataSteps = chooseTaskEntries(taskActionCandidates(rows, rng), dataStepCount, rng);
@@ -404,20 +426,165 @@ export function createTaskChallenge(level, options = {}, rng = Math.random) {
   ];
   const titleRow = rows[randomIndex(rows.length, rng)];
 
-  return {
-    id: `task-${level.toLowerCase()}-${randomIndex(1000000, rng)}`,
-    level,
-    title: `Update the ${titleRow.name.split(' ').at(-1)} records`,
-    briefingSeconds: preset.briefingSeconds,
-    recallSeconds: preset.recallSeconds,
-    demoStepMilliseconds: preset.demoStepMilliseconds,
-    workspace: {
+  return taskChallengeBase(level, preset, `Update the ${titleRow.name.split(' ').at(-1)} records`, {
+      kind: 'records',
       tabs,
       rows,
       columns: ['Name', 'Reference', 'Status', 'Priority', 'Complete'],
+      targetIds: [
+        'task-save-workspace',
+        ...tabs.map((tab) => tab.id),
+        ...rows.flatMap((row) => [
+          `task-row-${row.id}-reference`,
+          `task-row-${row.id}-status`,
+          `task-row-${row.id}-priority`,
+          `task-row-${row.id}-complete`,
+        ]),
+      ],
     },
-    steps,
-  };
+    steps, rng);
+}
+
+function createCaseworkTaskChallenge(level, preset, stepCount, rng) {
+  const tabs = createTaskTabs(TASK_CASE_TAB_LABELS, preset.tabs);
+  const person = TASK_PEOPLE[randomIndex(TASK_PEOPLE.length, rng)];
+  const caseReference = `CS-${taskReference(rng)}`;
+  const verificationSource = taskReference(rng);
+  const queue = TASK_CASE_QUEUE_OPTIONS[(randomIndex(TASK_CASE_QUEUE_OPTIONS.length - 1, rng) + 1) % TASK_CASE_QUEUE_OPTIONS.length];
+  const status = TASK_CASE_STATUS_OPTIONS[(randomIndex(TASK_CASE_STATUS_OPTIONS.length - 1, rng) + 1) % TASK_CASE_STATUS_OPTIONS.length];
+  const note = `Verify ${person.split(' ').at(-1)} details`;
+  const actionCount = stepCount - 1;
+  const dialogSteps = [
+    { type: 'open-dialog', targetId: 'task-open-case-dialog', value: 'Add case note', instruction: 'Open the Add case note window.' },
+    { type: 'set-text', targetId: 'task-case-note', value: note, instruction: `Enter “${note}” in the case note.` },
+    { type: 'confirm-dialog', targetId: 'task-confirm-case-note', instruction: 'Add the case note.' },
+  ];
+  const newTabSteps = [
+    { type: 'open-workspace-tab', targetId: 'task-open-verification-tab', value: 'Verification', instruction: 'Open the Verification workspace tab.' },
+    { type: 'activate-tab', targetId: 'task-tab-verification', value: 'Verification', instruction: 'Open the Verification tab.' },
+    { type: 'set-text', targetId: 'task-case-verification', value: verificationSource, instruction: `Copy ${verificationSource} into the Verification code field.` },
+  ];
+  const baseCandidates = [
+    { type: 'activate-tab', targetId: tabs[1].id, value: tabs[1].label, instruction: `Open the ${tabs[1].label} tab.` },
+    { type: 'set-text', targetId: 'task-case-reference', value: caseReference, instruction: `Enter ${caseReference} in Case reference.` },
+    { type: 'select-option', targetId: 'task-case-status', value: status, instruction: `Set Case status to ${status}.` },
+    { type: 'select-option', targetId: 'task-case-queue', value: queue, instruction: `Set Queue to ${queue}.` },
+    { type: 'toggle-checkbox', targetId: 'task-case-followup', value: true, instruction: 'Mark Follow-up required.' },
+  ];
+  const advancedSteps = actionCount >= 6
+    ? [...newTabSteps, ...dialogSteps]
+    : actionCount >= 3
+      ? (randomIndex(2, rng) === 0 ? dialogSteps : newTabSteps)
+      : [];
+  const baseSteps = chooseTaskEntries(baseCandidates, actionCount - advancedSteps.length, rng);
+  const steps = [
+    ...baseSteps,
+    ...advancedSteps,
+    { type: 'commit', targetId: 'task-save-workspace', instruction: 'Save the case changes.' },
+  ];
+
+  return taskChallengeBase(level, preset, `Process the ${person.split(' ').at(-1)} case`, {
+    kind: 'casework',
+    tabs,
+    rows: [],
+    columns: [],
+    case: {
+      person,
+      requestId: `REQ-${taskReference(rng)}`,
+      verificationSource,
+      status: 'Open',
+      queue: 'General',
+      dialog: { targetId: 'task-case-note', title: 'Add case note' },
+      openableTab: { id: 'task-tab-verification', label: 'Verification', openerId: 'task-open-verification-tab' },
+    },
+    dialog: { targetId: 'task-case-note', title: 'Add case note' },
+    targetIds: [
+      'task-save-workspace',
+      ...tabs.map((tab) => tab.id),
+      'task-case-reference', 'task-case-status', 'task-case-queue', 'task-case-followup',
+      'task-open-case-dialog', 'task-case-note', 'task-confirm-case-note',
+      'task-open-verification-tab', 'task-tab-verification', 'task-case-verification',
+    ],
+  }, steps, rng);
+}
+
+function createTaskFormula(rng) {
+  const type = randomIndex(3, rng);
+  if (type === 0) {
+    const left = memoryRandomInteger(12, 95, rng);
+    const right = memoryRandomInteger(4, 48, rng);
+    return { expression: `${left} + ${right}`, result: left + right };
+  }
+  if (type === 1) {
+    const left = memoryRandomInteger(3, 14, rng);
+    const right = memoryRandomInteger(4, 12, rng);
+    return { expression: `${left} × ${right}`, result: left * right };
+  }
+  const divisor = memoryRandomInteger(2, 9, rng);
+  const result = memoryRandomInteger(3, 18, rng);
+  return { expression: `${divisor * result} ÷ ${divisor}`, result };
+}
+
+function createInvoiceTaskChallenge(level, preset, stepCount, rng) {
+  const tabs = createTaskTabs(TASK_INVOICE_TAB_LABELS, preset.tabs);
+  const person = TASK_PEOPLE[randomIndex(TASK_PEOPLE.length, rng)];
+  const formula = createTaskFormula(rng);
+  const verificationSource = taskReference(rng);
+  const invoiceReference = `INV-${taskReference(rng)}`;
+  const status = TASK_INVOICE_STATUS_OPTIONS[(randomIndex(TASK_INVOICE_STATUS_OPTIONS.length - 1, rng) + 1) % TASK_INVOICE_STATUS_OPTIONS.length];
+  const category = TASK_INVOICE_CATEGORY_OPTIONS[(randomIndex(TASK_INVOICE_CATEGORY_OPTIONS.length - 1, rng) + 1) % TASK_INVOICE_CATEGORY_OPTIONS.length];
+  const actionCount = stepCount - 1;
+  const requiredSteps = [
+    { type: 'set-text', targetId: 'task-invoice-calculation', value: String(formula.result), instruction: `Calculate ${formula.expression} and enter the result in Final total.` },
+    { type: 'set-text', targetId: 'task-invoice-verification', value: verificationSource, instruction: `Copy source control number ${verificationSource} into Verification code.` },
+  ].slice(0, actionCount);
+  const extraCandidates = [
+    { type: 'activate-tab', targetId: tabs[1].id, value: tabs[1].label, instruction: `Open the ${tabs[1].label} tab.` },
+    { type: 'set-text', targetId: 'task-invoice-reference', value: invoiceReference, instruction: `Enter ${invoiceReference} in Invoice reference.` },
+    { type: 'select-option', targetId: 'task-invoice-status', value: status, instruction: `Set Review status to ${status}.` },
+    { type: 'select-option', targetId: 'task-invoice-category', value: category, instruction: `Set Cost category to ${category}.` },
+    { type: 'toggle-checkbox', targetId: 'task-invoice-approved', value: true, instruction: 'Mark Approval received.' },
+    { type: 'toggle-checkbox', targetId: 'task-invoice-verified', value: true, instruction: 'Mark the source number as verified.' },
+    { type: 'set-text', targetId: 'task-invoice-note', value: 'Matched to source', instruction: 'Enter “Matched to source” in Review note.' },
+  ];
+  const steps = [
+    ...requiredSteps,
+    ...chooseTaskEntries(extraCandidates, actionCount - requiredSteps.length, rng),
+    { type: 'commit', targetId: 'task-save-workspace', instruction: 'Save the invoice changes.' },
+  ];
+
+  return taskChallengeBase(level, preset, `Reconcile the ${person.split(' ').at(-1)} invoice`, {
+    kind: 'invoice',
+    tabs,
+    rows: [],
+    columns: [],
+    invoice: {
+      person,
+      invoiceId: `INV-${taskReference(rng)}`,
+      formula,
+      verification: { source: verificationSource },
+      status: 'Draft',
+      category: 'Services',
+    },
+    formula,
+    verification: { source: verificationSource },
+    targetIds: [
+      'task-save-workspace',
+      ...tabs.map((tab) => tab.id),
+      'task-invoice-reference', 'task-invoice-calculation', 'task-invoice-verification',
+      'task-invoice-status', 'task-invoice-category', 'task-invoice-approved',
+      'task-invoice-verified', 'task-invoice-note',
+    ],
+  }, steps, rng);
+}
+
+export function createTaskChallenge(level, options = {}, rng = Math.random) {
+  const preset = resolveTaskDifficultyPreset(level, options);
+  const stepCount = memoryRandomInteger(preset.minimumSteps, preset.maximumSteps, rng);
+  const kind = TASK_WORKSPACE_KINDS[randomIndex(TASK_WORKSPACE_KINDS.length, rng)];
+  if (kind === 'casework') return createCaseworkTaskChallenge(level, preset, stepCount, rng);
+  if (kind === 'invoice') return createInvoiceTaskChallenge(level, preset, stepCount, rng);
+  return createRecordsTaskChallenge(level, preset, stepCount, rng);
 }
 
 function taskActionsMatch(expected, action) {

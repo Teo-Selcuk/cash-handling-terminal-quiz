@@ -43,7 +43,7 @@ Unit tests cover denomination totals, money formatting, generated question invar
 - Questions use the same ten denominations and Easy/Medium/Hard limits as the PowerShell quiz.
 - Exact, change, and short answers are scored correctly; cash-builder totals are required only when selected.
 - Results, session statistics, browser-local history, CSV export, and clear-history confirmation work without a server.
-- A Task Simulation session generates synthetic names, tabs, rows, fields, and values from local data. It presents a briefing, demonstrates the same declarative steps with a browser-native cursor animation, resets the workspace, and grades the recalled semantic action sequence only after Save or timeout.
+- A Task Simulation session generates synthetic records, case-management, and invoice-review workspaces from local data at every difficulty. It can use native dialogs, an opened secondary workspace tab, verification-and-retyping fields, dropdowns, checkboxes, and addition, multiplication, or division before an answer is entered. It presents a briefing, demonstrates the same declarative steps with a browser-native cursor animation, resets the workspace, and grades the recalled semantic action sequence only after Save or timeout.
 - Task presets are locally editable and resettable for steps, rows, tabs, briefing time, recall time (including untimed practice), and demo speed. The Task Simulation setup contains only Rounds.
 - Task controls use native tables and form elements, keyboard-operable tabs, end-only feedback, reduced-motion cursor fallback, and compact browser-local history fields.
 - The page is keyboard accessible and responsive from 320px wide upward.

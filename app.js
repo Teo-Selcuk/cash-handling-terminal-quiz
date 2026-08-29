@@ -40,7 +40,7 @@ const refs = Object.fromEntries([
   'memory-answer-form', 'memory-answer-list', 'memory-answer-progress', 'memory-answer-timer', 'memory-answer-heading', 'summary-heading',
   'task-question-count', 'task-briefing-progress', 'task-briefing-timer', 'task-briefing-heading', 'task-briefing-title', 'task-instruction-list', 'task-start-demo',
   'task-workspace-progress', 'task-timer', 'task-workspace-heading', 'task-phase-status', 'task-demo-controls', 'task-pause-demo', 'task-replay-demo', 'task-skip-demo',
-  'task-tablist', 'task-tabpanel', 'task-workspace-rows', 'task-save-workspace', 'task-demo-cursor', 'task-recall-note', 'task-row-template',
+  'task-tablist', 'task-tabpanel', 'task-workspace-content', 'task-workspace-dialog', 'task-save-workspace', 'task-demo-cursor', 'task-recall-note', 'task-row-template',
   'easy-description', 'medium-description', 'hard-description',
   'preset-editor', 'preset-level', 'preset-cash-fields', 'preset-memory-fields', 'preset-task-fields',
   'preset-cash-min-due', 'preset-cash-max-due', 'preset-cash-step', 'preset-cash-max-difference', 'preset-cash-split-count',
@@ -80,6 +80,10 @@ const state = {
   taskDemoPaused: false,
   taskDemoResume: null,
   taskRecallStartedAt: 0,
+  taskActiveTabId: '',
+  taskFieldValues: {},
+  taskVerificationTabOpen: false,
+  taskWorkspaceDisabled: false,
   timerTarget: null,
   timerExpiryAction: null,
 };
@@ -823,18 +827,23 @@ function renderTaskInstructions(challenge) {
   }));
 }
 
-function setTaskTab(tabId) {
-  for (const tab of state.taskChallenge.workspace.tabs) {
-    const button = document.getElementById(tab.id);
-    const selected = tab.id === tabId;
-    if (button) {
-      button.setAttribute('aria-selected', String(selected));
-      button.tabIndex = selected ? 0 : -1;
-    }
-  }
-  const activeTab = state.taskChallenge.workspace.tabs.find((tab) => tab.id === tabId);
-  refs['task-tabpanel'].setAttribute('aria-labelledby', tabId);
-  refs['task-workspace-heading'].textContent = `${state.taskChallenge.title} · ${activeTab?.label ?? 'Workspace'}`;
+function taskVisibleTabs() {
+  const workspace = state.taskChallenge.workspace;
+  const openableTab = workspace.case?.openableTab;
+  return openableTab && state.taskVerificationTabOpen
+    ? [...workspace.tabs, { id: openableTab.id, label: openableTab.label }]
+    : workspace.tabs;
+}
+
+function taskStoredValue(targetId, fallback) {
+  return Object.hasOwn(state.taskFieldValues, targetId) ? state.taskFieldValues[targetId] : fallback;
+}
+
+function setTaskStoredValue(targetId, value) {
+  state.taskFieldValues[targetId] = value;
+  const target = document.getElementById(targetId);
+  if (target instanceof HTMLInputElement && target.type === 'checkbox') target.checked = Boolean(value);
+  else if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement) target.value = String(value);
 }
 
 function recordTaskAction(action) {
@@ -843,13 +852,110 @@ function recordTaskAction(action) {
   refs['task-phase-status'].textContent = `${state.taskActionLog.length} action${state.taskActionLog.length === 1 ? '' : 's'} recorded. Save changes when you are done.`;
 }
 
+function bindTaskControl(control, type) {
+  control.addEventListener('change', () => {
+    const value = type === 'toggle-checkbox' ? control.checked : control.value.trim();
+    setTaskStoredValue(control.id, value);
+    recordTaskAction({ type, targetId: control.id, value });
+  });
+}
+
+function appendTaskTextField(parent, { id, label, value = '', disabled, inputMode = 'text', className = '' }) {
+  const field = document.createElement('label');
+  field.className = className;
+  field.textContent = label;
+  const input = document.createElement('input');
+  input.id = id;
+  input.type = 'text';
+  input.inputMode = inputMode;
+  input.autocomplete = 'off';
+  input.value = String(taskStoredValue(id, value));
+  input.disabled = disabled;
+  field.append(input);
+  bindTaskControl(input, 'set-text');
+  parent.append(field);
+  return input;
+}
+
+function appendTaskSelectField(parent, { id, label, options, value, disabled, className = '' }) {
+  const field = document.createElement('label');
+  field.className = className;
+  field.textContent = label;
+  const select = document.createElement('select');
+  select.id = id;
+  select.disabled = disabled;
+  for (const optionValue of options) {
+    const option = document.createElement('option');
+    option.value = optionValue;
+    option.textContent = optionValue;
+    select.append(option);
+  }
+  select.value = String(taskStoredValue(id, value));
+  field.append(select);
+  bindTaskControl(select, 'select-option');
+  parent.append(field);
+  return select;
+}
+
+function appendTaskCheckboxField(parent, { id, label, checked = false, disabled, className = '' }) {
+  const field = document.createElement('label');
+  field.className = `task-checkbox-field ${className}`.trim();
+  const input = document.createElement('input');
+  input.id = id;
+  input.type = 'checkbox';
+  input.checked = Boolean(taskStoredValue(id, checked));
+  input.disabled = disabled;
+  const text = document.createElement('span');
+  text.textContent = label;
+  field.append(input, text);
+  bindTaskControl(input, 'toggle-checkbox');
+  parent.append(field);
+  return input;
+}
+
+function taskSection(className, heading, description = '') {
+  const section = document.createElement('section');
+  section.className = className;
+  const title = document.createElement('h3');
+  title.textContent = heading;
+  section.append(title);
+  if (description) {
+    const copy = document.createElement('p');
+    copy.textContent = description;
+    section.append(copy);
+  }
+  return section;
+}
+
+function updateTaskTabButtons() {
+  for (const tab of taskVisibleTabs()) {
+    const button = document.getElementById(tab.id);
+    const selected = tab.id === state.taskActiveTabId;
+    if (button) {
+      button.setAttribute('aria-selected', String(selected));
+      button.tabIndex = selected ? 0 : -1;
+    }
+  }
+}
+
+function setTaskTab(tabId) {
+  const activeTab = taskVisibleTabs().find((tab) => tab.id === tabId);
+  if (!activeTab) return;
+  state.taskActiveTabId = tabId;
+  refs['task-tabpanel'].setAttribute('aria-labelledby', tabId);
+  refs['task-workspace-heading'].textContent = `${state.taskChallenge.title} · ${activeTab.label}`;
+  updateTaskTabButtons();
+  renderTaskWorkspaceContent(state.taskWorkspaceDisabled);
+}
+
 function activateTaskTab(tab, record = false) {
   setTaskTab(tab.id);
   if (record) recordTaskAction({ type: 'activate-tab', targetId: tab.id, value: tab.label });
 }
 
 function renderTaskTabs(disabled) {
-  refs['task-tablist'].replaceChildren(...state.taskChallenge.workspace.tabs.map((tab, index) => {
+  const tabs = taskVisibleTabs();
+  refs['task-tablist'].replaceChildren(...tabs.map((tab) => {
     const button = document.createElement('button');
     button.id = tab.id;
     button.className = 'task-tab';
@@ -857,14 +963,13 @@ function renderTaskTabs(disabled) {
     button.role = 'tab';
     button.textContent = tab.label;
     button.setAttribute('aria-controls', 'task-tabpanel');
-    button.setAttribute('aria-selected', String(index === 0));
-    button.tabIndex = index === 0 ? 0 : -1;
+    button.setAttribute('aria-selected', String(tab.id === state.taskActiveTabId));
+    button.tabIndex = tab.id === state.taskActiveTabId ? 0 : -1;
     button.disabled = disabled;
     button.addEventListener('click', () => activateTaskTab(tab, true));
     button.addEventListener('keydown', (event) => {
       if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
       event.preventDefault();
-      const tabs = state.taskChallenge.workspace.tabs;
       const currentIndex = tabs.findIndex((item) => item.id === tab.id);
       const nextIndex = event.key === 'Home' ? 0
         : event.key === 'End' ? tabs.length - 1
@@ -877,10 +982,23 @@ function renderTaskTabs(disabled) {
   }));
 }
 
-function renderTaskWorkspace(disabled) {
+function renderRecordsWorkspace(disabled) {
   const challenge = state.taskChallenge;
-  renderTaskTabs(disabled);
-  refs['task-workspace-rows'].replaceChildren(...challenge.workspace.rows.map((row) => {
+  const tableWrap = document.createElement('div');
+  tableWrap.className = 'table-wrap task-table-wrap';
+  const table = document.createElement('table');
+  table.className = 'task-table';
+  const header = document.createElement('thead');
+  const headerRow = document.createElement('tr');
+  for (const column of challenge.workspace.columns) {
+    const heading = document.createElement('th');
+    heading.scope = 'col';
+    heading.textContent = column;
+    headerRow.append(heading);
+  }
+  header.append(headerRow);
+  const body = document.createElement('tbody');
+  for (const row of challenge.workspace.rows) {
     const fragment = refs['task-row-template'].content.cloneNode(true);
     const name = fragment.querySelector('.task-row-name');
     const reference = fragment.querySelector('.task-reference');
@@ -889,41 +1007,204 @@ function renderTaskWorkspace(disabled) {
     const complete = fragment.querySelector('.task-complete');
     name.textContent = row.name;
     reference.id = `task-row-${row.id}-reference`;
-    reference.value = row.reference;
+    reference.value = String(taskStoredValue(reference.id, row.reference));
     reference.disabled = disabled;
     reference.setAttribute('aria-label', `Reference for ${row.name}`);
     status.id = `task-row-${row.id}-status`;
-    status.value = row.status;
+    status.value = String(taskStoredValue(status.id, row.status));
     status.disabled = disabled;
     status.setAttribute('aria-label', `Status for ${row.name}`);
     priority.id = `task-row-${row.id}-priority`;
-    priority.value = row.priority;
+    priority.value = String(taskStoredValue(priority.id, row.priority));
     priority.disabled = disabled;
     priority.setAttribute('aria-label', `Priority for ${row.name}`);
     complete.id = `task-row-${row.id}-complete`;
-    complete.checked = row.complete;
+    complete.checked = Boolean(taskStoredValue(complete.id, row.complete));
     complete.disabled = disabled;
     complete.setAttribute('aria-label', `Complete ${row.name}'s record`);
-    reference.addEventListener('change', () => recordTaskAction({ type: 'set-text', targetId: reference.id, value: reference.value.trim() }));
-    status.addEventListener('change', () => recordTaskAction({ type: 'select-option', targetId: status.id, value: status.value }));
-    priority.addEventListener('change', () => recordTaskAction({ type: 'select-option', targetId: priority.id, value: priority.value }));
-    complete.addEventListener('change', () => recordTaskAction({ type: 'toggle-checkbox', targetId: complete.id, value: complete.checked }));
-    return fragment;
-  }));
+    bindTaskControl(reference, 'set-text');
+    bindTaskControl(status, 'select-option');
+    bindTaskControl(priority, 'select-option');
+    bindTaskControl(complete, 'toggle-checkbox');
+    body.append(fragment);
+  }
+  table.append(header, body);
+  tableWrap.append(table);
+  refs['task-workspace-content'].replaceChildren(tableWrap);
+}
+
+function openTaskVerificationTab(record = false) {
+  const openableTab = state.taskChallenge.workspace.case?.openableTab;
+  if (!openableTab) return;
+  state.taskVerificationTabOpen = true;
+  renderTaskTabs(state.taskWorkspaceDisabled);
+  renderTaskWorkspaceContent(state.taskWorkspaceDisabled);
+  if (record) recordTaskAction({ type: 'open-workspace-tab', targetId: openableTab.openerId, value: openableTab.label });
+}
+
+function renderCaseworkWorkspace(disabled) {
+  const caseData = state.taskChallenge.workspace.case;
+  if (state.taskActiveTabId === caseData.openableTab.id) {
+    const verification = taskSection('task-verification-layout', 'Verification workspace', 'Confirm the source number, then copy it into the secure field.');
+    const source = document.createElement('p');
+    source.className = 'task-source-number';
+    source.textContent = `Source control number: ${caseData.verificationSource}`;
+    verification.append(source);
+    appendTaskTextField(verification, {
+      id: 'task-case-verification', label: 'Verification code', value: '', disabled, inputMode: 'numeric', className: 'task-wide-field',
+    });
+    refs['task-workspace-content'].replaceChildren(verification);
+    return;
+  }
+
+  const layout = document.createElement('div');
+  layout.className = 'task-casework-layout';
+  const summary = taskSection('task-case-summary', 'Case overview', `Request ${caseData.requestId} · ${caseData.person}`);
+  const summaryList = document.createElement('dl');
+  for (const [term, description] of [['Customer', caseData.person], ['Request', caseData.requestId], ['Source number', caseData.verificationSource]]) {
+    const dt = document.createElement('dt');
+    dt.textContent = term;
+    const dd = document.createElement('dd');
+    dd.textContent = description;
+    summaryList.append(dt, dd);
+  }
+  summary.append(summaryList);
+  const details = taskSection('task-case-details', 'Update case', 'The information panel stays open while you switch between case pages.');
+  const fields = document.createElement('div');
+  fields.className = 'task-form-grid';
+  appendTaskTextField(fields, { id: 'task-case-reference', label: 'Case reference', value: '', disabled, inputMode: 'text' });
+  appendTaskSelectField(fields, { id: 'task-case-status', label: 'Case status', options: ['Open', 'Needs review', 'Escalated', 'Resolved'], value: caseData.status, disabled });
+  appendTaskSelectField(fields, { id: 'task-case-queue', label: 'Queue', options: ['General', 'Billing', 'Compliance', 'Priority'], value: caseData.queue, disabled });
+  appendTaskCheckboxField(fields, { id: 'task-case-followup', label: 'Follow-up required', checked: false, disabled });
+  details.append(fields);
+  const actions = document.createElement('div');
+  actions.className = 'task-inline-actions';
+  const noteButton = document.createElement('button');
+  noteButton.id = 'task-open-case-dialog';
+  noteButton.className = 'secondary-button';
+  noteButton.type = 'button';
+  noteButton.textContent = 'Add case note';
+  noteButton.disabled = disabled;
+  noteButton.addEventListener('click', () => openTaskDialog(true));
+  const tabButton = document.createElement('button');
+  tabButton.id = caseData.openableTab.openerId;
+  tabButton.className = 'text-button';
+  tabButton.type = 'button';
+  tabButton.textContent = 'Open verification in a new workspace tab';
+  tabButton.disabled = disabled || state.taskVerificationTabOpen;
+  tabButton.addEventListener('click', () => openTaskVerificationTab(true));
+  actions.append(noteButton, tabButton);
+  details.append(actions);
+  layout.append(summary, details);
+  refs['task-workspace-content'].replaceChildren(layout);
+}
+
+function renderInvoiceWorkspace(disabled) {
+  const invoice = state.taskChallenge.workspace.invoice;
+  const layout = document.createElement('div');
+  layout.className = 'task-invoice-layout';
+  const summary = taskSection('task-invoice-summary', 'Invoice review', `${invoice.invoiceId} · ${invoice.person}`);
+  const total = document.createElement('p');
+  total.className = 'task-formula-display';
+  total.textContent = invoice.formula.expression;
+  summary.append(total);
+  const verification = taskSection('task-invoice-verification-card', 'Source check', 'Read the control number and copy it to the verification field.');
+  const source = document.createElement('p');
+  source.className = 'task-source-number';
+  source.textContent = `Control number: ${invoice.verification.source}`;
+  verification.append(source);
+  const form = taskSection('task-invoice-form', 'Apply updates', 'Complete the formula, verify the source value, then save the invoice.');
+  const fields = document.createElement('div');
+  fields.className = 'task-form-grid';
+  appendTaskTextField(fields, { id: 'task-invoice-calculation', label: 'Final total', value: '', disabled, inputMode: 'numeric' });
+  appendTaskTextField(fields, { id: 'task-invoice-verification', label: 'Verification code', value: '', disabled, inputMode: 'numeric' });
+  appendTaskTextField(fields, { id: 'task-invoice-reference', label: 'Invoice reference', value: '', disabled, inputMode: 'text' });
+  appendTaskSelectField(fields, { id: 'task-invoice-status', label: 'Review status', options: ['Draft', 'Ready for review', 'Approved', 'On hold'], value: invoice.status, disabled });
+  appendTaskSelectField(fields, { id: 'task-invoice-category', label: 'Cost category', options: ['Services', 'Materials', 'Travel', 'Operations'], value: invoice.category, disabled });
+  appendTaskTextField(fields, { id: 'task-invoice-note', label: 'Review note', value: '', disabled, inputMode: 'text' });
+  appendTaskCheckboxField(fields, { id: 'task-invoice-approved', label: 'Approval received', checked: false, disabled });
+  appendTaskCheckboxField(fields, { id: 'task-invoice-verified', label: 'Source number verified', checked: false, disabled });
+  form.append(fields);
+  layout.append(summary, verification, form);
+  refs['task-workspace-content'].replaceChildren(layout);
+}
+
+function renderTaskWorkspaceContent(disabled) {
+  if (!state.taskChallenge) return;
+  const kind = state.taskChallenge.workspace.kind;
+  if (kind === 'casework') renderCaseworkWorkspace(disabled);
+  else if (kind === 'invoice') renderInvoiceWorkspace(disabled);
+  else renderRecordsWorkspace(disabled);
+}
+
+function closeTaskDialog() {
+  if (refs['task-workspace-dialog'].open) refs['task-workspace-dialog'].close();
+}
+
+function openTaskDialog(record = false) {
+  const dialog = refs['task-workspace-dialog'];
+  if (!dialog.open) dialog.showModal();
+  if (record) recordTaskAction({ type: 'open-dialog', targetId: 'task-open-case-dialog', value: 'Add case note' });
+}
+
+function renderTaskDialog(disabled) {
+  const dialog = refs['task-workspace-dialog'];
+  closeTaskDialog();
+  dialog.replaceChildren();
+  if (state.taskChallenge.workspace.kind !== 'casework') return;
+  const heading = document.createElement('h3');
+  heading.id = 'task-workspace-dialog-heading';
+  heading.textContent = 'Add case note';
+  const copy = document.createElement('p');
+  copy.textContent = 'Add the exact note from the workflow before confirming it.';
+  const form = document.createElement('div');
+  form.className = 'task-dialog-form';
+  appendTaskTextField(form, { id: 'task-case-note', label: 'Case note', value: '', disabled, inputMode: 'text' });
+  const confirm = document.createElement('button');
+  confirm.id = 'task-confirm-case-note';
+  confirm.className = 'primary-button';
+  confirm.type = 'button';
+  confirm.textContent = 'Add note';
+  confirm.disabled = disabled;
+  confirm.addEventListener('click', () => {
+    recordTaskAction({ type: 'confirm-dialog', targetId: confirm.id });
+    closeTaskDialog();
+  });
+  form.append(confirm);
+  dialog.setAttribute('aria-labelledby', heading.id);
+  dialog.append(heading, copy, form);
+}
+
+function resetTaskWorkspace() {
+  closeTaskDialog();
+  state.taskFieldValues = {};
+  state.taskVerificationTabOpen = false;
+  state.taskActiveTabId = state.taskChallenge.workspace.tabs[0].id;
+}
+
+function renderTaskWorkspace(disabled) {
+  state.taskWorkspaceDisabled = disabled;
+  if (!taskVisibleTabs().some((tab) => tab.id === state.taskActiveTabId)) {
+    state.taskActiveTabId = taskVisibleTabs()[0].id;
+  }
+  renderTaskTabs(disabled);
+  setTaskTab(state.taskActiveTabId);
+  renderTaskDialog(disabled);
   refs['task-save-workspace'].disabled = disabled;
-  activateTaskTab(challenge.workspace.tabs[0]);
 }
 
 function applyTaskDemoStep(step) {
-  const target = document.getElementById(step.targetId);
-  if (!target) return;
   if (step.type === 'activate-tab') {
-    const tab = state.taskChallenge.workspace.tabs.find((item) => item.id === step.targetId);
+    const tab = taskVisibleTabs().find((item) => item.id === step.targetId);
     if (tab) activateTaskTab(tab);
-  } else if (step.type === 'set-text' || step.type === 'select-option') {
-    target.value = step.value;
-  } else if (step.type === 'toggle-checkbox') {
-    target.checked = step.value;
+  } else if (step.type === 'open-workspace-tab') {
+    openTaskVerificationTab();
+  } else if (step.type === 'open-dialog') {
+    openTaskDialog();
+  } else if (step.type === 'confirm-dialog') {
+    closeTaskDialog();
+  } else if (step.type === 'set-text' || step.type === 'select-option' || step.type === 'toggle-checkbox') {
+    setTaskStoredValue(step.targetId, step.value);
   }
 }
 
@@ -991,6 +1272,7 @@ function startTaskDemo() {
   const token = state.taskDemoToken;
   state.taskPhase = 'demo';
   state.answerSubmitted = false;
+  resetTaskWorkspace();
   renderTaskWorkspace(true);
   refs['task-workspace-progress'].textContent = `Round ${state.questionNumber} of ${state.questionCount} · Watch`;
   refs['task-demo-controls'].hidden = false;
@@ -1021,6 +1303,7 @@ function startTaskRecall() {
   state.answerSubmitted = false;
   state.taskActionLog = [];
   state.taskRecallStartedAt = Date.now();
+  resetTaskWorkspace();
   renderTaskWorkspace(false);
   refs['task-workspace-progress'].textContent = `Round ${state.questionNumber} of ${state.questionCount} · Your turn`;
   refs['task-demo-controls'].hidden = true;
@@ -1047,9 +1330,12 @@ function showTaskBriefing() {
 function taskActionDescription(action) {
   const labels = {
     'activate-tab': `Opened ${action.value}`,
+    'open-workspace-tab': `Opened ${action.value} workspace tab`,
+    'open-dialog': 'Opened a dialog',
     'set-text': `Entered ${action.value}`,
     'select-option': `Selected ${action.value}`,
     'toggle-checkbox': action.value ? 'Marked complete' : 'Cleared complete',
+    'confirm-dialog': 'Confirmed dialog entry',
     commit: 'Saved changes',
   };
   return labels[action.type] ?? 'Used a workspace control';

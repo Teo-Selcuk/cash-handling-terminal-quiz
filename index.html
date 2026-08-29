@@ -7,7 +7,7 @@
     <meta name="theme-color" content="#12343b">
     <title>Cash, Memory &amp; Task Trainer</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="style.css?v=20260829-task-simulation">
+    <link rel="stylesheet" href="style.css?v=20260829-task-variety">
   </head>
   <body>
     <main class="app-shell">
@@ -273,15 +273,11 @@
         </div>
         <div class="task-tabs" id="task-tablist" role="tablist" aria-label="Workspace sections"></div>
         <div class="task-tabpanel" id="task-tabpanel" role="tabpanel" aria-label="Workspace records">
-          <div class="table-wrap task-table-wrap">
-            <table class="task-table">
-              <thead><tr><th scope="col">Name</th><th scope="col">Reference</th><th scope="col">Status</th><th scope="col">Priority</th><th scope="col">Complete</th></tr></thead>
-              <tbody id="task-workspace-rows"></tbody>
-            </table>
-          </div>
+          <div id="task-workspace-content"></div>
           <p class="task-recall-note" id="task-recall-note"></p>
           <button class="primary-button" id="task-save-workspace" type="button">Save changes</button>
         </div>
+        <dialog class="task-workspace-dialog" id="task-workspace-dialog"></dialog>
         <span class="task-demo-cursor" id="task-demo-cursor" aria-hidden="true">●</span>
       </section>
 
@@ -359,6 +355,6 @@
     </main>
 
     <footer>Browser edition. The original PowerShell quiz remains in this repository.</footer>
-    <script type="module" src="app.js?v=20260829-task-simulation"></script>
+    <script type="module" src="app.js?v=20260829-task-variety"></script>
   </body>
 </html>

@@ -226,6 +226,50 @@ input:disabled { background: var(--disabled-surface); color: var(--muted); }
 .task-table input[type="text"], .task-table select { min-width: 8rem; min-height: 2.75rem; margin: 0; }
 .task-complete-label { display: inline-flex; gap: 0.5rem; align-items: center; min-height: 2.75rem; font-size: 0.875rem; }
 .task-complete { width: 1.25rem; height: 1.25rem; accent-color: var(--brand); }
+.task-casework-layout {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  align-items: start;
+}
+.task-case-summary, .task-case-details, .task-verification-layout, .task-invoice-summary, .task-invoice-verification-card, .task-invoice-form {
+  padding: 1rem;
+  border: 0.0625rem solid var(--line);
+  border-radius: 0.25rem;
+  background: var(--surface);
+}
+.task-case-summary { border-top: 0.25rem solid var(--accent); }
+.task-case-summary h3, .task-case-details h3, .task-verification-layout h3, .task-invoice-summary h3, .task-invoice-verification-card h3, .task-invoice-form h3 { margin-bottom: 0.5rem; font-size: 1rem; }
+.task-case-summary > p, .task-case-details > p, .task-verification-layout > p, .task-invoice-summary > p, .task-invoice-verification-card > p, .task-invoice-form > p { color: var(--muted); font-size: 0.875rem; }
+.task-case-summary dl { display: grid; gap: 0.25rem 0.75rem; grid-template-columns: auto minmax(0, 1fr); margin: 1rem 0 0; }
+.task-case-summary dt { color: var(--muted); font-size: 0.8125rem; font-weight: 750; }
+.task-case-summary dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.task-form-grid { display: grid; gap: 0.875rem; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.task-checkbox-field { display: flex; gap: 0.625rem; align-items: center; min-height: 2.875rem; padding: 0.625rem 0.75rem; border: 0.0625rem solid var(--line); border-radius: 0.25rem; background: var(--surface-quiet); font-size: 0.875rem; }
+.task-checkbox-field input { width: 1.125rem; height: 1.125rem; margin: 0; accent-color: var(--brand); }
+.task-inline-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; margin-top: 1rem; }
+.task-inline-actions .text-button { min-height: 2.875rem; padding: 0.625rem 0; text-align: left; }
+.task-verification-layout { max-width: 38rem; border-left: 0.25rem solid var(--accent); }
+.task-wide-field { display: grid; max-width: 24rem; }
+.task-source-number { margin: 1rem 0; padding: 0.75rem; border-radius: 0.25rem; background: var(--surface-quiet); color: var(--ink) !important; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 1.125rem !important; font-weight: 800; font-variant-numeric: tabular-nums; }
+.task-invoice-layout {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(13rem, 0.75fr) minmax(0, 1.25fr);
+  grid-template-areas:
+    "summary form"
+    "verification form";
+  align-items: start;
+}
+.task-invoice-summary { grid-area: summary; min-height: 100%; border-top: 0.25rem solid var(--brand); }
+.task-invoice-verification-card { grid-area: verification; border-left: 0.25rem solid var(--accent); }
+.task-invoice-form { grid-area: form; }
+.task-formula-display { margin: 1.5rem 0 0; padding: 1rem; border-radius: 0.25rem; background: var(--brand-fill); color: #fff !important; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: clamp(1.5rem, 5vw, 2.25rem) !important; font-weight: 800; letter-spacing: 0.04em; text-align: center; font-variant-numeric: tabular-nums; }
+.task-workspace-dialog { width: min(calc(100% - 2rem), 34rem); padding: 1.25rem; border: 0.0625rem solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+.task-workspace-dialog::backdrop { background: rgb(13 23 25 / 58%); }
+.task-workspace-dialog h3 { margin-bottom: 0.5rem; }
+.task-workspace-dialog > p { color: var(--muted); }
+.task-dialog-form { display: grid; gap: 1rem; }
 .task-recall-note { margin: 1rem 0; }
 .task-demo-target { box-shadow: 0 0 0 0.25rem color-mix(in srgb, var(--accent) 55%, transparent); }
 .task-demo-cursor { position: fixed; z-index: 10; top: 0; left: 0; display: block; width: 1.5rem; height: 1.5rem; border: 0.1875rem solid var(--surface); border-radius: 50%; background: var(--accent); box-shadow: 0 0.125rem 0.5rem rgb(0 0 0 / 30%); color: transparent; pointer-events: none; transform: translate(-100vw, -100vh); }
@@ -299,6 +343,8 @@ footer { width: min(100% - 2rem, 64rem); margin: 0 auto; padding-bottom: 2rem; c
   .task-workspace-title-row { flex-direction: column; }
   .task-demo-controls { justify-content: flex-start; }
   .task-tabpanel { padding: 0.75rem; }
+  .task-casework-layout, .task-invoice-layout, .task-form-grid { grid-template-columns: 1fr; }
+  .task-invoice-layout { grid-template-areas: "summary" "verification" "form"; }
 }
 
 @media (prefers-reduced-motion: reduce) {

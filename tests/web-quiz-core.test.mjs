@@ -156,16 +156,7 @@ test('generates deterministic task challenges with valid, unique targets and ins
     const preset = resolveTaskDifficultyPreset(level);
     for (let index = 0; index < 125; index += 1) {
       const challenge = createTaskChallenge(level, preset, () => (index % 100) / 100);
-      const targetIds = new Set([
-        'task-save-workspace',
-        ...challenge.workspace.tabs.map((tab) => tab.id),
-        ...challenge.workspace.rows.flatMap((row) => [
-          `task-row-${row.id}-reference`,
-          `task-row-${row.id}-status`,
-          `task-row-${row.id}-priority`,
-          `task-row-${row.id}-complete`,
-        ]),
-      ]);
+      const targetIds = new Set(challenge.workspace.targetIds);
 
       assert.match(challenge.id, /^task-/);
       assert.ok(challenge.steps.length >= preset.minimumSteps);
@@ -176,6 +167,45 @@ test('generates deterministic task challenges with valid, unique targets and ins
       assert.equal(new Set(challenge.steps.map((step) => step.instruction)).size, challenge.steps.length);
       assert.ok(challenge.workspace.rows.every((row) => row.name && row.id));
     }
+  }
+});
+
+test('generates distinct task workspace layouts with dialogs, new tabs, verification, and formulas', () => {
+  const fullStepPreset = { minimumSteps: 9, maximumSteps: 9 };
+  const byLayout = [0.01, 0.4, 0.8].map((value) => createTaskChallenge('Hard', fullStepPreset, () => value));
+  const [records, casework, invoice] = byLayout;
+
+  assert.deepEqual(byLayout.map((challenge) => challenge.workspace.kind), ['records', 'casework', 'invoice']);
+  for (const level of Object.keys(TASK_MODE_CONFIG)) {
+    assert.deepEqual(
+      [0.01, 0.4, 0.8].map((value) => createTaskChallenge(level, { minimumSteps: 3, maximumSteps: 3 }, () => value).workspace.kind),
+      ['records', 'casework', 'invoice'],
+    );
+  }
+  for (const challenge of byLayout) {
+    assert.equal(challenge.steps.at(-1).type, 'commit');
+    assert.equal(new Set(challenge.steps.map((step) => step.instruction)).size, challenge.steps.length);
+    assert.ok(challenge.steps.every((step) => challenge.workspace.targetIds.includes(step.targetId)));
+  }
+
+  assert.ok(records.workspace.rows.length > 0);
+  assert.ok(casework.steps.some((step) => step.type === 'open-dialog'));
+  assert.ok(casework.steps.some((step) => step.type === 'open-workspace-tab'));
+  assert.ok(casework.steps.some((step) => step.type === 'confirm-dialog'));
+  assert.equal(casework.workspace.dialog.targetId, 'task-case-note');
+
+  assert.match(invoice.workspace.formula.expression, /[+×÷]/);
+  assert.ok(Number.isSafeInteger(invoice.workspace.formula.result));
+  assert.equal(invoice.workspace.verification.source.length, 4);
+  assert.ok(invoice.steps.some((step) => step.targetId === 'task-invoice-verification'));
+  assert.ok(invoice.steps.some((step) => step.targetId === 'task-invoice-calculation'));
+  assert.match(invoice.steps.find((step) => step.targetId === 'task-invoice-reference')?.instruction ?? '', /Enter INV-\d+ in Invoice reference\./);
+
+  for (const [operationRandom, expression] of [[0.01, /\+/], [0.4, /×/], [0.8, /÷/]]) {
+    const values = [0, 0.8, 0.1, operationRandom];
+    let index = 0;
+    const challenge = createTaskChallenge('Easy', { minimumSteps: 3, maximumSteps: 3 }, () => values[index++ % values.length]);
+    assert.match(challenge.workspace.formula.expression, expression);
   }
 });
 
@@ -297,6 +327,8 @@ test('provides a browser-only task simulation workflow without leaking instructi
   assert.match(html, /id="task-setup-options"/);
   assert.match(html, /id="task-briefing-screen"/);
   assert.match(html, /id="task-workspace-screen"/);
+  assert.match(html, /id="task-workspace-content"/);
+  assert.match(html, /id="task-workspace-dialog"/);
   assert.match(html, /id="task-row-template"/);
   assert.match(html, /id="task-tablist"[^>]*role="tablist"/);
   assert.match(html, /id="task-phase-status"[^>]*role="status"/);
@@ -308,6 +340,8 @@ test('provides a browser-only task simulation workflow without leaking instructi
   assert.match(app, /Instructions are hidden\. Repeat the workflow/);
   assert.match(app, /taskTitle: challenge\.title/);
   assert.match(css, /\.task-table\s*\{[^}]*min-width:/s);
+  assert.match(css, /\.task-casework-layout\s*\{/);
+  assert.match(css, /\.task-invoice-layout\s*\{/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
 });
 
