@@ -6,7 +6,7 @@
     <meta name="description" content="Fast, local-only cash-handling and number-memory practice games.">
     <meta name="theme-color" content="#12343b">
     <title>Cash &amp; Memory Trainer</title>
-    <link rel="stylesheet" href="style.css?v=20260828-editable-presets">
+    <link rel="stylesheet" href="style.css?v=20260829-memory-simplified">
   </head>
   <body>
     <main class="app-shell">
@@ -126,46 +126,10 @@
           </div>
 
           <div id="memory-setup-options" hidden>
-            <p class="setup-note">Each round shows one or more values, then hides them while you write them back in order. Set the ranges below or start with the mode defaults.</p>
-            <div class="form-grid memory-settings-grid">
-              <label for="memory-question-count">Rounds
-                <input id="memory-question-count" name="memoryQuestionCount" type="number" value="10" min="1" max="100" inputmode="numeric" required>
-              </label>
-              <fieldset class="memory-range">
-                <legend>Values per round</legend>
-                <p>Choose how many values the learner must recall in order.</p>
-                <div class="range-controls">
-                  <label for="memory-value-min">Minimum
-                    <input id="memory-value-min" name="memoryValueMinimum" type="number" value="1" min="1" max="100" inputmode="numeric" required>
-                  </label>
-                  <label for="memory-value-max">Maximum
-                    <input id="memory-value-max" name="memoryValueMaximum" type="number" value="2" min="1" max="100" inputmode="numeric" required>
-                  </label>
-                </div>
-              </fieldset>
-              <fieldset class="memory-range">
-                <legend>Digits in each value</legend>
-                <p>Digits exclude the decimal point: <strong>12.36</strong> has four digits.</p>
-                <div class="range-controls">
-                  <label for="memory-digit-min">Minimum
-                    <input id="memory-digit-min" name="memoryDigitMinimum" type="number" value="4" min="1" max="100" inputmode="numeric" required>
-                  </label>
-                  <label for="memory-digit-max">Maximum
-                    <input id="memory-digit-max" name="memoryDigitMaximum" type="number" value="6" min="1" max="100" inputmode="numeric" required>
-                  </label>
-                </div>
-              </fieldset>
-              <label for="memory-read-time">Seconds to read
-                <input id="memory-read-time" name="memoryReadTime" type="number" value="5" min="1" max="60" inputmode="numeric" required>
-              </label>
-              <label for="memory-write-time">Seconds to write
-                <input id="memory-write-time" name="memoryWriteTime" type="number" value="10" min="1" max="300" inputmode="numeric" required>
-              </label>
-              <label class="toggle-row memory-decimal-toggle" for="memory-decimals">
-                <input id="memory-decimals" name="memoryDecimals" type="checkbox" checked>
-                <span><strong>Include decimal points</strong><small>Decimal positions are part of each value you must remember.</small></span>
-              </label>
-            </div>
+            <p class="setup-note">Each round uses the selected preset, then hides the values while you write them back in order.</p>
+            <label for="memory-question-count">Rounds
+              <input id="memory-question-count" name="memoryQuestionCount" type="number" value="10" min="1" max="100" inputmode="numeric" required>
+            </label>
           </div>
 
           <button class="primary-button" type="submit">Start quiz</button>
@@ -311,6 +275,6 @@
     </main>
 
     <footer>Browser edition. The original PowerShell quiz remains in this repository.</footer>
-    <script type="module" src="app.js?v=20260828-editable-presets"></script>
+    <script type="module" src="app.js?v=20260829-memory-simplified"></script>
   </body>
 </html>

@@ -32,8 +32,7 @@ const refs = Object.fromEntries([
   'start-another', 'summary-history', 'open-history', 'back-to-setup', 'history-metrics',
   'history-outcome-diagram', 'history-outcome-legend', 'history-outcomes-summary', 'history-accuracy-chart',
   'history-rows', 'download-csv', 'clear-history', 'message', 'submit-answer', 'theme-toggle',
-  'memory-question-count', 'memory-value-min', 'memory-value-max', 'memory-digit-min', 'memory-digit-max', 'memory-decimals',
-  'memory-read-time', 'memory-write-time', 'memory-read-progress', 'memory-read-timer', 'memory-number', 'memory-read-hint',
+  'memory-question-count', 'memory-read-progress', 'memory-read-timer', 'memory-number', 'memory-read-hint',
   'memory-answer-form', 'memory-answer-list', 'memory-answer-progress', 'memory-answer-timer', 'memory-answer-heading', 'summary-heading',
   'easy-description', 'medium-description', 'hard-description',
   'preset-editor', 'preset-level', 'preset-cash-fields', 'preset-memory-fields',
@@ -64,13 +63,6 @@ const state = {
   deadline: 0,
   answerSubmitted: false,
   memoryChallenge: null,
-  memoryMinimumDigits: MEMORY_MODE_CONFIG.Easy.minimumDigits,
-  memoryMaximumDigits: MEMORY_MODE_CONFIG.Easy.maximumDigits,
-  memoryMinimumValues: MEMORY_MODE_CONFIG.Easy.minimumValues,
-  memoryMaximumValues: MEMORY_MODE_CONFIG.Easy.maximumValues,
-  memoryDecimals: MEMORY_MODE_CONFIG.Easy.decimals,
-  memoryReadSeconds: MEMORY_MODE_CONFIG.Easy.readSeconds,
-  memoryWriteSeconds: MEMORY_MODE_CONFIG.Easy.writeSeconds,
   timerTarget: null,
   timerExpiryAction: null,
 };
@@ -206,17 +198,6 @@ function selectedDifficulty() {
   return document.querySelector('input[name="difficulty"]:checked')?.value ?? 'Easy';
 }
 
-function applyMemoryModeDefaults() {
-  const preset = state.memoryPresets[selectedDifficulty()];
-  refs['memory-value-min'].value = String(preset.minimumValues);
-  refs['memory-value-max'].value = String(preset.maximumValues);
-  refs['memory-digit-min'].value = String(preset.minimumDigits);
-  refs['memory-digit-max'].value = String(preset.maximumDigits);
-  refs['memory-decimals'].checked = preset.decimals;
-  refs['memory-read-time'].value = String(preset.readSeconds);
-  refs['memory-write-time'].value = String(preset.writeSeconds);
-}
-
 function hasPresetValues(preset, defaults, fields) {
   return fields.every((field) => preset[field] === defaults[field]);
 }
@@ -323,7 +304,6 @@ function saveSelectedPreset() {
         readSeconds: readPresetInteger(refs['preset-memory-read-time'], 'Reading seconds'),
         writeSeconds: readPresetInteger(refs['preset-memory-write-time'], 'Writing seconds'),
       });
-      applyMemoryModeDefaults();
     }
     const saved = persistPresetState();
     updateGameSetup();
@@ -340,7 +320,6 @@ function resetSelectedPreset() {
   if (cashGame) state.cashPresets[level] = resolveCashDifficultyPreset(level);
   else {
     state.memoryPresets[level] = resolveMemoryDifficultyPreset(level);
-    applyMemoryModeDefaults();
   }
   const saved = persistPresetState();
   updateGameSetup();
@@ -351,7 +330,6 @@ function resetSelectedPreset() {
 function resetAllPresets() {
   state.cashPresets = builtInCashPresets();
   state.memoryPresets = builtInMemoryPresets();
-  if (selectedGame() === 'memory') applyMemoryModeDefaults();
   const saved = persistPresetState();
   updateGameSetup();
   refs['preset-editor'].open = true;
@@ -672,7 +650,7 @@ function showMemoryAnswer() {
   renderMemoryAnswerInputs(state.memoryChallenge.valueCount);
   refs['memory-answer-progress'].textContent = `Round ${state.questionNumber} of ${state.questionCount}`;
   showScreen('memory-answer');
-  startTimer(state.memoryWriteSeconds, refs['memory-answer-timer'], () => submitMemoryAnswer(true));
+  startTimer(state.memoryChallenge.writeSeconds, refs['memory-answer-timer'], () => submitMemoryAnswer(true));
 }
 
 function recordMemoryAnswer(answer, score, timedOut, elapsedSeconds) {
@@ -724,8 +702,8 @@ function submitMemoryAnswer(timedOut = false) {
   if (state.answerSubmitted) return;
   state.answerSubmitted = true;
   const elapsedSeconds = Math.min(
-    state.memoryWriteSeconds,
-    Math.max(0, (Date.now() - (state.deadline - state.memoryWriteSeconds * 1000)) / 1000),
+    state.memoryChallenge.writeSeconds,
+    Math.max(0, (Date.now() - (state.deadline - state.memoryChallenge.writeSeconds * 1000)) / 1000),
   );
   stopTimer();
   const answer = timedOut ? [] : memoryAnswerValues();
@@ -748,22 +726,13 @@ function showNextMemoryQuestion() {
     showScreen('summary');
     return;
   }
-  state.memoryChallenge = createMemoryChallenge(state.difficulty, {
-    ...state.memoryPresets[state.difficulty],
-    minimumDigits: state.memoryMinimumDigits,
-    maximumDigits: state.memoryMaximumDigits,
-    minimumValues: state.memoryMinimumValues,
-    maximumValues: state.memoryMaximumValues,
-    decimals: state.memoryDecimals,
-    readSeconds: state.memoryReadSeconds,
-    writeSeconds: state.memoryWriteSeconds,
-  });
+  state.memoryChallenge = createMemoryChallenge(state.difficulty, state.memoryPresets[state.difficulty]);
   state.answerSubmitted = false;
   refs['memory-read-progress'].textContent = `Round ${state.questionNumber} of ${state.questionCount}`;
   renderMemoryReadValues(state.memoryChallenge);
   refs['memory-read-hint'].textContent = `${state.memoryChallenge.valueCount} value${state.memoryChallenge.valueCount === 1 ? '' : 's'} in order · ${state.memoryChallenge.minimumDigits}–${state.memoryChallenge.maximumDigits} digits each${state.memoryChallenge.decimals ? ' · decimal points included' : ''}`;
   showScreen('memory-read');
-  startTimer(state.memoryReadSeconds, refs['memory-read-timer'], showMemoryAnswer);
+  startTimer(state.memoryChallenge.readSeconds, refs['memory-read-timer'], showMemoryAnswer);
 }
 
 function makeMetrics(records) {
@@ -922,65 +891,12 @@ refs['setup-form'].addEventListener('submit', (event) => {
 
   if (game === 'memory') {
     const questionCount = Number(refs['memory-question-count'].value);
-    const minimumValues = Number(refs['memory-value-min'].value);
-    const maximumValues = Number(refs['memory-value-max'].value);
-    const minimumDigits = Number(refs['memory-digit-min'].value);
-    const maximumDigits = Number(refs['memory-digit-max'].value);
-    const readSeconds = Number(refs['memory-read-time'].value);
-    const writeSeconds = Number(refs['memory-write-time'].value);
     if (!Number.isInteger(questionCount) || questionCount < 1 || questionCount > 100) {
       setMessage('Choose between 1 and 100 memory rounds.');
       refs['memory-question-count'].focus();
       return;
     }
-    if (!Number.isInteger(minimumValues) || minimumValues < 1 || minimumValues > 100) {
-      setMessage('Choose a minimum of 1 to 100 values per round.');
-      refs['memory-value-min'].focus();
-      return;
-    }
-    if (!Number.isInteger(maximumValues) || maximumValues < 1 || maximumValues > 100) {
-      setMessage('Choose a maximum of 1 to 100 values per round.');
-      refs['memory-value-max'].focus();
-      return;
-    }
-    if (minimumValues > maximumValues) {
-      setMessage('The minimum values per round cannot be greater than the maximum.');
-      refs['memory-value-min'].focus();
-      return;
-    }
-    if (!Number.isInteger(minimumDigits) || minimumDigits < 1 || minimumDigits > 100) {
-      setMessage('Choose a minimum of 1 to 100 digits per value.');
-      refs['memory-digit-min'].focus();
-      return;
-    }
-    if (!Number.isInteger(maximumDigits) || maximumDigits < 1 || maximumDigits > 100) {
-      setMessage('Choose a maximum of 1 to 100 digits per value.');
-      refs['memory-digit-max'].focus();
-      return;
-    }
-    if (minimumDigits > maximumDigits) {
-      setMessage('The minimum digits per value cannot be greater than the maximum.');
-      refs['memory-digit-min'].focus();
-      return;
-    }
-    if (!Number.isInteger(readSeconds) || readSeconds < 1 || readSeconds > 60) {
-      setMessage('Choose from 1 to 60 seconds to read the number.');
-      refs['memory-read-time'].focus();
-      return;
-    }
-    if (!Number.isInteger(writeSeconds) || writeSeconds < 1 || writeSeconds > 300) {
-      setMessage('Choose from 1 to 300 seconds to write the number.');
-      refs['memory-write-time'].focus();
-      return;
-    }
     state.questionCount = questionCount;
-    state.memoryMinimumValues = minimumValues;
-    state.memoryMaximumValues = maximumValues;
-    state.memoryMinimumDigits = minimumDigits;
-    state.memoryMaximumDigits = maximumDigits;
-    state.memoryDecimals = refs['memory-decimals'].checked;
-    state.memoryReadSeconds = readSeconds;
-    state.memoryWriteSeconds = writeSeconds;
     showNextMemoryQuestion();
     return;
   }
@@ -1029,11 +945,9 @@ refs['memory-answer-form'].addEventListener('submit', (event) => {
   submitMemoryAnswer();
 });
 document.querySelectorAll('input[name="game"]').forEach((input) => input.addEventListener('change', () => {
-  if (selectedGame() === 'memory') applyMemoryModeDefaults();
   updateGameSetup();
 }));
 document.querySelectorAll('input[name="difficulty"]').forEach((input) => input.addEventListener('change', () => {
-  if (selectedGame() === 'memory') applyMemoryModeDefaults();
   updateGameSetup();
 }));
 refs['save-preset'].addEventListener('click', saveSelectedPreset);

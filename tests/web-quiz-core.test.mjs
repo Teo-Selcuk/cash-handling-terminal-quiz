@@ -309,23 +309,31 @@ test('makes learners total the tendered cash and explains which cash to build', 
   assert.match(app, /Build the additional bills and coins the customer still needs to give\./);
 });
 
-test('offers 100-item memory ranges and mobile-ready answer fields', async () => {
+test('uses the saved memory preset as the only range and timing configuration', async () => {
   const [html, app, css] = await Promise.all([
     readFile(new URL('../index.html', import.meta.url), 'utf8'),
     readFile(new URL('../app.js', import.meta.url), 'utf8'),
     readFile(new URL('../style.css', import.meta.url), 'utf8'),
   ]);
 
-  assert.match(html, /id="memory-value-min"[^>]*max="100"/);
-  assert.match(html, /id="memory-value-max"[^>]*max="100"/);
-  assert.match(html, /id="memory-digit-min"[^>]*max="100"/);
-  assert.match(html, /id="memory-digit-max"[^>]*max="100"/);
-  assert.match(html, /id="memory-decimals"/);
+  assert.match(html, /id="preset-memory-value-min"[^>]*max="100"/);
+  assert.match(html, /id="preset-memory-value-max"[^>]*max="100"/);
+  assert.match(html, /id="preset-memory-digit-min"[^>]*max="100"/);
+  assert.match(html, /id="preset-memory-digit-max"[^>]*max="100"/);
+  assert.match(html, /id="preset-memory-decimals"/);
+  assert.match(html, /id="memory-question-count"/);
+  assert.doesNotMatch(html, /id="memory-value-min"/);
+  assert.doesNotMatch(html, /id="memory-value-max"/);
+  assert.doesNotMatch(html, /id="memory-digit-min"/);
+  assert.doesNotMatch(html, /id="memory-digit-max"/);
+  assert.doesNotMatch(html, /id="memory-decimals"/);
   assert.match(html, /id="memory-answer-list"/);
   assert.doesNotMatch(html, /id="memory-digits"/);
   assert.match(app, /maximumDigits \+ \(state\.memoryChallenge\.decimals \? 1 : 0\)/);
-  assert.match(app, /1 to 100 values per round/);
-  assert.match(app, /1 to 100 digits per value/);
+  assert.match(app, /createMemoryChallenge\(state\.difficulty, state\.memoryPresets\[state\.difficulty\]\)/);
+  assert.doesNotMatch(app, /applyMemoryModeDefaults/);
+  assert.doesNotMatch(app, /memoryMinimumDigits/);
+  assert.doesNotMatch(app, /state\.memory(?:Read|Write)Seconds/);
   assert.match(css, /\.memory-answer-list\s*\{[^}]*grid-template-columns:/s);
   assert.match(css, /\.memory-values li > span:last-child\s*\{[^}]*overflow-wrap:\s*anywhere;/s);
   assert.match(css, /\.currency-input:focus-within\s*\{[^}]*outline:/s);
