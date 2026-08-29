@@ -3,18 +3,19 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="Fast, local-only cash-handling and number-memory practice games.">
+    <meta name="description" content="Fast, local-only cash handling, number memory, and task simulation practice games.">
     <meta name="theme-color" content="#12343b">
-    <title>Cash &amp; Memory Trainer</title>
-    <link rel="stylesheet" href="style.css?v=20260829-memory-simplified">
+    <title>Cash, Memory &amp; Task Trainer</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="style.css?v=20260829-task-simulation">
   </head>
   <body>
     <main class="app-shell">
       <header class="site-header">
         <div>
-          <p class="eyebrow">Cash and memory practice</p>
-          <h1>Cash &amp; Memory Trainer</h1>
-          <p class="subtitle">Practice cash transactions or number memory. Your history stays on this device.</p>
+          <p class="eyebrow">Cash, memory, and task practice</p>
+          <h1>Cash, Memory &amp; Task Trainer</h1>
+          <p class="subtitle">Practice cash transactions, number memory, or office-style workflows. Your history stays on this device.</p>
         </div>
         <div class="header-actions">
           <button class="secondary-button theme-toggle" id="theme-toggle" type="button" aria-pressed="false">Dark mode</button>
@@ -36,6 +37,7 @@
             <div class="choice-grid game-choice-grid">
               <label class="choice-card"><input type="radio" name="game" value="cash" checked><span><strong>Cash handling</strong><small>Practice exact, change, and short transactions.</small></span></label>
               <label class="choice-card"><input type="radio" name="game" value="memory"><span><strong>Number memory</strong><small>Read a number, then type it back from memory.</small></span></label>
+              <label class="choice-card"><input type="radio" name="game" value="task"><span><strong>Task simulation</strong><small>Watch a workflow, then repeat its tabs, fields, and selections from memory.</small></span></label>
             </div>
           </fieldset>
 
@@ -50,7 +52,7 @@
 
           <label class="toggle-row" for="auto-continue-toggle">
             <input id="auto-continue-toggle" name="autoContinueOnTimeout" type="checkbox">
-            <span><strong>Auto-continue after timeout</strong><small>For Cash Handling and Number Memory, immediately start the next question when an answer timer expires. The final timeout still shows your session results.</small></span>
+            <span><strong>Auto-continue after timeout</strong><small>Immediately start the next round when its recall timer expires. The final timeout still shows your session results.</small></span>
           </label>
 
           <details class="preset-editor" id="preset-editor">
@@ -101,6 +103,30 @@
                 </label>
               </div>
 
+              <div class="preset-form-grid" id="preset-task-fields" hidden>
+                <label for="preset-task-step-min">Minimum steps
+                  <input id="preset-task-step-min" type="number" min="2" max="10" step="1" inputmode="numeric">
+                </label>
+                <label for="preset-task-step-max">Maximum steps
+                  <input id="preset-task-step-max" type="number" min="2" max="10" step="1" inputmode="numeric">
+                </label>
+                <label for="preset-task-rows">Rows in the workspace
+                  <input id="preset-task-rows" type="number" min="3" max="12" step="1" inputmode="numeric">
+                </label>
+                <label for="preset-task-tabs">Workspace tabs
+                  <input id="preset-task-tabs" type="number" min="2" max="5" step="1" inputmode="numeric">
+                </label>
+                <label for="preset-task-briefing-time">Seconds to study
+                  <input id="preset-task-briefing-time" type="number" min="0" max="300" step="1" inputmode="numeric">
+                </label>
+                <label for="preset-task-recall-time">Seconds to repeat
+                  <input id="preset-task-recall-time" type="number" min="0" max="900" step="1" inputmode="numeric">
+                </label>
+                <label for="preset-task-demo-speed">Demo seconds per step
+                  <input id="preset-task-demo-speed" type="number" min="0.25" max="3" step="0.05" inputmode="decimal">
+                </label>
+              </div>
+
               <div class="preset-actions">
                 <button class="secondary-button" id="save-preset" type="button">Save selected preset</button>
                 <button class="text-button" id="reset-selected-preset" type="button">Reset selected preset</button>
@@ -129,6 +155,13 @@
             <p class="setup-note">Each round uses the selected preset, then hides the values while you write them back in order.</p>
             <label for="memory-question-count">Rounds
               <input id="memory-question-count" name="memoryQuestionCount" type="number" value="10" min="1" max="100" inputmode="numeric" required>
+            </label>
+          </div>
+
+          <div id="task-setup-options" hidden>
+            <p class="setup-note">Each round shows a briefing, demonstrates the workflow, then resets the workspace for recall.</p>
+            <label for="task-question-count">Rounds
+              <input id="task-question-count" name="taskQuestionCount" type="number" value="10" min="1" max="100" inputmode="numeric" required>
             </label>
           </div>
 
@@ -211,6 +244,57 @@
         </form>
       </section>
 
+      <section class="screen task-briefing-screen" id="task-briefing-screen" hidden aria-labelledby="task-briefing-heading">
+        <div class="question-header">
+          <p class="eyebrow" id="task-briefing-progress">Round 1 of 10 · Briefing</p>
+          <time class="timer" id="task-briefing-timer" aria-label="Seconds left to study the task">0:20</time>
+        </div>
+        <h2 id="task-briefing-heading" tabindex="-1">Study the workflow</h2>
+        <p class="memory-instruction" id="task-briefing-title">Update the records.</p>
+        <ol class="task-instruction-list" id="task-instruction-list"></ol>
+        <button class="primary-button" id="task-start-demo" type="button">Watch the demonstration</button>
+      </section>
+
+      <section class="screen task-workspace-screen" id="task-workspace-screen" hidden aria-labelledby="task-workspace-heading">
+        <div class="question-header">
+          <p class="eyebrow" id="task-workspace-progress">Round 1 of 10 · Watch</p>
+          <time class="timer" id="task-timer" aria-label="Time remaining for this task">0:00</time>
+        </div>
+        <div class="task-workspace-title-row">
+          <div>
+            <h2 id="task-workspace-heading" tabindex="-1">Workspace</h2>
+            <p class="task-phase-status" id="task-phase-status" role="status" aria-live="polite"></p>
+          </div>
+          <div class="task-demo-controls" id="task-demo-controls">
+            <button class="secondary-button" id="task-pause-demo" type="button">Pause</button>
+            <button class="secondary-button" id="task-replay-demo" type="button">Replay</button>
+            <button class="text-button" id="task-skip-demo" type="button">Skip to recall</button>
+          </div>
+        </div>
+        <div class="task-tabs" id="task-tablist" role="tablist" aria-label="Workspace sections"></div>
+        <div class="task-tabpanel" id="task-tabpanel" role="tabpanel" aria-label="Workspace records">
+          <div class="table-wrap task-table-wrap">
+            <table class="task-table">
+              <thead><tr><th scope="col">Name</th><th scope="col">Reference</th><th scope="col">Status</th><th scope="col">Priority</th><th scope="col">Complete</th></tr></thead>
+              <tbody id="task-workspace-rows"></tbody>
+            </table>
+          </div>
+          <p class="task-recall-note" id="task-recall-note"></p>
+          <button class="primary-button" id="task-save-workspace" type="button">Save changes</button>
+        </div>
+        <span class="task-demo-cursor" id="task-demo-cursor" aria-hidden="true">●</span>
+      </section>
+
+      <template id="task-row-template">
+        <tr>
+          <th class="task-row-name" scope="row"></th>
+          <td><input class="task-reference" type="text" inputmode="numeric" autocomplete="off" aria-label="Reference"></td>
+          <td><select class="task-status" aria-label="Status"><option>New</option><option>Review</option><option>Approved</option><option>On hold</option></select></td>
+          <td><select class="task-priority" aria-label="Priority"><option>Low</option><option selected>Normal</option><option>High</option><option>Urgent</option></select></td>
+          <td><label class="task-complete-label"><input class="task-complete" type="checkbox"><span>Complete</span></label></td>
+        </tr>
+      </template>
+
       <section class="screen feedback-screen" id="feedback-screen" hidden aria-labelledby="feedback-heading">
         <p class="eyebrow" id="feedback-kicker">Answer result</p>
         <h2 id="feedback-heading" tabindex="-1">Correct</h2>
@@ -275,6 +359,6 @@
     </main>
 
     <footer>Browser edition. The original PowerShell quiz remains in this repository.</footer>
-    <script type="module" src="app.js?v=20260829-memory-simplified"></script>
+    <script type="module" src="app.js?v=20260829-task-simulation"></script>
   </body>
 </html>

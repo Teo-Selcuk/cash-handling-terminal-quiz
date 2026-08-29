@@ -6,16 +6,20 @@ import {
   DENOMINATIONS,
   DIFFICULTY_CONFIG,
   MEMORY_MODE_CONFIG,
+  TASK_MODE_CONFIG,
   buildBreakdown,
   countTotalCents,
   createMemoryChallenge,
+  createTaskChallenge,
   createQuestion,
   formatMoney,
   parseCashShorthand,
   parseAmountToCents,
   resolveCashDifficultyPreset,
   resolveMemoryDifficultyPreset,
+  resolveTaskDifficultyPreset,
   scoreMemoryAnswer,
+  scoreTaskAttempt,
   scoreAnswer,
   summarizeHistory,
   toCsv,
@@ -116,6 +120,108 @@ test('resolves editable cash and memory presets without changing the built-in de
   assert.throws(() => resolveMemoryDifficultyPreset('Medium', { minimumValues: 8, maximumValues: 4 }), RangeError);
 });
 
+test('resolves editable task presets without changing the built-in defaults', () => {
+  const taskPreset = resolveTaskDifficultyPreset('Medium', {
+    minimumSteps: 5,
+    maximumSteps: 7,
+    rows: 10,
+    tabs: 4,
+    briefingSeconds: 30,
+    recallSeconds: 120,
+    demoStepMilliseconds: 1750,
+  });
+
+  assert.deepEqual(TASK_MODE_CONFIG.Medium, {
+    minimumSteps: 4,
+    maximumSteps: 5,
+    rows: 6,
+    tabs: 3,
+    briefingSeconds: 15,
+    recallSeconds: 60,
+    demoStepMilliseconds: 1100,
+  });
+  assert.equal(taskPreset.maximumSteps, 7);
+  assert.equal(taskPreset.rows, 10);
+  assert.equal(taskPreset.demoStepMilliseconds, 1750);
+  assert.throws(() => resolveTaskDifficultyPreset('Easy', { minimumSteps: 8, maximumSteps: 3 }), RangeError);
+  assert.throws(() => resolveTaskDifficultyPreset('Easy', { rows: 2 }), RangeError);
+  assert.throws(() => resolveTaskDifficultyPreset('Easy', { tabs: 6 }), RangeError);
+  assert.throws(() => resolveTaskDifficultyPreset('Easy', { briefingSeconds: 301 }), RangeError);
+  assert.throws(() => resolveTaskDifficultyPreset('Easy', { recallSeconds: 901 }), RangeError);
+  assert.throws(() => resolveTaskDifficultyPreset('Easy', { demoStepMilliseconds: 249 }), RangeError);
+});
+
+test('generates deterministic task challenges with valid, unique targets and instructions', () => {
+  for (const level of Object.keys(TASK_MODE_CONFIG)) {
+    const preset = resolveTaskDifficultyPreset(level);
+    for (let index = 0; index < 125; index += 1) {
+      const challenge = createTaskChallenge(level, preset, () => (index % 100) / 100);
+      const targetIds = new Set([
+        'task-save-workspace',
+        ...challenge.workspace.tabs.map((tab) => tab.id),
+        ...challenge.workspace.rows.flatMap((row) => [
+          `task-row-${row.id}-reference`,
+          `task-row-${row.id}-status`,
+          `task-row-${row.id}-priority`,
+          `task-row-${row.id}-complete`,
+        ]),
+      ]);
+
+      assert.match(challenge.id, /^task-/);
+      assert.ok(challenge.steps.length >= preset.minimumSteps);
+      assert.ok(challenge.steps.length <= preset.maximumSteps);
+      assert.equal(challenge.steps.at(-1).type, 'commit');
+      assert.notEqual(challenge.steps[0].type, 'commit');
+      assert.ok(challenge.steps.every((step) => targetIds.has(step.targetId)));
+      assert.equal(new Set(challenge.steps.map((step) => step.instruction)).size, challenge.steps.length);
+      assert.ok(challenge.workspace.rows.every((row) => row.name && row.id));
+    }
+  }
+});
+
+test('scores task attempts by semantic sequence and reports end-only mistakes', () => {
+  const challenge = {
+    steps: [
+      { type: 'activate-tab', targetId: 'tab-orders', value: 'Orders', instruction: 'Open Orders.' },
+      { type: 'set-text', targetId: 'row-1-reference', value: '4827', instruction: 'Enter 4827.' },
+      { type: 'select-option', targetId: 'row-1-status', value: 'Review', instruction: 'Set Review.' },
+      { type: 'commit', targetId: 'task-save-workspace', instruction: 'Save.' },
+    ],
+  };
+  const exact = [
+    { type: 'activate-tab', targetId: 'tab-orders', value: 'Orders' },
+    { type: 'set-text', targetId: 'row-1-reference', value: '4827' },
+    { type: 'select-option', targetId: 'row-1-status', value: 'Review' },
+    { type: 'commit', targetId: 'task-save-workspace' },
+  ];
+
+  assert.deepEqual(scoreTaskAttempt(challenge, exact), {
+    correct: true,
+    completedSteps: 4,
+    expectedSteps: 4,
+    mistakes: 0,
+    sequenceAccuracyPercent: 100,
+    timedOut: false,
+  });
+  assert.deepEqual(scoreTaskAttempt(challenge, [
+    exact[0],
+    { type: 'set-text', targetId: 'row-1-reference', value: '1111' },
+    exact[1],
+    exact[2],
+    exact[3],
+  ]), {
+    correct: false,
+    completedSteps: 4,
+    expectedSteps: 4,
+    mistakes: 1,
+    sequenceAccuracyPercent: 100,
+    timedOut: false,
+  });
+  assert.equal(scoreTaskAttempt(challenge, [exact[2], ...exact]).mistakes, 1);
+  assert.equal(scoreTaskAttempt(challenge, exact, true).correct, false);
+  assert.equal(scoreTaskAttempt(challenge, exact, true).timedOut, true);
+});
+
 test('requires a matching cash-builder total only when cash-builder mode is enabled', () => {
   const question = { expectedType: 'Change', expectedAmountCents: 9003 };
   const validBreakdown = buildBreakdown(9003);
@@ -164,18 +270,45 @@ test('documents compact cash-builder entries without dollar signs', async () => 
   assert.match(app, /2x10, 2x100, 2D, 3Q, 4N, 5P/);
 });
 
-test('can auto-continue to the next timeout-free screen in either web game', async () => {
+test('can auto-continue to the next timeout-free screen in all web games', async () => {
   const [html, app] = await Promise.all([
     readFile(new URL('../index.html', import.meta.url), 'utf8'),
     readFile(new URL('../app.js', import.meta.url), 'utf8'),
   ]);
 
   assert.match(html, /id="auto-continue-toggle"/);
-  assert.match(html, /immediately start the next question when an answer timer expires/);
+  assert.match(html, /Immediately start the next round when its recall timer expires/);
   assert.match(app, /autoContinueOnTimeout: false,/);
   assert.match(app, /state\.autoContinueOnTimeout = refs\['auto-continue-toggle'\]\.checked;/);
   assert.match(app, /if \(timedOut && state\.autoContinueOnTimeout\) \{\s*showNextQuestion\(\);\s*return;\s*\}/s);
   assert.match(app, /if \(timedOut && state\.autoContinueOnTimeout\) \{\s*showNextMemoryQuestion\(\);\s*return;\s*\}/s);
+  assert.match(app, /if \(timedOut && state\.autoContinueOnTimeout\) \{\s*showNextTaskQuestion\(\);\s*return;\s*\}/s);
+});
+
+test('provides a browser-only task simulation workflow without leaking instructions during recall', async () => {
+  const [html, app, css] = await Promise.all([
+    readFile(new URL('../index.html', import.meta.url), 'utf8'),
+    readFile(new URL('../app.js', import.meta.url), 'utf8'),
+    readFile(new URL('../style.css', import.meta.url), 'utf8'),
+  ]);
+
+  assert.match(html, /value="task"/);
+  assert.match(html, /id="preset-task-fields"/);
+  assert.match(html, /id="task-setup-options"/);
+  assert.match(html, /id="task-briefing-screen"/);
+  assert.match(html, /id="task-workspace-screen"/);
+  assert.match(html, /id="task-row-template"/);
+  assert.match(html, /id="task-tablist"[^>]*role="tablist"/);
+  assert.match(html, /id="task-phase-status"[^>]*role="status"/);
+  assert.match(app, /createTaskChallenge\(state\.difficulty, state\.taskPresets\[state\.difficulty\]\)/);
+  assert.match(app, /state\.taskPhase = 'briefing'/);
+  assert.match(app, /state\.taskPhase = 'demo'/);
+  assert.match(app, /state\.taskPhase = 'recall'/);
+  assert.match(app, /scoreTaskAttempt\(state\.taskChallenge, state\.taskActionLog, timedOut\)/);
+  assert.match(app, /Instructions are hidden\. Repeat the workflow/);
+  assert.match(app, /taskTitle: challenge\.title/);
+  assert.match(css, /\.task-table\s*\{[^}]*min-width:/s);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
 });
 
 test('creates ordered decimal memory challenges from configurable value and digit ranges', () => {

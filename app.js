@@ -2,9 +2,11 @@ import {
   DENOMINATIONS,
   DIFFICULTY_CONFIG,
   MEMORY_MODE_CONFIG,
+  TASK_MODE_CONFIG,
   buildBreakdown,
   countTotalCents,
   createMemoryChallenge,
+  createTaskChallenge,
   createQuestion,
   formatBreakdown,
   formatMoney,
@@ -12,7 +14,9 @@ import {
   parseAmountToCents,
   resolveCashDifficultyPreset,
   resolveMemoryDifficultyPreset,
+  resolveTaskDifficultyPreset,
   scoreMemoryAnswer,
+  scoreTaskAttempt,
   scoreAnswer,
   summarizeHistory,
   toCsv,
@@ -21,10 +25,10 @@ import {
 const HISTORY_KEY = 'cash-handling-terminal-quiz-history-v1';
 const THEME_KEY = 'cash-handling-terminal-quiz-theme-v1';
 const PRESET_KEY = 'cash-handling-terminal-quiz-presets-v1';
-const screens = ['setup', 'quiz', 'memory-read', 'memory-answer', 'feedback', 'summary', 'history'];
+const screens = ['setup', 'quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'feedback', 'summary', 'history'];
 const refs = Object.fromEntries([
   'setup-form', 'setup-screen', 'quiz-screen', 'feedback-screen', 'summary-screen', 'history-screen',
-  'memory-read-screen', 'memory-answer-screen', 'cash-setup-options', 'memory-setup-options',
+  'memory-read-screen', 'memory-answer-screen', 'task-briefing-screen', 'task-workspace-screen', 'cash-setup-options', 'memory-setup-options', 'task-setup-options',
   'question-count', 'time-limit', 'cash-builder-toggle', 'auto-continue-toggle', 'question-progress', 'timer', 'amount-due',
   'tender-breakdown', 'answer-form', 'answer-amount', 'cash-builder-section', 'cash-builder-heading',
   'cash-builder-purpose', 'cash-builder', 'selected-total', 'builder-status', 'clear-builder', 'quick-cash-entry', 'apply-quick-cash', 'feedback-heading',
@@ -34,11 +38,15 @@ const refs = Object.fromEntries([
   'history-rows', 'download-csv', 'clear-history', 'message', 'submit-answer', 'theme-toggle',
   'memory-question-count', 'memory-read-progress', 'memory-read-timer', 'memory-number', 'memory-read-hint',
   'memory-answer-form', 'memory-answer-list', 'memory-answer-progress', 'memory-answer-timer', 'memory-answer-heading', 'summary-heading',
+  'task-question-count', 'task-briefing-progress', 'task-briefing-timer', 'task-briefing-heading', 'task-briefing-title', 'task-instruction-list', 'task-start-demo',
+  'task-workspace-progress', 'task-timer', 'task-workspace-heading', 'task-phase-status', 'task-demo-controls', 'task-pause-demo', 'task-replay-demo', 'task-skip-demo',
+  'task-tablist', 'task-tabpanel', 'task-workspace-rows', 'task-save-workspace', 'task-demo-cursor', 'task-recall-note', 'task-row-template',
   'easy-description', 'medium-description', 'hard-description',
-  'preset-editor', 'preset-level', 'preset-cash-fields', 'preset-memory-fields',
+  'preset-editor', 'preset-level', 'preset-cash-fields', 'preset-memory-fields', 'preset-task-fields',
   'preset-cash-min-due', 'preset-cash-max-due', 'preset-cash-step', 'preset-cash-max-difference', 'preset-cash-split-count',
   'preset-memory-value-min', 'preset-memory-value-max', 'preset-memory-digit-min', 'preset-memory-digit-max',
   'preset-memory-read-time', 'preset-memory-write-time', 'preset-memory-decimals',
+  'preset-task-step-min', 'preset-task-step-max', 'preset-task-rows', 'preset-task-tabs', 'preset-task-briefing-time', 'preset-task-recall-time', 'preset-task-demo-speed',
   'save-preset', 'reset-selected-preset', 'reset-all-presets',
 ].map((id) => [id, document.getElementById(id)]));
 
@@ -55,6 +63,7 @@ const state = {
   autoContinueOnTimeout: false,
   cashPresets: savedPresetState.cash,
   memoryPresets: savedPresetState.memory,
+  taskPresets: savedPresetState.task,
   questionNumber: 0,
   question: null,
   results: [],
@@ -63,6 +72,14 @@ const state = {
   deadline: 0,
   answerSubmitted: false,
   memoryChallenge: null,
+  taskChallenge: null,
+  taskActionLog: [],
+  taskPhase: '',
+  taskDemoToken: 0,
+  taskDemoAnimation: null,
+  taskDemoPaused: false,
+  taskDemoResume: null,
+  taskRecallStartedAt: 0,
   timerTarget: null,
   timerExpiryAction: null,
 };
@@ -79,16 +96,22 @@ function builtInMemoryPresets() {
   return Object.fromEntries(Object.keys(MEMORY_MODE_CONFIG).map((level) => [level, resolveMemoryDifficultyPreset(level)]));
 }
 
+function builtInTaskPresets() {
+  return Object.fromEntries(Object.keys(TASK_MODE_CONFIG).map((level) => [level, resolveTaskDifficultyPreset(level)]));
+}
+
 function loadPresetState() {
   const presets = {
     cash: builtInCashPresets(),
     memory: builtInMemoryPresets(),
+    task: builtInTaskPresets(),
   };
   try {
     const saved = JSON.parse(localStorage.getItem(PRESET_KEY) ?? 'null');
     for (const level of Object.keys(DIFFICULTY_CONFIG)) {
       if (saved?.cash?.[level]) presets.cash[level] = resolveCashDifficultyPreset(level, saved.cash[level]);
       if (saved?.memory?.[level]) presets.memory[level] = resolveMemoryDifficultyPreset(level, saved.memory[level]);
+      if (saved?.task?.[level]) presets.task[level] = resolveTaskDifficultyPreset(level, saved.task[level]);
     }
   } catch {
     // Keep the shipped presets if a browser has an old or invalid saved value.
@@ -98,7 +121,7 @@ function loadPresetState() {
 
 function persistPresetState() {
   try {
-    localStorage.setItem(PRESET_KEY, JSON.stringify({ cash: state.cashPresets, memory: state.memoryPresets }));
+    localStorage.setItem(PRESET_KEY, JSON.stringify({ cash: state.cashPresets, memory: state.memoryPresets, task: state.taskPresets }));
     return true;
   } catch {
     setMessage('The preset is active for this visit, but this browser could not save it locally.');
@@ -141,7 +164,7 @@ function makeSessionId() {
 function showScreen(name) {
   for (const screen of screens) refs[`${screen}-screen`].hidden = screen !== name;
   state.activeScreen = name;
-  const roundInProgress = ['quiz', 'memory-read', 'memory-answer'].includes(name);
+  const roundInProgress = ['quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace'].includes(name);
   refs['open-history'].disabled = roundInProgress;
   if (!roundInProgress) stopTimer();
   if (name === 'quiz') {
@@ -227,13 +250,27 @@ function memoryPresetDescription(level) {
   return `${preset.minimumValues}–${preset.maximumValues} values, ${preset.minimumDigits}–${preset.maximumDigits} digits each`;
 }
 
+function taskPresetDescription(level) {
+  const preset = state.taskPresets[level];
+  const defaults = TASK_MODE_CONFIG[level];
+  const defaultDescriptions = {
+    Easy: '2–3 steps, 4 rows, 2 tabs',
+    Medium: '4–5 steps, 6 rows, 3 tabs',
+    Hard: '6–8 steps, 8 rows, 4 tabs',
+  };
+  if (hasPresetValues(preset, defaults, ['minimumSteps', 'maximumSteps', 'rows', 'tabs', 'briefingSeconds', 'recallSeconds', 'demoStepMilliseconds'])) return defaultDescriptions[level];
+  return `${preset.minimumSteps}–${preset.maximumSteps} steps, ${preset.rows} rows, ${preset.tabs} tabs`;
+}
+
 function renderPresetEditor() {
   const game = selectedGame();
   const level = selectedDifficulty();
   const cashGame = game === 'cash';
+  const memoryGame = game === 'memory';
   refs['preset-level'].textContent = level;
   refs['preset-cash-fields'].hidden = !cashGame;
-  refs['preset-memory-fields'].hidden = cashGame;
+  refs['preset-memory-fields'].hidden = !memoryGame;
+  refs['preset-task-fields'].hidden = game !== 'task';
 
   if (cashGame) {
     const preset = state.cashPresets[level];
@@ -245,24 +282,38 @@ function renderPresetEditor() {
     return;
   }
 
-  const preset = state.memoryPresets[level];
-  refs['preset-memory-value-min'].value = String(preset.minimumValues);
-  refs['preset-memory-value-max'].value = String(preset.maximumValues);
-  refs['preset-memory-digit-min'].value = String(preset.minimumDigits);
-  refs['preset-memory-digit-max'].value = String(preset.maximumDigits);
-  refs['preset-memory-read-time'].value = String(preset.readSeconds);
-  refs['preset-memory-write-time'].value = String(preset.writeSeconds);
-  refs['preset-memory-decimals'].checked = preset.decimals;
+  if (memoryGame) {
+    const preset = state.memoryPresets[level];
+    refs['preset-memory-value-min'].value = String(preset.minimumValues);
+    refs['preset-memory-value-max'].value = String(preset.maximumValues);
+    refs['preset-memory-digit-min'].value = String(preset.minimumDigits);
+    refs['preset-memory-digit-max'].value = String(preset.maximumDigits);
+    refs['preset-memory-read-time'].value = String(preset.readSeconds);
+    refs['preset-memory-write-time'].value = String(preset.writeSeconds);
+    refs['preset-memory-decimals'].checked = preset.decimals;
+    return;
+  }
+
+  const preset = state.taskPresets[level];
+  refs['preset-task-step-min'].value = String(preset.minimumSteps);
+  refs['preset-task-step-max'].value = String(preset.maximumSteps);
+  refs['preset-task-rows'].value = String(preset.rows);
+  refs['preset-task-tabs'].value = String(preset.tabs);
+  refs['preset-task-briefing-time'].value = String(preset.briefingSeconds);
+  refs['preset-task-recall-time'].value = String(preset.recallSeconds);
+  refs['preset-task-demo-speed'].value = String(preset.demoStepMilliseconds / 1000);
 }
 
 function updateGameSetup() {
   const game = selectedGame();
   const memoryGame = game === 'memory';
-  refs['cash-setup-options'].hidden = memoryGame;
+  const taskGame = game === 'task';
+  refs['cash-setup-options'].hidden = memoryGame || taskGame;
   refs['memory-setup-options'].hidden = !memoryGame;
+  refs['task-setup-options'].hidden = !taskGame;
   const descriptions = Object.fromEntries(['Easy', 'Medium', 'Hard'].map((level) => [
     level,
-    memoryGame ? memoryPresetDescription(level) : cashPresetDescription(level),
+    memoryGame ? memoryPresetDescription(level) : taskGame ? taskPresetDescription(level) : cashPresetDescription(level),
   ]));
   refs['easy-description'].textContent = descriptions.Easy;
   refs['medium-description'].textContent = descriptions.Medium;
@@ -282,11 +333,17 @@ function readPresetInteger(ref, label) {
   return value;
 }
 
+function readPresetDemoMilliseconds(ref) {
+  const seconds = Number(ref.value);
+  if (!Number.isFinite(seconds)) throw new RangeError('Demo seconds per step must be a number.');
+  return Math.round(seconds * 1000);
+}
+
 function saveSelectedPreset() {
   const level = selectedDifficulty();
-  const cashGame = selectedGame() === 'cash';
+  const game = selectedGame();
   try {
-    if (cashGame) {
+    if (game === 'cash') {
       state.cashPresets[level] = resolveCashDifficultyPreset(level, {
         minDue: readPresetCents(refs['preset-cash-min-due'], 'Minimum amount due'),
         maxDue: readPresetCents(refs['preset-cash-max-due'], 'Maximum amount due'),
@@ -294,7 +351,7 @@ function saveSelectedPreset() {
         maxDifference: readPresetCents(refs['preset-cash-max-difference'], 'Maximum difference'),
         splitCount: readPresetInteger(refs['preset-cash-split-count'], 'Cash item count'),
       });
-    } else {
+    } else if (game === 'memory') {
       state.memoryPresets[level] = resolveMemoryDifficultyPreset(level, {
         minimumValues: readPresetInteger(refs['preset-memory-value-min'], 'Minimum values'),
         maximumValues: readPresetInteger(refs['preset-memory-value-max'], 'Maximum values'),
@@ -304,11 +361,21 @@ function saveSelectedPreset() {
         readSeconds: readPresetInteger(refs['preset-memory-read-time'], 'Reading seconds'),
         writeSeconds: readPresetInteger(refs['preset-memory-write-time'], 'Writing seconds'),
       });
+    } else {
+      state.taskPresets[level] = resolveTaskDifficultyPreset(level, {
+        minimumSteps: readPresetInteger(refs['preset-task-step-min'], 'Minimum steps'),
+        maximumSteps: readPresetInteger(refs['preset-task-step-max'], 'Maximum steps'),
+        rows: readPresetInteger(refs['preset-task-rows'], 'Rows'),
+        tabs: readPresetInteger(refs['preset-task-tabs'], 'Tabs'),
+        briefingSeconds: readPresetInteger(refs['preset-task-briefing-time'], 'Briefing seconds'),
+        recallSeconds: readPresetInteger(refs['preset-task-recall-time'], 'Recall seconds'),
+        demoStepMilliseconds: readPresetDemoMilliseconds(refs['preset-task-demo-speed']),
+      });
     }
     const saved = persistPresetState();
     updateGameSetup();
     refs['preset-editor'].open = true;
-    if (saved) setMessage(`Saved the ${level} ${cashGame ? 'cash handling' : 'number memory'} preset on this device.`);
+    if (saved) setMessage(`Saved the ${level} ${game === 'cash' ? 'cash handling' : game === 'memory' ? 'number memory' : 'task simulation'} preset on this device.`);
   } catch (error) {
     setMessage(error instanceof Error ? error.message : 'The preset could not be saved.');
   }
@@ -316,20 +383,23 @@ function saveSelectedPreset() {
 
 function resetSelectedPreset() {
   const level = selectedDifficulty();
-  const cashGame = selectedGame() === 'cash';
-  if (cashGame) state.cashPresets[level] = resolveCashDifficultyPreset(level);
-  else {
+  const game = selectedGame();
+  if (game === 'cash') state.cashPresets[level] = resolveCashDifficultyPreset(level);
+  else if (game === 'memory') {
     state.memoryPresets[level] = resolveMemoryDifficultyPreset(level);
+  } else {
+    state.taskPresets[level] = resolveTaskDifficultyPreset(level);
   }
   const saved = persistPresetState();
   updateGameSetup();
   refs['preset-editor'].open = true;
-  if (saved) setMessage(`Restored the normal ${level} ${cashGame ? 'cash handling' : 'number memory'} preset.`);
+  if (saved) setMessage(`Restored the normal ${level} ${game === 'cash' ? 'cash handling' : game === 'memory' ? 'number memory' : 'task simulation'} preset.`);
 }
 
 function resetAllPresets() {
   state.cashPresets = builtInCashPresets();
   state.memoryPresets = builtInMemoryPresets();
+  state.taskPresets = builtInTaskPresets();
   const saved = persistPresetState();
   updateGameSetup();
   refs['preset-editor'].open = true;
@@ -465,6 +535,16 @@ function startTimer(seconds, target, expiryAction) {
   state.timerExpiryAction = expiryAction;
   updateTimer();
   state.timerId = window.setInterval(updateTimer, 250);
+}
+
+function startOptionalTimer(seconds, target, expiryAction) {
+  if (seconds > 0) {
+    startTimer(seconds, target, expiryAction);
+    return;
+  }
+  stopTimer();
+  target.textContent = 'Untimed';
+  target.classList.remove('urgent');
 }
 
 function stopTimer() {
@@ -735,9 +815,341 @@ function showNextMemoryQuestion() {
   startTimer(state.memoryChallenge.readSeconds, refs['memory-read-timer'], showMemoryAnswer);
 }
 
+function renderTaskInstructions(challenge) {
+  refs['task-instruction-list'].replaceChildren(...challenge.steps.map((step) => {
+    const item = document.createElement('li');
+    item.textContent = step.instruction;
+    return item;
+  }));
+}
+
+function setTaskTab(tabId) {
+  for (const tab of state.taskChallenge.workspace.tabs) {
+    const button = document.getElementById(tab.id);
+    const selected = tab.id === tabId;
+    if (button) {
+      button.setAttribute('aria-selected', String(selected));
+      button.tabIndex = selected ? 0 : -1;
+    }
+  }
+  const activeTab = state.taskChallenge.workspace.tabs.find((tab) => tab.id === tabId);
+  refs['task-tabpanel'].setAttribute('aria-labelledby', tabId);
+  refs['task-workspace-heading'].textContent = `${state.taskChallenge.title} · ${activeTab?.label ?? 'Workspace'}`;
+}
+
+function recordTaskAction(action) {
+  if (state.taskPhase !== 'recall' || state.answerSubmitted) return;
+  state.taskActionLog.push(action);
+  refs['task-phase-status'].textContent = `${state.taskActionLog.length} action${state.taskActionLog.length === 1 ? '' : 's'} recorded. Save changes when you are done.`;
+}
+
+function activateTaskTab(tab, record = false) {
+  setTaskTab(tab.id);
+  if (record) recordTaskAction({ type: 'activate-tab', targetId: tab.id, value: tab.label });
+}
+
+function renderTaskTabs(disabled) {
+  refs['task-tablist'].replaceChildren(...state.taskChallenge.workspace.tabs.map((tab, index) => {
+    const button = document.createElement('button');
+    button.id = tab.id;
+    button.className = 'task-tab';
+    button.type = 'button';
+    button.role = 'tab';
+    button.textContent = tab.label;
+    button.setAttribute('aria-controls', 'task-tabpanel');
+    button.setAttribute('aria-selected', String(index === 0));
+    button.tabIndex = index === 0 ? 0 : -1;
+    button.disabled = disabled;
+    button.addEventListener('click', () => activateTaskTab(tab, true));
+    button.addEventListener('keydown', (event) => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      event.preventDefault();
+      const tabs = state.taskChallenge.workspace.tabs;
+      const currentIndex = tabs.findIndex((item) => item.id === tab.id);
+      const nextIndex = event.key === 'Home' ? 0
+        : event.key === 'End' ? tabs.length - 1
+          : (currentIndex + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+      const nextTab = tabs[nextIndex];
+      document.getElementById(nextTab.id)?.focus();
+      activateTaskTab(nextTab, true);
+    });
+    return button;
+  }));
+}
+
+function renderTaskWorkspace(disabled) {
+  const challenge = state.taskChallenge;
+  renderTaskTabs(disabled);
+  refs['task-workspace-rows'].replaceChildren(...challenge.workspace.rows.map((row) => {
+    const fragment = refs['task-row-template'].content.cloneNode(true);
+    const name = fragment.querySelector('.task-row-name');
+    const reference = fragment.querySelector('.task-reference');
+    const status = fragment.querySelector('.task-status');
+    const priority = fragment.querySelector('.task-priority');
+    const complete = fragment.querySelector('.task-complete');
+    name.textContent = row.name;
+    reference.id = `task-row-${row.id}-reference`;
+    reference.value = row.reference;
+    reference.disabled = disabled;
+    reference.setAttribute('aria-label', `Reference for ${row.name}`);
+    status.id = `task-row-${row.id}-status`;
+    status.value = row.status;
+    status.disabled = disabled;
+    status.setAttribute('aria-label', `Status for ${row.name}`);
+    priority.id = `task-row-${row.id}-priority`;
+    priority.value = row.priority;
+    priority.disabled = disabled;
+    priority.setAttribute('aria-label', `Priority for ${row.name}`);
+    complete.id = `task-row-${row.id}-complete`;
+    complete.checked = row.complete;
+    complete.disabled = disabled;
+    complete.setAttribute('aria-label', `Complete ${row.name}'s record`);
+    reference.addEventListener('change', () => recordTaskAction({ type: 'set-text', targetId: reference.id, value: reference.value.trim() }));
+    status.addEventListener('change', () => recordTaskAction({ type: 'select-option', targetId: status.id, value: status.value }));
+    priority.addEventListener('change', () => recordTaskAction({ type: 'select-option', targetId: priority.id, value: priority.value }));
+    complete.addEventListener('change', () => recordTaskAction({ type: 'toggle-checkbox', targetId: complete.id, value: complete.checked }));
+    return fragment;
+  }));
+  refs['task-save-workspace'].disabled = disabled;
+  activateTaskTab(challenge.workspace.tabs[0]);
+}
+
+function applyTaskDemoStep(step) {
+  const target = document.getElementById(step.targetId);
+  if (!target) return;
+  if (step.type === 'activate-tab') {
+    const tab = state.taskChallenge.workspace.tabs.find((item) => item.id === step.targetId);
+    if (tab) activateTaskTab(tab);
+  } else if (step.type === 'set-text' || step.type === 'select-option') {
+    target.value = step.value;
+  } else if (step.type === 'toggle-checkbox') {
+    target.checked = step.value;
+  }
+}
+
+function cancelTaskDemo() {
+  state.taskDemoToken += 1;
+  state.taskDemoAnimation?.cancel();
+  state.taskDemoAnimation = null;
+  state.taskDemoPaused = false;
+  state.taskDemoResume?.();
+  state.taskDemoResume = null;
+  refs['task-demo-cursor'].hidden = true;
+}
+
+function taskReducedMotion() {
+  return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+}
+
+async function waitForTaskDemoResume(token) {
+  while (state.taskDemoPaused && state.taskDemoToken === token) {
+    await new Promise((resolve) => {
+      state.taskDemoResume = resolve;
+    });
+  }
+}
+
+async function animateTaskCursor(target, duration, token) {
+  target.classList.add('task-demo-target');
+  if (taskReducedMotion()) return;
+  const rect = target.getBoundingClientRect();
+  const cursor = refs['task-demo-cursor'];
+  const transform = `translate(${Math.round(rect.left + (rect.width / 2) - 12)}px, ${Math.round(rect.top + (rect.height / 2) - 12)}px)`;
+  cursor.hidden = false;
+  const animation = cursor.animate([
+    { transform: cursor.style.transform || 'translate(-100vw, -100vh)', opacity: 0.2 },
+    { transform, opacity: 1 },
+  ], { duration: Math.max(250, Math.round(duration * 0.75)), easing: 'ease-out', fill: 'forwards' });
+  state.taskDemoAnimation = animation;
+  await animation.finished.catch(() => undefined);
+  if (state.taskDemoToken === token) cursor.style.transform = transform;
+  state.taskDemoAnimation = null;
+}
+
+function wait(milliseconds) {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+}
+
+async function runTaskDemo(token) {
+  for (const step of state.taskChallenge.steps) {
+    await waitForTaskDemoResume(token);
+    if (state.taskDemoToken !== token) return;
+    const target = document.getElementById(step.targetId);
+    refs['task-phase-status'].textContent = `Watch: ${step.instruction}`;
+    if (target) await animateTaskCursor(target, state.taskChallenge.demoStepMilliseconds, token);
+    if (state.taskDemoToken !== token) return;
+    applyTaskDemoStep(step);
+    target?.classList.remove('task-demo-target');
+    await wait(Math.max(120, Math.round(state.taskChallenge.demoStepMilliseconds * 0.2)));
+  }
+  if (state.taskDemoToken === token) startTaskRecall();
+}
+
+function startTaskDemo() {
+  cancelTaskDemo();
+  stopTimer();
+  const token = state.taskDemoToken;
+  state.taskPhase = 'demo';
+  state.answerSubmitted = false;
+  renderTaskWorkspace(true);
+  refs['task-workspace-progress'].textContent = `Round ${state.questionNumber} of ${state.questionCount} · Watch`;
+  refs['task-demo-controls'].hidden = false;
+  refs['task-pause-demo'].textContent = 'Pause';
+  refs['task-recall-note'].textContent = 'The workspace will reset before your recall attempt.';
+  showScreen('task-workspace');
+  runTaskDemo(token);
+}
+
+function toggleTaskDemoPause() {
+  if (state.taskPhase !== 'demo') return;
+  state.taskDemoPaused = !state.taskDemoPaused;
+  if (state.taskDemoPaused) {
+    state.taskDemoAnimation?.pause();
+    refs['task-pause-demo'].textContent = 'Resume';
+    refs['task-phase-status'].textContent = 'Demonstration paused.';
+  } else {
+    state.taskDemoAnimation?.play();
+    state.taskDemoResume?.();
+    state.taskDemoResume = null;
+    refs['task-pause-demo'].textContent = 'Pause';
+  }
+}
+
+function startTaskRecall() {
+  cancelTaskDemo();
+  state.taskPhase = 'recall';
+  state.answerSubmitted = false;
+  state.taskActionLog = [];
+  state.taskRecallStartedAt = Date.now();
+  renderTaskWorkspace(false);
+  refs['task-workspace-progress'].textContent = `Round ${state.questionNumber} of ${state.questionCount} · Your turn`;
+  refs['task-demo-controls'].hidden = true;
+  refs['task-phase-status'].textContent = 'Instructions are hidden. Repeat the workflow, then save your changes.';
+  refs['task-recall-note'].textContent = 'Use the tabs and controls from memory. Feedback appears only after you save or time runs out.';
+  startOptionalTimer(state.taskChallenge.recallSeconds, refs['task-timer'], () => submitTaskAttempt(true));
+  window.setTimeout(() => refs['task-tablist'].querySelector('button')?.focus({ preventScroll: true }), 0);
+}
+
+function showTaskBriefing() {
+  state.taskPhase = 'briefing';
+  renderTaskInstructions(state.taskChallenge);
+  refs['task-briefing-title'].textContent = state.taskChallenge.title;
+  refs['task-briefing-progress'].textContent = `Round ${state.questionNumber} of ${state.questionCount} · Briefing`;
+  showScreen('task-briefing');
+  if (state.taskChallenge.briefingSeconds === 0) {
+    refs['task-briefing-timer'].textContent = 'Starting';
+    window.setTimeout(startTaskDemo, 0);
+    return;
+  }
+  startTimer(state.taskChallenge.briefingSeconds, refs['task-briefing-timer'], startTaskDemo);
+}
+
+function taskActionDescription(action) {
+  const labels = {
+    'activate-tab': `Opened ${action.value}`,
+    'set-text': `Entered ${action.value}`,
+    'select-option': `Selected ${action.value}`,
+    'toggle-checkbox': action.value ? 'Marked complete' : 'Cleared complete',
+    commit: 'Saved changes',
+  };
+  return labels[action.type] ?? 'Used a workspace control';
+}
+
+function recordTaskAttempt(score, timedOut, elapsedSeconds) {
+  const challenge = state.taskChallenge;
+  return {
+    timestamp: new Date().toISOString(),
+    sessionId: state.sessionId,
+    gameType: 'Task simulation',
+    taskTitle: challenge.title,
+    difficulty: state.difficulty,
+    questionNumber: state.questionNumber,
+    stepsExpected: score.expectedSteps,
+    stepsCompleted: score.completedSteps,
+    mistakes: score.mistakes,
+    sequenceAccuracyPercent: score.sequenceAccuracyPercent,
+    timeLimitSeconds: challenge.recallSeconds,
+    timeUsedSeconds: Number(elapsedSeconds.toFixed(1)),
+    expectedAnswer: `${score.expectedSteps} ordered steps`,
+    outcome: timedOut ? 'Timed Out' : score.correct ? 'Correct' : 'Incorrect',
+  };
+}
+
+function appendFeedbackDetails(details) {
+  refs['feedback-details'].replaceChildren();
+  for (const [term, description] of details) {
+    const dt = document.createElement('dt');
+    const dd = document.createElement('dd');
+    dt.textContent = term;
+    dd.textContent = description;
+    refs['feedback-details'].append(dt, dd);
+  }
+}
+
+function populateTaskFeedback(record, score) {
+  const correct = score.correct;
+  refs['feedback-kicker'].textContent = record.outcome === 'Timed Out' ? 'Time expired' : 'Task simulation result';
+  refs['feedback-heading'].textContent = correct ? 'Correct' : record.outcome === 'Timed Out' ? 'Time expired' : 'Review the workflow';
+  refs['feedback-heading'].dataset.result = correct ? 'correct' : 'incorrect';
+  refs['feedback-lead'].textContent = correct
+    ? `You completed all ${score.expectedSteps} steps in order.`
+    : `You completed ${score.completedSteps} of ${score.expectedSteps} expected steps with ${score.mistakes} extra or out-of-order action${score.mistakes === 1 ? '' : 's'}.`;
+  appendFeedbackDetails([
+    ['Expected steps', state.taskChallenge.steps.map((step, index) => `${index + 1}. ${step.instruction}`).join(' ')],
+    ['Your actions', state.taskActionLog.length ? state.taskActionLog.map(taskActionDescription).join(' → ') : 'No actions recorded'],
+    ['Sequence accuracy', `${score.sequenceAccuracyPercent}%`],
+    ['Time used', `${record.timeUsedSeconds.toFixed(1)} seconds`],
+  ]);
+}
+
+function submitTaskAttempt(timedOut = false) {
+  if (state.answerSubmitted || state.taskPhase !== 'recall') return;
+  state.answerSubmitted = true;
+  const elapsed = Math.max(0, (Date.now() - state.taskRecallStartedAt) / 1000);
+  const elapsedSeconds = state.taskChallenge.recallSeconds > 0
+    ? Math.min(state.taskChallenge.recallSeconds, elapsed)
+    : elapsed;
+  stopTimer();
+  const score = scoreTaskAttempt(state.taskChallenge, state.taskActionLog, timedOut);
+  const record = recordTaskAttempt(score, timedOut, elapsedSeconds);
+  state.results.push(record);
+  persistRecord(record);
+  if (timedOut && state.autoContinueOnTimeout) {
+    showNextTaskQuestion();
+    return;
+  }
+  populateTaskFeedback(record, score);
+  showScreen('feedback');
+}
+
+function showNextTaskQuestion() {
+  state.questionNumber += 1;
+  if (state.questionNumber > state.questionCount) {
+    renderSummary();
+    showScreen('summary');
+    return;
+  }
+  state.taskChallenge = createTaskChallenge(state.difficulty, state.taskPresets[state.difficulty]);
+  state.answerSubmitted = false;
+  showTaskBriefing();
+}
+
 function makeMetrics(records) {
   const summary = summarizeHistory(records);
   const averageTime = summary.answered ? records.reduce((sum, record) => sum + Number(record.timeUsedSeconds || 0), 0) / summary.answered : 0;
+  if (state.game === 'task') {
+    const averageSequenceAccuracy = summary.answered
+      ? records.reduce((sum, record) => sum + Number(record.sequenceAccuracyPercent || 0), 0) / summary.answered
+      : 0;
+    const mistakes = records.reduce((sum, record) => sum + Number(record.mistakes || 0), 0);
+    return [
+      [`${summary.answered}`, 'Rounds'],
+      [`${summary.accuracyPercent}%`, 'Perfect rounds'],
+      [`${averageSequenceAccuracy.toFixed(0)}%`, 'Sequence accuracy'],
+      [`${mistakes}`, 'Mistakes'],
+      [`${averageTime.toFixed(1)}s`, 'Average time'],
+    ];
+  }
   return [
     [`${summary.answered}`, 'Questions'],
     [`${summary.accuracyPercent}%`, 'Accuracy'],
@@ -759,7 +1171,9 @@ function renderMetrics(target, metrics) {
 }
 
 function renderSummary() {
-  refs['summary-heading'].textContent = state.game === 'memory' ? 'Your memory results' : 'Your cash results';
+  refs['summary-heading'].textContent = state.game === 'memory'
+    ? 'Your memory results'
+    : state.game === 'task' ? 'Your task simulation results' : 'Your cash results';
   renderMetrics(refs['session-metrics'], makeMetrics(state.results));
 }
 
@@ -853,7 +1267,7 @@ function renderHistory() {
 }
 
 function openHistory() {
-  if (['quiz', 'memory-read', 'memory-answer'].includes(state.activeScreen)) {
+  if (['quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace'].includes(state.activeScreen)) {
     setMessage('Finish the current round before opening history.');
     return;
   }
@@ -888,6 +1302,18 @@ refs['setup-form'].addEventListener('submit', (event) => {
   state.questionNumber = 0;
   state.results = [];
   state.autoContinueOnTimeout = refs['auto-continue-toggle'].checked;
+
+  if (game === 'task') {
+    const questionCount = Number(refs['task-question-count'].value);
+    if (!Number.isInteger(questionCount) || questionCount < 1 || questionCount > 100) {
+      setMessage('Choose between 1 and 100 task simulation rounds.');
+      refs['task-question-count'].focus();
+      return;
+    }
+    state.questionCount = questionCount;
+    showNextTaskQuestion();
+    return;
+  }
 
   if (game === 'memory') {
     const questionCount = Number(refs['memory-question-count'].value);
@@ -938,11 +1364,25 @@ refs['clear-builder'].addEventListener('click', resetBuilder);
 refs['apply-quick-cash'].addEventListener('click', applyQuickCashEntry);
 refs['next-question'].addEventListener('click', () => {
   if (state.game === 'memory') showNextMemoryQuestion();
+  else if (state.game === 'task') showNextTaskQuestion();
   else showNextQuestion();
 });
 refs['memory-answer-form'].addEventListener('submit', (event) => {
   event.preventDefault();
   submitMemoryAnswer();
+});
+refs['task-start-demo'].addEventListener('click', startTaskDemo);
+refs['task-pause-demo'].addEventListener('click', toggleTaskDemoPause);
+refs['task-replay-demo'].addEventListener('click', startTaskDemo);
+refs['task-skip-demo'].addEventListener('click', () => {
+  if (state.taskPhase !== 'demo') return;
+  cancelTaskDemo();
+  startTaskRecall();
+});
+refs['task-save-workspace'].addEventListener('click', () => {
+  if (state.taskPhase !== 'recall' || state.answerSubmitted) return;
+  recordTaskAction({ type: 'commit', targetId: 'task-save-workspace' });
+  submitTaskAttempt();
 });
 document.querySelectorAll('input[name="game"]').forEach((input) => input.addEventListener('change', () => {
   updateGameSetup();

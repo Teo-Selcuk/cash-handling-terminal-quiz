@@ -2,7 +2,7 @@
 
 ## Objective
 
-Add a fast, dependency-free browser edition of the Cash Handling Terminal Quiz while retaining `Cash-Handling-Terminal-Quiz.ps1` as the desktop edition. The site must work from GitHub Pages with no server, account, API, or build dependency. Quiz progress and history stay in the user's browser.
+Maintain a fast, dependency-free browser edition of the Cash Handling Terminal Quiz while retaining `Cash-Handling-Terminal-Quiz.ps1` as the desktop edition. The site must work from GitHub Pages with no server, account, API, or build dependency. Quiz progress and history stay in the user's browser.
 
 ## Commands
 
@@ -13,7 +13,7 @@ Add a fast, dependency-free browser edition of the Cash Handling Terminal Quiz w
 
 - `index.html` - semantic, accessible application shell
 - `style.css` - responsive, local styling
-- `quiz-core.mjs` - pure money, question, scoring, history-export helpers
+- `quiz-core.mjs` - pure money, cash/number/task generation, scoring, and history-export helpers
 - `app.js` - DOM interaction and browser-local state
 - `tests/web-quiz-core.test.mjs` - fast Node rule tests
 - `.github/workflows/deploy-pages.yml` - test and GitHub Pages deployment
@@ -29,7 +29,7 @@ const isCorrect = answer.type === expectedType && answer.amountCents === expecte
 
 ## Testing Strategy
 
-Unit tests cover denomination totals, money formatting, generated question invariants, answer scoring, and CSV creation. A browser smoke test verifies that the first quiz screen renders, a quiz can be completed, and history/export controls are reachable. The GitHub Pages workflow runs the Node tests before deployment.
+Unit tests cover denomination totals, money formatting, generated question invariants, cash/number/task scoring, task preset bounds, stable task targets, and CSV creation. Browser checks verify that each task briefing, demonstration, reset, recall, review, and summary transition works without console errors. The GitHub Pages workflow runs the Node tests before deployment.
 
 ## Boundaries
 
@@ -43,14 +43,18 @@ Unit tests cover denomination totals, money formatting, generated question invar
 - Questions use the same ten denominations and Easy/Medium/Hard limits as the PowerShell quiz.
 - Exact, change, and short answers are scored correctly; cash-builder totals are required only when selected.
 - Results, session statistics, browser-local history, CSV export, and clear-history confirmation work without a server.
+- A Task Simulation session generates synthetic names, tabs, rows, fields, and values from local data. It presents a briefing, demonstrates the same declarative steps with a browser-native cursor animation, resets the workspace, and grades the recalled semantic action sequence only after Save or timeout.
+- Task presets are locally editable and resettable for steps, rows, tabs, briefing time, recall time (including untimed practice), and demo speed. The Task Simulation setup contains only Rounds.
+- Task controls use native tables and form elements, keyboard-operable tabs, end-only feedback, reduced-motion cursor fallback, and compact browser-local history fields.
 - The page is keyboard accessible and responsive from 320px wide upward.
 - The deployment workflow tests the application, uploads the static artifact, and deploys it to GitHub Pages from `main`.
 
 ## Implementation Plan
 
 1. Add and test pure quiz rules, including cents-only question generation and CSV export.
-2. Add the responsive browser UI, timer, cash builder, feedback, and history screens.
-3. Add the GitHub Pages workflow, then verify the committed site locally and after push.
+2. Add the responsive browser UI, timer, cash builder, feedback, history screens, and Task Simulation workflow.
+3. Keep the task generator, demonstration, and scorer on one shared step contract; test its preset bounds, generated targets, timing, and end-only scoring.
+4. Verify the committed site locally and after push.
 
 ## Deployment Reference
 

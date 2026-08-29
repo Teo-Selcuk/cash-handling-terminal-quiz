@@ -23,6 +23,20 @@ export const MEMORY_MODE_CONFIG = Object.freeze({
   Hard: Object.freeze({ minimumDigits: 8, maximumDigits: 10, minimumValues: 3, maximumValues: 5, decimals: true, readSeconds: 3, writeSeconds: 6 }),
 });
 
+export const TASK_MODE_CONFIG = Object.freeze({
+  Easy: Object.freeze({ minimumSteps: 2, maximumSteps: 3, rows: 4, tabs: 2, briefingSeconds: 20, recallSeconds: 75, demoStepMilliseconds: 1400 }),
+  Medium: Object.freeze({ minimumSteps: 4, maximumSteps: 5, rows: 6, tabs: 3, briefingSeconds: 15, recallSeconds: 60, demoStepMilliseconds: 1100 }),
+  Hard: Object.freeze({ minimumSteps: 6, maximumSteps: 8, rows: 8, tabs: 4, briefingSeconds: 10, recallSeconds: 45, demoStepMilliseconds: 850 }),
+});
+
+const TASK_TAB_LABELS = Object.freeze(['Orders', 'Clients', 'Projects', 'Reviews', 'Archive']);
+const TASK_PEOPLE = Object.freeze([
+  'Morgan Dawson', 'Avery Brooks', 'Riley Chen', 'Jordan Patel', 'Casey Rivera', 'Taylor Nguyen',
+  'Cameron Ellis', 'Sydney Moore', 'Parker James', 'Quinn Harper', 'Emerson Wells', 'Rowan Price',
+]);
+const TASK_STATUS_OPTIONS = Object.freeze(['New', 'Review', 'Approved', 'On hold']);
+const TASK_PRIORITY_OPTIONS = Object.freeze(['Low', 'Normal', 'High', 'Urgent']);
+
 const NUMBER_WORD_COUNTS = Object.freeze({
   one: 1,
   two: 2,
@@ -120,6 +134,24 @@ export function resolveMemoryDifficultyPreset(level, overrides = {}) {
   if (typeof preset.decimals !== 'boolean') throw new TypeError('Decimals must be true or false.');
   requireMemoryInteger(preset.readSeconds, 'Read seconds', 1, 60);
   requireMemoryInteger(preset.writeSeconds, 'Write seconds', 1, 300);
+  return preset;
+}
+
+export function resolveTaskDifficultyPreset(level, overrides = {}) {
+  const defaults = TASK_MODE_CONFIG[level];
+  if (!defaults) throw new RangeError(`Unknown task difficulty: ${level}`);
+  requirePresetOverrides(overrides);
+
+  const preset = {
+    ...defaults,
+    ...overrides,
+  };
+  requireMemoryRange(preset.minimumSteps, preset.maximumSteps, 'Steps', 2, 10);
+  requireMemoryInteger(preset.rows, 'Rows', 3, 12);
+  requireMemoryInteger(preset.tabs, 'Tabs', 2, 5);
+  requireMemoryInteger(preset.briefingSeconds, 'Briefing seconds', 0, 300);
+  requireMemoryInteger(preset.recallSeconds, 'Recall seconds', 0, 900);
+  requireMemoryInteger(preset.demoStepMilliseconds, 'Demo step milliseconds', 250, 3000);
   return preset;
 }
 
@@ -284,6 +316,137 @@ export function scoreMemoryAnswer(challenge, answer) {
     correct,
     normalizedAnswer,
     normalizedValues,
+  };
+}
+
+function chooseTaskEntries(entries, count, rng) {
+  const remaining = [...entries];
+  const selected = [];
+  for (let index = 0; index < count; index += 1) {
+    selected.push(remaining.splice(randomIndex(remaining.length, rng), 1)[0]);
+  }
+  return selected;
+}
+
+function taskReference(rng) {
+  return String(memoryRandomInteger(1000, 9999, rng));
+}
+
+function taskActionCandidates(rows, rng) {
+  return rows.flatMap((row) => {
+    const reference = taskReference(rng);
+    const statusOptions = TASK_STATUS_OPTIONS.filter((value) => value !== row.status);
+    const priorityOptions = TASK_PRIORITY_OPTIONS.filter((value) => value !== row.priority);
+    const status = statusOptions[randomIndex(statusOptions.length, rng)];
+    const priority = priorityOptions[randomIndex(priorityOptions.length, rng)];
+    return [
+      {
+        type: 'set-text',
+        targetId: `task-row-${row.id}-reference`,
+        value: reference,
+        instruction: `Enter ${reference} in ${row.name}'s Reference field.`,
+      },
+      {
+        type: 'select-option',
+        targetId: `task-row-${row.id}-status`,
+        value: status,
+        instruction: `Set ${row.name}'s Status to ${status}.`,
+      },
+      {
+        type: 'select-option',
+        targetId: `task-row-${row.id}-priority`,
+        value: priority,
+        instruction: `Set ${row.name}'s Priority to ${priority}.`,
+      },
+      {
+        type: 'toggle-checkbox',
+        targetId: `task-row-${row.id}-complete`,
+        value: true,
+        instruction: `Mark ${row.name}'s record complete.`,
+      },
+    ];
+  });
+}
+
+export function createTaskChallenge(level, options = {}, rng = Math.random) {
+  const preset = resolveTaskDifficultyPreset(level, options);
+  const tabs = TASK_TAB_LABELS.slice(0, preset.tabs).map((label) => ({
+    id: `task-tab-${label.toLowerCase()}`,
+    label,
+  }));
+  const names = chooseTaskEntries(TASK_PEOPLE, preset.rows, rng);
+  const rows = names.map((name, index) => ({
+    id: String(index + 1),
+    name,
+    reference: '',
+    status: 'New',
+    priority: 'Normal',
+    complete: false,
+  }));
+  const stepCount = memoryRandomInteger(preset.minimumSteps, preset.maximumSteps, rng);
+  const needsTab = stepCount >= 3;
+  const dataStepCount = stepCount - (needsTab ? 2 : 1);
+  const dataSteps = chooseTaskEntries(taskActionCandidates(rows, rng), dataStepCount, rng);
+  const tab = tabs[randomIndex(tabs.length, rng)];
+  const steps = [
+    ...(needsTab ? [{
+      type: 'activate-tab',
+      targetId: tab.id,
+      value: tab.label,
+      instruction: `Open the ${tab.label} tab.`,
+    }] : []),
+    ...dataSteps,
+    {
+      type: 'commit',
+      targetId: 'task-save-workspace',
+      instruction: 'Save the changes.',
+    },
+  ];
+  const titleRow = rows[randomIndex(rows.length, rng)];
+
+  return {
+    id: `task-${level.toLowerCase()}-${randomIndex(1000000, rng)}`,
+    level,
+    title: `Update the ${titleRow.name.split(' ').at(-1)} records`,
+    briefingSeconds: preset.briefingSeconds,
+    recallSeconds: preset.recallSeconds,
+    demoStepMilliseconds: preset.demoStepMilliseconds,
+    workspace: {
+      tabs,
+      rows,
+      columns: ['Name', 'Reference', 'Status', 'Priority', 'Complete'],
+    },
+    steps,
+  };
+}
+
+function taskActionsMatch(expected, action) {
+  if (!action || expected.type !== action.type || expected.targetId !== action.targetId) return false;
+  if (expected.value === undefined) return true;
+  return typeof expected.value === 'boolean'
+    ? expected.value === action.value
+    : String(expected.value) === String(action.value ?? '');
+}
+
+export function scoreTaskAttempt(challenge, actionLog = [], timedOut = false) {
+  if (!Array.isArray(challenge?.steps)) throw new TypeError('Task challenge steps must be an array.');
+  if (!Array.isArray(actionLog)) throw new TypeError('Task action log must be an array.');
+
+  let completedSteps = 0;
+  let mistakes = 0;
+  for (const action of actionLog) {
+    const expected = challenge.steps[completedSteps];
+    if (expected && taskActionsMatch(expected, action)) completedSteps += 1;
+    else mistakes += 1;
+  }
+  const expectedSteps = challenge.steps.length;
+  return {
+    correct: !timedOut && completedSteps === expectedSteps && mistakes === 0,
+    completedSteps,
+    expectedSteps,
+    mistakes,
+    sequenceAccuracyPercent: expectedSteps ? Math.round((completedSteps / expectedSteps) * 100) : 0,
+    timedOut: Boolean(timedOut),
   };
 }
 
