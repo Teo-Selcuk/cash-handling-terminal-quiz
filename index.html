@@ -48,6 +48,11 @@
             </div>
           </fieldset>
 
+          <label class="toggle-row" for="auto-continue-toggle">
+            <input id="auto-continue-toggle" name="autoContinueOnTimeout" type="checkbox">
+            <span><strong>Auto-continue after timeout</strong><small>For Cash Handling and Number Memory, immediately start the next question when an answer timer expires. The final timeout still shows your session results.</small></span>
+          </label>
+
           <div id="cash-setup-options">
             <div class="form-grid">
               <label for="question-count">Questions
@@ -152,8 +157,8 @@
             <p class="selected-total" id="selected-total">Selected: $0.00</p>
             <p class="builder-status" id="builder-status" aria-live="polite">Choose an answer to compare your cash selection.</p>
             <label class="quick-entry" for="quick-cash-entry">Fast cash entry
-              <span>Replace the selection with shorthand such as <code>2x$10, 1x$1, 2d, 2q</code>.</span>
-              <div class="quick-entry-controls"><input id="quick-cash-entry" type="text" inputmode="text" autocomplete="off" placeholder="2x$10, 2d, 2q"><button class="secondary-button" id="apply-quick-cash" type="button">Apply fast entry</button></div>
+              <span>Separate entries with commas: bills use <code>countxvalue</code> (<code>2x10, 2x100</code>); coins use <code>count</code> plus <code>Q</code>, <code>D</code>, <code>N</code>, or <code>P</code> (<code>2D, 3Q, 4N, 5P</code>).</span>
+              <div class="quick-entry-controls"><input id="quick-cash-entry" type="text" inputmode="text" autocomplete="off" placeholder="2x10, 2D, 3Q"><button class="secondary-button" id="apply-quick-cash" type="button">Apply fast entry</button></div>
             </label>
             <div class="denomination-list" id="cash-builder" aria-label="Cash denominations"></div>
           </section>
@@ -250,6 +255,6 @@
     </main>
 
     <footer>Browser edition. The original PowerShell quiz remains in this repository.</footer>
-    <script type="module" src="app.js"></script>
+    <script type="module" src="app.js?v=20260828-auto-continue"></script>
   </body>
 </html>

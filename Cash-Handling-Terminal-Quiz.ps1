@@ -32,6 +32,7 @@
             DefaultTimeLimitSeconds = 20
             DataDirectory = Get-RecommendedQuizDataDirectory
             ClickableBillCoinModeEnabled = $false
+            AutoContinueOnTimeoutEnabled = $false
         }
     }
     function Read-QuizSettings {
@@ -77,6 +78,11 @@
             $billCoinMode = $saved.PSObject.Properties['ClickableBillCoinModeEnabled']
             if ($null -ne $billCoinMode) {
                 $settings.ClickableBillCoinModeEnabled = [bool]$billCoinMode.Value
+            }
+
+            $autoContinue = $saved.PSObject.Properties['AutoContinueOnTimeoutEnabled']
+            if ($null -ne $autoContinue) {
+                $settings.AutoContinueOnTimeoutEnabled = [bool]$autoContinue.Value
             }
         }
         catch {
@@ -1022,6 +1028,41 @@
             }
 
             Write-Host 'Enter Y to turn it on or N to leave it off.' -ForegroundColor Yellow
+        }
+    }
+
+    function Read-AutoContinueOnTimeoutSetting {
+        param([bool]$Default = $false)
+
+        while ($true) {
+            $prompt = if ($Default) {
+                'Auto-continue after a timeout? [Y/N] [Y]'
+            }
+            else {
+                'Auto-continue after a timeout? [Y/N] [N]'
+            }
+
+            $raw = (Read-Host $prompt).Trim().ToLowerInvariant()
+
+            if (
+                ([string]::IsNullOrWhiteSpace($raw) -and -not $Default) -or
+                $raw -eq 'n' -or
+                $raw -eq 'no' -or
+                $raw -eq 'off'
+            ) {
+                return $false
+            }
+
+            if (
+                ([string]::IsNullOrWhiteSpace($raw) -and $Default) -or
+                $raw -eq 'y' -or
+                $raw -eq 'yes' -or
+                $raw -eq 'on'
+            ) {
+                return $true
+            }
+
+            Write-Host 'Enter Y to start the next question automatically after a timeout, or N to keep the pause.' -ForegroundColor Yellow
         }
     }
 
@@ -2393,6 +2434,7 @@
             Write-Host "[2] Default seconds per transaction: $($appState.Settings.DefaultTimeLimitSeconds)"
             Write-Host "[3] Stats and history folder: $($appState.DataDirectory)"
             Write-Host "[4] Clickable bill/coin mode default: $(if ($appState.Settings.ClickableBillCoinModeEnabled) { 'ON' } else { 'OFF' })"
+            Write-Host "[5] Auto-continue after timeout default: $(if ($appState.Settings.AutoContinueOnTimeoutEnabled) { 'ON' } else { 'OFF' })"
             Write-Host '[B] Back to main menu'
 
             $choice = (Read-Host 'Choose a setting').Trim().ToLowerInvariant()
@@ -2433,6 +2475,10 @@
                     $appState.Settings.ClickableBillCoinModeEnabled = -not [bool]$appState.Settings.ClickableBillCoinModeEnabled
                     $changed = $true
                 }
+                '5' {
+                    $appState.Settings.AutoContinueOnTimeoutEnabled = -not [bool]$appState.Settings.AutoContinueOnTimeoutEnabled
+                    $changed = $true
+                }
                 'b' {
                     return
                 }
@@ -2440,7 +2486,7 @@
                     return
                 }
                 default {
-                    Write-Host 'Choose 1 through 4, or B.' -ForegroundColor Yellow
+                    Write-Host 'Choose 1 through 5, or B.' -ForegroundColor Yellow
                 }
             }
 
@@ -2572,12 +2618,15 @@
             -Default $defaults.WriteSeconds `
             -Minimum 1 `
             -Maximum 300
+        $autoContinueOnTimeout = Read-AutoContinueOnTimeoutSetting `
+            -Default $appState.Settings.AutoContinueOnTimeoutEnabled
 
         $results = @()
 
         Write-Host ''
         Write-Host 'NUMBER MEMORY GAME' -ForegroundColor Cyan
         Write-Host "Mode: $difficulty | $digits digits | read: $readSeconds seconds | write: $writeSeconds seconds" -ForegroundColor Cyan
+        Write-Host "Auto-continue after timeouts: $(if ($autoContinueOnTimeout) { 'ON' } else { 'OFF' })" -ForegroundColor Cyan
         Write-Host 'Read each number, then type it after the screen clears. Spaces are allowed in your answer.' -ForegroundColor DarkGray
 
         for ($round = 1; $round -le $questionCount; $round++) {
@@ -2644,6 +2693,10 @@
             }
 
             if ($round -lt $questionCount) {
+                if ($timedAnswer.TimedOut -and $autoContinueOnTimeout) {
+                    continue
+                }
+
                 [void](Read-Host 'Press Enter for the next memory round')
                 Clear-Host
             }
@@ -2923,6 +2976,8 @@
             -Default $appState.Settings.DefaultTimeLimitSeconds `
             -Minimum 3 `
             -Maximum 300
+        $autoContinueOnTimeout = Read-AutoContinueOnTimeoutSetting `
+            -Default $appState.Settings.AutoContinueOnTimeoutEnabled
 
         $answerMode = if ($cashConstructionForQuiz) {
             'Typed + bill/coin buttons'
@@ -2953,6 +3008,7 @@
         ) -ForegroundColor Cyan
 
         Write-Host "Answer mode: $answerMode" -ForegroundColor Cyan
+        Write-Host "Auto-continue after timeouts: $(if ($autoContinueOnTimeout) { 'ON' } else { 'OFF' })" -ForegroundColor Cyan
 
         if ($cashConstructionForQuiz) {
             Write-Host 'Answer the transaction first. A final bill-and-coin button window follows each valid answer.' -ForegroundColor DarkGray
@@ -3190,6 +3246,10 @@
             }
 
             if ($questionNumber -lt $questionCount) {
+                if ($answerResult.TimedOut -and $autoContinueOnTimeout) {
+                    continue
+                }
+
                 [void](
                     Read-Host `
                         'Press Enter for the next question'

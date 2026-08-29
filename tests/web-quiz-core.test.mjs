@@ -84,7 +84,45 @@ test('parses fast cash-builder shorthand with bill and coin acronyms', () => {
     { cents: 25, count: 2 },
     { cents: 10, count: 2 },
   ]);
+  const compact = parseCashShorthand('2x10, 2x100, 2D, 3Q, 4N, 5P');
+
+  assert.equal(compact.valid, true);
+  assert.equal(compact.totalCents, 22120);
+  assert.deepEqual(compact.breakdown.map(({ cents, count }) => ({ cents, count })), [
+    { cents: 10000, count: 2 },
+    { cents: 1000, count: 2 },
+    { cents: 25, count: 3 },
+    { cents: 10, count: 2 },
+    { cents: 5, count: 4 },
+    { cents: 1, count: 5 },
+  ]);
   assert.equal(parseCashShorthand('2x$10, mystery-token').valid, false);
+});
+
+test('documents compact cash-builder entries without dollar signs', async () => {
+  const [html, app] = await Promise.all([
+    readFile(new URL('../index.html', import.meta.url), 'utf8'),
+    readFile(new URL('../app.js', import.meta.url), 'utf8'),
+  ]);
+
+  assert.match(html, /2x10, 2x100/);
+  assert.match(html, /2D, 3Q, 4N, 5P/);
+  assert.match(html, /placeholder="2x10, 2D, 3Q"/);
+  assert.match(app, /2x10, 2x100, 2D, 3Q, 4N, 5P/);
+});
+
+test('can auto-continue to the next timeout-free screen in either web game', async () => {
+  const [html, app] = await Promise.all([
+    readFile(new URL('../index.html', import.meta.url), 'utf8'),
+    readFile(new URL('../app.js', import.meta.url), 'utf8'),
+  ]);
+
+  assert.match(html, /id="auto-continue-toggle"/);
+  assert.match(html, /immediately start the next question when an answer timer expires/);
+  assert.match(app, /autoContinueOnTimeout: false,/);
+  assert.match(app, /state\.autoContinueOnTimeout = refs\['auto-continue-toggle'\]\.checked;/);
+  assert.match(app, /if \(timedOut && state\.autoContinueOnTimeout\) \{\s*showNextQuestion\(\);\s*return;\s*\}/s);
+  assert.match(app, /if \(timedOut && state\.autoContinueOnTimeout\) \{\s*showNextMemoryQuestion\(\);\s*return;\s*\}/s);
 });
 
 test('creates ordered decimal memory challenges from configurable value and digit ranges', () => {
@@ -219,9 +257,10 @@ test('offers adjustable memory ranges and a single clean cash-entry focus bounda
   assert.match(css, /\.currency-input input:focus-visible\s*\{[^}]*outline:\s*none;/s);
 });
 
-test('cache-busts the stylesheet so mobile fixes reach returning visitors', async () => {
+test('cache-busts updated static assets so returning visitors receive new behavior', async () => {
   const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
   assert.match(html, /href="style\.css\?v=[^"]+"/);
+  assert.match(html, /src="app\.js\?v=[^"]+"/);
 });
 
 test('exports history as escaped CSV with a header row', () => {

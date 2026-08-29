@@ -21,7 +21,7 @@ const screens = ['setup', 'quiz', 'memory-read', 'memory-answer', 'feedback', 's
 const refs = Object.fromEntries([
   'setup-form', 'setup-screen', 'quiz-screen', 'feedback-screen', 'summary-screen', 'history-screen',
   'memory-read-screen', 'memory-answer-screen', 'cash-setup-options', 'memory-setup-options',
-  'question-count', 'time-limit', 'cash-builder-toggle', 'question-progress', 'timer', 'amount-due',
+  'question-count', 'time-limit', 'cash-builder-toggle', 'auto-continue-toggle', 'question-progress', 'timer', 'amount-due',
   'tender-breakdown', 'answer-form', 'answer-amount', 'cash-builder-section', 'cash-builder-heading',
   'cash-builder-purpose', 'cash-builder', 'selected-total', 'builder-status', 'clear-builder', 'quick-cash-entry', 'apply-quick-cash', 'feedback-heading',
   'feedback-kicker', 'feedback-lead', 'feedback-details', 'next-question', 'session-metrics',
@@ -42,6 +42,7 @@ const state = {
   questionCount: 10,
   timeLimitSeconds: 30,
   cashBuilderEnabled: false,
+  autoContinueOnTimeout: false,
   questionNumber: 0,
   question: null,
   results: [],
@@ -232,7 +233,7 @@ function changeBuilderCount(cents, change) {
 function applyQuickCashEntry() {
   const parsed = parseCashShorthand(refs['quick-cash-entry'].value);
   if (!parsed.valid) {
-    setMessage(`${parsed.error} Use entries such as 2x$10, 1x$1, 2d, 2q.`);
+    setMessage(`${parsed.error} Separate entries with commas: 2x10, 2x100, 2D, 3Q, 4N, 5P.`);
     refs['quick-cash-entry'].focus();
     return;
   }
@@ -435,6 +436,10 @@ function submitCurrentAnswer(timedOut = false) {
   const record = recordAnswer(answer, score, timedOut, elapsedSeconds);
   state.results.push(record);
   persistRecord(record);
+  if (timedOut && state.autoContinueOnTimeout) {
+    showNextQuestion();
+    return;
+  }
   populateFeedback(record, score);
   showScreen('feedback');
 }
@@ -560,6 +565,10 @@ function submitMemoryAnswer(timedOut = false) {
   const record = recordMemoryAnswer(answer, score, timedOut, elapsedSeconds);
   state.results.push(record);
   persistRecord(record);
+  if (timedOut && state.autoContinueOnTimeout) {
+    showNextMemoryQuestion();
+    return;
+  }
   populateMemoryFeedback(record, score);
   showScreen('feedback');
 }
@@ -740,6 +749,7 @@ refs['setup-form'].addEventListener('submit', (event) => {
   state.difficulty = difficulty;
   state.questionNumber = 0;
   state.results = [];
+  state.autoContinueOnTimeout = refs['auto-continue-toggle'].checked;
 
   if (game === 'memory') {
     const questionCount = Number(refs['memory-question-count'].value);
