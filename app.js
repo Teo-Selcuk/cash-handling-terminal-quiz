@@ -165,9 +165,15 @@ function makeSessionId() {
   return globalThis.crypto?.randomUUID?.() ?? `session-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+function isCompactViewport() {
+  return window.matchMedia?.('(max-width: 63.9375rem)').matches ?? false;
+}
+
 function showScreen(name) {
   for (const screen of screens) refs[`${screen}-screen`].hidden = screen !== name;
   state.activeScreen = name;
+  const activeScreen = refs[`${name}-screen`];
+  if (isCompactViewport()) activeScreen.scrollIntoView({ block: 'start', inline: 'nearest' });
   const roundInProgress = ['quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace'].includes(name);
   refs['open-history'].disabled = roundInProgress;
   if (!roundInProgress) stopTimer();
@@ -1232,6 +1238,7 @@ async function waitForTaskDemoResume(token) {
 
 async function animateTaskCursor(target, duration, token) {
   target.classList.add('task-demo-target');
+  if (isCompactViewport()) target.scrollIntoView({ block: 'center', inline: 'nearest' });
   if (taskReducedMotion()) return;
   const rect = target.getBoundingClientRect();
   const cursor = refs['task-demo-cursor'];

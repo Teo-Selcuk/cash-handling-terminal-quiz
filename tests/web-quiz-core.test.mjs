@@ -345,6 +345,21 @@ test('provides a browser-only task simulation workflow without leaking instructi
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
 });
 
+test('keeps every compact task simulation phase visible and its controls usable', async () => {
+  const [app, css] = await Promise.all([
+    readFile(new URL('../app.js', import.meta.url), 'utf8'),
+    readFile(new URL('../style.css', import.meta.url), 'utf8'),
+  ]);
+
+  assert.match(app, /function isCompactViewport\(\)/);
+  assert.match(app, /scrollIntoView\(\{ block: 'start', inline: 'nearest' \}\)/);
+  assert.match(app, /target\.scrollIntoView\(\{ block: 'center', inline: 'nearest' \}\)/);
+  assert.match(css, /@media \(max-width: 63\.9375rem\)\s*\{[\s\S]*\.task-workspace-screen[\s\S]*min-width:\s*0/s);
+  assert.match(css, /@media \(max-width: 63\.9375rem\)\s*\{[\s\S]*\.task-table\s*\{[\s\S]*display:\s*block/s);
+  assert.match(css, /@media \(max-width: 63\.9375rem\)\s*\{[\s\S]*\.task-table-wrap\s*\{[\s\S]*overflow:\s*visible/s);
+  assert.match(css, /@media \(max-width: 36rem\)\s*\{[\s\S]*\.task-table tr\s*\{[\s\S]*grid-template-columns:\s*1fr/s);
+});
+
 test('creates ordered decimal memory challenges from configurable value and digit ranges', () => {
   assert.deepEqual(MEMORY_MODE_CONFIG.Easy, {
     minimumDigits: 4,
