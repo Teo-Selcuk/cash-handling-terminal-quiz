@@ -39,6 +39,7 @@ foreach ($functionName in @(
     'ConvertFrom-CashBuilderShorthand',
     'New-MemoryChallenge',
     'ConvertTo-NormalizedMemoryAnswer',
+    'ConvertTo-NormalizedMemoryAnswerList',
     'Read-AutoContinueOnTimeoutSetting'
 )) {
     $functionAst = $ast.FindAll({
@@ -63,13 +64,27 @@ if ((ConvertFrom-CashBuilderShorthand -Text '2x$10, unknown').Valid) {
     throw 'Fast cash entry accepted an unknown token.'
 }
 
-$memoryChallenge = New-MemoryChallenge -Level Medium -Digits 7
-if ($memoryChallenge.Value.Length -ne 7 -or $memoryChallenge.Value -notmatch '^[1-9]\d{6}$') {
-    throw 'Memory challenge did not create the requested number of digits.'
+$memoryChallenge = New-MemoryChallenge `
+    -Level Medium `
+    -MinimumDigits 100 `
+    -MaximumDigits 100 `
+    -MinimumValues 100 `
+    -MaximumValues 100
+if (
+    $memoryChallenge.ValueCount -ne 100 -or
+    $memoryChallenge.Values.Count -ne 100 -or
+    @($memoryChallenge.Values | Where-Object { $_ -notmatch '^[1-9]\d{99}$' }).Count -ne 0
+) {
+    throw 'Memory challenge did not create up to 100 requested values with 100 digits each.'
 }
 
 if ((ConvertTo-NormalizedMemoryAnswer -Text '123 456') -ne '123456') {
     throw 'Memory answers should allow spacing without changing digit order.'
+}
+
+$memoryAnswers = @(ConvertTo-NormalizedMemoryAnswerList -Text '123 456, 789 012')
+if ($memoryAnswers.Count -ne 2 -or $memoryAnswers[0] -ne '123456' -or $memoryAnswers[1] -ne '789012') {
+    throw 'Memory answers should preserve comma-separated values while allowing spaces inside each value.'
 }
 
 $script:autoContinuePromptAnswers = [System.Collections.Queue]::new()
@@ -116,6 +131,18 @@ foreach ($functionName in @('Start-CashQuiz', 'Start-MemoryQuiz')) {
     if ($functionSource -notmatch 'TimedOut\s+-and\s+\$autoContinueOnTimeout') {
         throw "$functionName does not skip its next-question pause after a timeout."
     }
+}
+
+$memoryWorkflow = $ast.FindAll({
+    param($node)
+    $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+    $node.Name -eq 'Start-MemoryQuiz'
+}, $true) | Select-Object -First 1
+
+if ($memoryWorkflow.Extent.Text -notmatch 'Minimum values per round' -or
+    $memoryWorkflow.Extent.Text -notmatch 'Maximum values per round' -or
+    $memoryWorkflow.Extent.Text -notmatch 'Maximum 100') {
+    throw 'Number Memory does not expose the 100-value range in the PowerShell workflow.'
 }
 
 Write-Host 'Memory and shorthand structural tests passed.' -ForegroundColor Green

@@ -486,7 +486,7 @@ function renderMemoryAnswerInputs(valueCount) {
     input.type = 'text';
     input.inputMode = 'decimal';
     input.autocomplete = 'off';
-    input.maxLength = 25;
+    input.maxLength = state.memoryChallenge.maximumDigits + (state.memoryChallenge.decimals ? 1 : 0);
     input.placeholder = 'Type the value you remember';
     input.required = true;
     input.setAttribute('aria-describedby', `${inputId}-help`);
@@ -764,13 +764,13 @@ refs['setup-form'].addEventListener('submit', (event) => {
       refs['memory-question-count'].focus();
       return;
     }
-    if (!Number.isInteger(minimumValues) || minimumValues < 1 || minimumValues > 5) {
-      setMessage('Choose a minimum of 1 to 5 values per round.');
+    if (!Number.isInteger(minimumValues) || minimumValues < 1 || minimumValues > 100) {
+      setMessage('Choose a minimum of 1 to 100 values per round.');
       refs['memory-value-min'].focus();
       return;
     }
-    if (!Number.isInteger(maximumValues) || maximumValues < 1 || maximumValues > 5) {
-      setMessage('Choose a maximum of 1 to 5 values per round.');
+    if (!Number.isInteger(maximumValues) || maximumValues < 1 || maximumValues > 100) {
+      setMessage('Choose a maximum of 1 to 100 values per round.');
       refs['memory-value-max'].focus();
       return;
     }
@@ -779,13 +779,13 @@ refs['setup-form'].addEventListener('submit', (event) => {
       refs['memory-value-min'].focus();
       return;
     }
-    if (!Number.isInteger(minimumDigits) || minimumDigits < 1 || minimumDigits > 24) {
-      setMessage('Choose a minimum of 1 to 24 digits per value.');
+    if (!Number.isInteger(minimumDigits) || minimumDigits < 1 || minimumDigits > 100) {
+      setMessage('Choose a minimum of 1 to 100 digits per value.');
       refs['memory-digit-min'].focus();
       return;
     }
-    if (!Number.isInteger(maximumDigits) || maximumDigits < 1 || maximumDigits > 24) {
-      setMessage('Choose a maximum of 1 to 24 digits per value.');
+    if (!Number.isInteger(maximumDigits) || maximumDigits < 1 || maximumDigits > 100) {
+      setMessage('Choose a maximum of 1 to 100 digits per value.');
       refs['memory-digit-max'].focus();
       return;
     }

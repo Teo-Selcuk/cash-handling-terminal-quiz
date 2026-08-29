@@ -167,6 +167,22 @@ test('creates ordered decimal memory challenges from configurable value and digi
   assert.ok(upperRangeChallenge.values.every((value) => /^\d+\.\d+$/.test(value)));
 });
 
+test('supports up to 100 values with up to 100 digits each for memory rounds', () => {
+  const largestChallenge = createMemoryChallenge('Hard', {
+    minimumDigits: 100,
+    maximumDigits: 100,
+    minimumValues: 100,
+    maximumValues: 100,
+    decimals: false,
+  }, () => 0.5);
+
+  assert.equal(largestChallenge.valueCount, 100);
+  assert.equal(largestChallenge.values.length, 100);
+  assert.ok(largestChallenge.values.every((value) => /^\d{100}$/.test(value)));
+  assert.throws(() => createMemoryChallenge('Easy', { maximumDigits: 101 }), RangeError);
+  assert.throws(() => createMemoryChallenge('Easy', { maximumValues: 101 }), RangeError);
+});
+
 test('keeps one-value non-decimal memory challenges compatible with spaced answers', () => {
   const challenge = createMemoryChallenge('Medium', {
     minimumDigits: 6,
@@ -240,19 +256,25 @@ test('makes learners total the tendered cash and explains which cash to build', 
   assert.match(app, /Build the additional bills and coins the customer still needs to give\./);
 });
 
-test('offers adjustable memory ranges and a single clean cash-entry focus boundary', async () => {
-  const [html, css] = await Promise.all([
+test('offers 100-item memory ranges and mobile-ready answer fields', async () => {
+  const [html, app, css] = await Promise.all([
     readFile(new URL('../index.html', import.meta.url), 'utf8'),
+    readFile(new URL('../app.js', import.meta.url), 'utf8'),
     readFile(new URL('../style.css', import.meta.url), 'utf8'),
   ]);
 
-  assert.match(html, /id="memory-value-min"/);
-  assert.match(html, /id="memory-value-max"/);
-  assert.match(html, /id="memory-digit-min"/);
-  assert.match(html, /id="memory-digit-max"/);
+  assert.match(html, /id="memory-value-min"[^>]*max="100"/);
+  assert.match(html, /id="memory-value-max"[^>]*max="100"/);
+  assert.match(html, /id="memory-digit-min"[^>]*max="100"/);
+  assert.match(html, /id="memory-digit-max"[^>]*max="100"/);
   assert.match(html, /id="memory-decimals"/);
   assert.match(html, /id="memory-answer-list"/);
   assert.doesNotMatch(html, /id="memory-digits"/);
+  assert.match(app, /maximumDigits \+ \(state\.memoryChallenge\.decimals \? 1 : 0\)/);
+  assert.match(app, /1 to 100 values per round/);
+  assert.match(app, /1 to 100 digits per value/);
+  assert.match(css, /\.memory-answer-list\s*\{[^}]*grid-template-columns:/s);
+  assert.match(css, /\.memory-values li > span:last-child\s*\{[^}]*overflow-wrap:\s*anywhere;/s);
   assert.match(css, /\.currency-input:focus-within\s*\{[^}]*outline:/s);
   assert.match(css, /\.currency-input input:focus-visible\s*\{[^}]*outline:\s*none;/s);
 });

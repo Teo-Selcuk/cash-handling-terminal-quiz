@@ -198,13 +198,15 @@ input:disabled { background: var(--disabled-surface); color: var(--muted); }
 .memory-decimal-toggle { align-self: end; }
 .memory-screen { text-align: center; }
 .memory-screen .question-header { text-align: left; }
-.memory-values { display: grid; gap: 0.75rem; max-width: 100%; margin: 1.5rem 0 0.75rem; padding: 0; list-style: none; color: var(--brand); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: clamp(2rem, 10vw, 5rem); font-weight: 800; letter-spacing: 0.08em; line-height: 1.1; font-variant-numeric: tabular-nums; }
-.memory-values li { display: flex; align-items: baseline; justify-content: center; gap: 0.75rem; overflow-wrap: anywhere; }
+.memory-values { display: grid; gap: 0.75rem; max-width: 100%; margin: 1.5rem 0 0.75rem; padding: 0; list-style: none; color: var(--brand); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: clamp(1.25rem, 6vw, 3rem); font-weight: 800; letter-spacing: 0.08em; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.memory-values li { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: baseline; gap: 0.75rem; text-align: left; }
+.memory-values li > span:last-child { min-width: 0; overflow-wrap: anywhere; word-break: break-all; }
 .memory-value-index { flex: 0 0 auto; color: var(--muted); font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-size: 0.875rem; letter-spacing: normal; }
-.memory-answer-list { display: grid; gap: 0.875rem; }
+.memory-answer-list { display: grid; gap: 0.875rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); }
 .memory-answer-field { display: grid; gap: 0.25rem; text-align: left; }
 .memory-answer-field small { color: var(--muted); font-weight: 400; }
-.memory-screen .answer-form { max-width: 34rem; margin: 1.5rem auto 0; text-align: left; }
+.memory-answer-field input { min-width: 0; }
+.memory-screen .answer-form { max-width: 60rem; margin: 1.5rem auto 0; text-align: left; }
 
 .feedback-screen h2[data-result="correct"] { color: var(--success); }
 .feedback-screen h2[data-result="incorrect"] { color: var(--danger); }
@@ -268,4 +270,6 @@ footer { width: min(100% - 2rem, 64rem); margin: 0 auto; padding-bottom: 2rem; c
   .chart-note { text-align: left; }
   .quick-entry-controls { grid-template-columns: 1fr; }
   .quick-entry-controls .secondary-button { width: 100%; }
+  .memory-values { font-size: clamp(1.125rem, 6vw, 1.75rem); letter-spacing: 0.04em; }
+  .memory-answer-list { grid-template-columns: 1fr; }
 }

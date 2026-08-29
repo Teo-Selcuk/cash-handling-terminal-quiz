@@ -179,8 +179,8 @@ export function createMemoryChallenge(level, options = {}, rng = Math.random) {
   const decimals = options.decimals ?? defaults.decimals;
   const readSeconds = options.readSeconds ?? defaults.readSeconds;
   const writeSeconds = options.writeSeconds ?? defaults.writeSeconds;
-  requireMemoryRange(minimumDigits, maximumDigits, 'Digits', 1, 24);
-  requireMemoryRange(minimumValues, maximumValues, 'Values', 1, 5);
+  requireMemoryRange(minimumDigits, maximumDigits, 'Digits', 1, 100);
+  requireMemoryRange(minimumValues, maximumValues, 'Values', 1, 100);
   if (typeof decimals !== 'boolean') throw new TypeError('Decimals must be true or false.');
   requireMemoryInteger(readSeconds, 'Read seconds', 1, 60);
   requireMemoryInteger(writeSeconds, 'Write seconds', 1, 300);

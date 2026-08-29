@@ -2542,21 +2542,30 @@
         switch ($Level) {
             'Easy' {
                 return [pscustomobject]@{
-                    Digits = 4
+                    MinimumDigits = 4
+                    MaximumDigits = 6
+                    MinimumValues = 1
+                    MaximumValues = 2
                     ReadSeconds = 5
                     WriteSeconds = 10
                 }
             }
             'Medium' {
                 return [pscustomobject]@{
-                    Digits = 7
+                    MinimumDigits = 6
+                    MaximumDigits = 8
+                    MinimumValues = 2
+                    MaximumValues = 3
                     ReadSeconds = 4
                     WriteSeconds = 8
                 }
             }
             'Hard' {
                 return [pscustomobject]@{
-                    Digits = 10
+                    MinimumDigits = 8
+                    MaximumDigits = 10
+                    MinimumValues = 3
+                    MaximumValues = 5
                     ReadSeconds = 3
                     WriteSeconds = 6
                 }
@@ -2568,20 +2577,50 @@
         param(
             [ValidateSet('Easy', 'Medium', 'Hard')]
             [string]$Level,
-            [ValidateRange(1, 24)]
-            [int]$Digits
+            [ValidateRange(1, 100)]
+            [int]$MinimumDigits,
+            [ValidateRange(1, 100)]
+            [int]$MaximumDigits,
+            [ValidateRange(1, 100)]
+            [int]$MinimumValues,
+            [ValidateRange(1, 100)]
+            [int]$MaximumValues
         )
 
-        $number = [string](Get-Random -Minimum 1 -Maximum 10)
+        if ($MinimumDigits -gt $MaximumDigits) {
+            throw 'Minimum digits cannot be greater than maximum digits.'
+        }
 
-        for ($index = 1; $index -lt $Digits; $index++) {
-            $number += [string](Get-Random -Minimum 0 -Maximum 10)
+        if ($MinimumValues -gt $MaximumValues) {
+            throw 'Minimum values cannot be greater than maximum values.'
+        }
+
+        $valueCount = Get-Random -Minimum $MinimumValues -Maximum ($MaximumValues + 1)
+        $digitsByValue = @()
+        $values = @()
+
+        for ($valueIndex = 0; $valueIndex -lt $valueCount; $valueIndex++) {
+            $digits = Get-Random -Minimum $MinimumDigits -Maximum ($MaximumDigits + 1)
+            $number = [string](Get-Random -Minimum 1 -Maximum 10)
+
+            for ($index = 1; $index -lt $digits; $index++) {
+                $number += [string](Get-Random -Minimum 0 -Maximum 10)
+            }
+
+            $digitsByValue += $digits
+            $values += $number
         }
 
         return [pscustomobject]@{
             Level = $Level
-            Digits = $Digits
-            Value = $number
+            MinimumDigits = $MinimumDigits
+            MaximumDigits = $MaximumDigits
+            MinimumValues = $MinimumValues
+            MaximumValues = $MaximumValues
+            ValueCount = $valueCount
+            DigitsByValue = $digitsByValue
+            Values = $values
+            Value = $values -join ', '
         }
     }
 
@@ -2595,6 +2634,22 @@
         return ($Text -replace '[^\d]', '')
     }
 
+    function ConvertTo-NormalizedMemoryAnswerList {
+        param([string]$Text)
+
+        if ([string]::IsNullOrWhiteSpace($Text)) {
+            return @()
+        }
+
+        return @(
+            $Text -split '[,;]+' |
+                ForEach-Object {
+                    ConvertTo-NormalizedMemoryAnswer -Text $_
+                } |
+                Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+        )
+    }
+
     function Start-MemoryQuiz {
         $difficulty = Read-Difficulty
         $defaults = Get-MemoryModeConfig -Level $difficulty
@@ -2603,11 +2658,26 @@
             -Default $appState.Settings.DefaultQuestionCount `
             -Minimum 1 `
             -Maximum 100
-        $digits = Read-IntegerSetting `
-            -Prompt 'Digits to remember' `
-            -Default $defaults.Digits `
+        $minimumValues = Read-IntegerSetting `
+            -Prompt 'Minimum values per round' `
+            -Default $defaults.MinimumValues `
             -Minimum 1 `
-            -Maximum 24
+            -Maximum 100
+        $maximumValues = Read-IntegerSetting `
+            -Prompt 'Maximum values per round' `
+            -Default $defaults.MaximumValues `
+            -Minimum $minimumValues `
+            -Maximum 100
+        $minimumDigits = Read-IntegerSetting `
+            -Prompt 'Minimum digits in each value' `
+            -Default $defaults.MinimumDigits `
+            -Minimum 1 `
+            -Maximum 100
+        $maximumDigits = Read-IntegerSetting `
+            -Prompt 'Maximum digits in each value' `
+            -Default $defaults.MaximumDigits `
+            -Minimum $minimumDigits `
+            -Maximum 100
         $readSeconds = Read-IntegerSetting `
             -Prompt 'Seconds to read each number' `
             -Default $defaults.ReadSeconds `
@@ -2625,21 +2695,26 @@
 
         Write-Host ''
         Write-Host 'NUMBER MEMORY GAME' -ForegroundColor Cyan
-        Write-Host "Mode: $difficulty | $digits digits | read: $readSeconds seconds | write: $writeSeconds seconds" -ForegroundColor Cyan
+        Write-Host "Mode: $difficulty | $minimumValues-$maximumValues values per round | $minimumDigits-$maximumDigits digits per value | read: $readSeconds seconds | write: $writeSeconds seconds" -ForegroundColor Cyan
         Write-Host "Auto-continue after timeouts: $(if ($autoContinueOnTimeout) { 'ON' } else { 'OFF' })" -ForegroundColor Cyan
-        Write-Host 'Read each number, then type it after the screen clears. Spaces are allowed in your answer.' -ForegroundColor DarkGray
+        Write-Host 'Read every value, then type them after the screen clears. Separate values with commas; spaces inside a value are allowed.' -ForegroundColor DarkGray
 
         for ($round = 1; $round -le $questionCount; $round++) {
             $challenge = New-MemoryChallenge `
                 -Level $difficulty `
-                -Digits $digits
+                -MinimumDigits $minimumDigits `
+                -MaximumDigits $maximumDigits `
+                -MinimumValues $minimumValues `
+                -MaximumValues $maximumValues
 
             Write-Host ''
             Write-Host ('=' * 72) -ForegroundColor DarkGray
             Write-Host "MEMORY ROUND $round OF $questionCount | $difficulty" -ForegroundColor Cyan
-            Write-Host "Read this $digits-digit number. It hides in $readSeconds seconds:" -ForegroundColor White
+            Write-Host "Read these $($challenge.ValueCount) value(s). Each has $minimumDigits-$maximumDigits digits and hides in $readSeconds seconds:" -ForegroundColor White
             Write-Host ''
-            Write-Host $challenge.Value -ForegroundColor Green
+            for ($valueIndex = 0; $valueIndex -lt $challenge.Values.Count; $valueIndex++) {
+                Write-Host ("Value {0}: {1}" -f ($valueIndex + 1), $challenge.Values[$valueIndex]) -ForegroundColor Green
+            }
 
             for ($secondsRemaining = $readSeconds; $secondsRemaining -gt 0; $secondsRemaining--) {
                 $percentComplete = [Math]::Round(
@@ -2657,7 +2732,7 @@
 
             Write-Host 'NUMBER MEMORY GAME' -ForegroundColor Cyan
             Write-Host "Round $round of $questionCount | The number is hidden." -ForegroundColor White
-            Write-Host "Type the number from memory within $writeSeconds seconds. Press Esc to stop the game." -ForegroundColor DarkGray
+            Write-Host "Type $($challenge.ValueCount) value(s) from memory, separated by commas, within $writeSeconds seconds. Press Esc to stop the game." -ForegroundColor DarkGray
 
             $timedAnswer = Read-TimedAnswer -Seconds $writeSeconds
 
@@ -2666,12 +2741,18 @@
                 break
             }
 
-            $normalizedAnswer = ConvertTo-NormalizedMemoryAnswer `
+            $normalizedAnswerValues = ConvertTo-NormalizedMemoryAnswerList `
                 -Text $timedAnswer.Text
-            $correct = (
-                -not $timedAnswer.TimedOut -and
-                $normalizedAnswer -eq $challenge.Value
-            )
+            $correct = -not $timedAnswer.TimedOut -and $normalizedAnswerValues.Count -eq $challenge.Values.Count
+
+            if ($correct) {
+                for ($valueIndex = 0; $valueIndex -lt $challenge.Values.Count; $valueIndex++) {
+                    if ($normalizedAnswerValues[$valueIndex] -ne $challenge.Values[$valueIndex]) {
+                        $correct = $false
+                        break
+                    }
+                }
+            }
 
             if ($correct) {
                 Write-Host 'CORRECT - You recalled the number in order.' -ForegroundColor Green
@@ -2683,7 +2764,7 @@
                 Write-Host "NOT QUITE - The number was $($challenge.Value)." -ForegroundColor Red
             }
 
-            Write-Host "Your entry: $(if ([string]::IsNullOrWhiteSpace($normalizedAnswer)) { '<NONE>' } else { $normalizedAnswer })" -ForegroundColor DarkGray
+            Write-Host "Your entry: $(if ($normalizedAnswerValues.Count -eq 0) { '<NONE>' } else { $normalizedAnswerValues -join ', ' })" -ForegroundColor DarkGray
             Write-Host ("Time used: " + $timedAnswer.ElapsedSeconds.ToString('N2') + ' seconds') -ForegroundColor DarkGray
 
             $results += [pscustomobject]@{
