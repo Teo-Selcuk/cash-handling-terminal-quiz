@@ -6,7 +6,7 @@
     <meta name="description" content="Fast, local-only cash-handling and number-memory practice games.">
     <meta name="theme-color" content="#12343b">
     <title>Cash &amp; Memory Trainer</title>
-    <link rel="stylesheet" href="style.css?v=20260827-self-total">
+    <link rel="stylesheet" href="style.css?v=20260828-memory-ranges">
   </head>
   <body>
     <main class="app-shell">
@@ -65,19 +65,44 @@
           </div>
 
           <div id="memory-setup-options" hidden>
-            <p class="setup-note">Each round shows a number first, then hides it while you recall it. Start with the mode defaults or adjust every value below.</p>
+            <p class="setup-note">Each round shows one or more values, then hides them while you write them back in order. Set the ranges below or start with the mode defaults.</p>
             <div class="form-grid memory-settings-grid">
               <label for="memory-question-count">Rounds
                 <input id="memory-question-count" name="memoryQuestionCount" type="number" value="10" min="1" max="100" inputmode="numeric" required>
               </label>
-              <label for="memory-digits">Digits to remember
-                <input id="memory-digits" name="memoryDigits" type="number" value="4" min="1" max="24" inputmode="numeric" required>
-              </label>
+              <fieldset class="memory-range">
+                <legend>Values per round</legend>
+                <p>Choose how many values the learner must recall in order.</p>
+                <div class="range-controls">
+                  <label for="memory-value-min">Minimum
+                    <input id="memory-value-min" name="memoryValueMinimum" type="number" value="1" min="1" max="5" inputmode="numeric" required>
+                  </label>
+                  <label for="memory-value-max">Maximum
+                    <input id="memory-value-max" name="memoryValueMaximum" type="number" value="2" min="1" max="5" inputmode="numeric" required>
+                  </label>
+                </div>
+              </fieldset>
+              <fieldset class="memory-range">
+                <legend>Digits in each value</legend>
+                <p>Digits exclude the decimal point: <strong>12.36</strong> has four digits.</p>
+                <div class="range-controls">
+                  <label for="memory-digit-min">Minimum
+                    <input id="memory-digit-min" name="memoryDigitMinimum" type="number" value="4" min="1" max="24" inputmode="numeric" required>
+                  </label>
+                  <label for="memory-digit-max">Maximum
+                    <input id="memory-digit-max" name="memoryDigitMaximum" type="number" value="6" min="1" max="24" inputmode="numeric" required>
+                  </label>
+                </div>
+              </fieldset>
               <label for="memory-read-time">Seconds to read
                 <input id="memory-read-time" name="memoryReadTime" type="number" value="5" min="1" max="60" inputmode="numeric" required>
               </label>
               <label for="memory-write-time">Seconds to write
                 <input id="memory-write-time" name="memoryWriteTime" type="number" value="10" min="1" max="300" inputmode="numeric" required>
+              </label>
+              <label class="toggle-row memory-decimal-toggle" for="memory-decimals">
+                <input id="memory-decimals" name="memoryDecimals" type="checkbox" checked>
+                <span><strong>Include decimal points</strong><small>Decimal positions are part of each value you must remember.</small></span>
               </label>
             </div>
           </div>
@@ -142,10 +167,10 @@
           <p class="eyebrow" id="memory-read-progress">Round 1 of 10</p>
           <time class="timer" id="memory-read-timer" aria-label="Seconds left to read the number">0:05</time>
         </div>
-        <h2 id="memory-read-heading" tabindex="-1">Memorize this number</h2>
-        <p class="memory-instruction">Read this number. It will disappear when the reading timer ends.</p>
-        <p class="memory-number" id="memory-number" aria-label="Number to remember">0000</p>
-        <p class="memory-hint" id="memory-read-hint">4 digits</p>
+        <h2 id="memory-read-heading" tabindex="-1">Memorize these values</h2>
+        <p class="memory-instruction">Read every value in order. They will disappear when the reading timer ends.</p>
+        <ol class="memory-values" id="memory-number" aria-label="Values to remember"><li>0000</li></ol>
+        <p class="memory-hint" id="memory-read-hint">1 value with 4 digits</p>
       </section>
 
       <section class="screen memory-screen" id="memory-answer-screen" hidden aria-labelledby="memory-answer-heading">
@@ -153,12 +178,10 @@
           <p class="eyebrow" id="memory-answer-progress">Round 1 of 10</p>
           <time class="timer" id="memory-answer-timer" aria-label="Seconds left to write the number">0:10</time>
         </div>
-        <h2 id="memory-answer-heading" tabindex="-1">Type the number from memory</h2>
-        <p class="memory-instruction">The number is hidden. Spaces are okay; enter the digits in order.</p>
+        <h2 id="memory-answer-heading" tabindex="-1">Type the values in order</h2>
+        <p class="memory-instruction">The values are hidden. Enter one value per field, keeping each decimal point in place.</p>
         <form id="memory-answer-form" class="answer-form">
-          <label for="memory-answer">Your number
-            <input id="memory-answer" type="text" inputmode="numeric" autocomplete="off" maxlength="47" placeholder="Type the digits you remember" required>
-          </label>
+          <div class="memory-answer-list" id="memory-answer-list" aria-label="Values to recall"></div>
           <button class="primary-button" type="submit">Check memory</button>
         </form>
       </section>

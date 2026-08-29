@@ -18,9 +18,9 @@ export const DIFFICULTY_CONFIG = Object.freeze({
 });
 
 export const MEMORY_MODE_CONFIG = Object.freeze({
-  Easy: Object.freeze({ digits: 4, readSeconds: 5, writeSeconds: 10 }),
-  Medium: Object.freeze({ digits: 7, readSeconds: 4, writeSeconds: 8 }),
-  Hard: Object.freeze({ digits: 10, readSeconds: 3, writeSeconds: 6 }),
+  Easy: Object.freeze({ minimumDigits: 4, maximumDigits: 6, minimumValues: 1, maximumValues: 2, decimals: true, readSeconds: 5, writeSeconds: 10 }),
+  Medium: Object.freeze({ minimumDigits: 6, maximumDigits: 8, minimumValues: 2, maximumValues: 3, decimals: true, readSeconds: 4, writeSeconds: 8 }),
+  Hard: Object.freeze({ minimumDigits: 8, maximumDigits: 10, minimumValues: 3, maximumValues: 5, decimals: true, readSeconds: 3, writeSeconds: 6 }),
 });
 
 const NUMBER_WORD_COUNTS = Object.freeze({
@@ -150,26 +150,76 @@ function requireMemoryInteger(value, name, minimum, maximum) {
   }
 }
 
+function requireMemoryRange(minimum, maximum, name, allowedMinimum, allowedMaximum) {
+  requireMemoryInteger(minimum, `${name} minimum`, allowedMinimum, allowedMaximum);
+  requireMemoryInteger(maximum, `${name} maximum`, allowedMinimum, allowedMaximum);
+  if (minimum > maximum) throw new RangeError(`${name} minimum cannot be greater than its maximum.`);
+}
+
+function memoryRandomInteger(minimum, maximum, rng) {
+  return minimum + randomIndex(maximum - minimum + 1, rng);
+}
+
+function createMemoryValue(digits, decimals, rng) {
+  let value = String(randomIndex(9, rng) + 1);
+  for (let index = 1; index < digits; index += 1) value += String(randomIndex(10, rng));
+  if (!decimals || digits === 1) return value;
+
+  const decimalIndex = memoryRandomInteger(1, digits - 1, rng);
+  return `${value.slice(0, decimalIndex)}.${value.slice(decimalIndex)}`;
+}
+
 export function createMemoryChallenge(level, options = {}, rng = Math.random) {
   const defaults = MEMORY_MODE_CONFIG[level];
   if (!defaults) throw new RangeError(`Unknown memory difficulty: ${level}`);
-  const digits = options.digits ?? defaults.digits;
+  const minimumDigits = options.minimumDigits ?? options.digits ?? defaults.minimumDigits;
+  const maximumDigits = options.maximumDigits ?? options.digits ?? defaults.maximumDigits;
+  const minimumValues = options.minimumValues ?? defaults.minimumValues;
+  const maximumValues = options.maximumValues ?? defaults.maximumValues;
+  const decimals = options.decimals ?? defaults.decimals;
   const readSeconds = options.readSeconds ?? defaults.readSeconds;
   const writeSeconds = options.writeSeconds ?? defaults.writeSeconds;
-  requireMemoryInteger(digits, 'Digits', 1, 24);
+  requireMemoryRange(minimumDigits, maximumDigits, 'Digits', 1, 24);
+  requireMemoryRange(minimumValues, maximumValues, 'Values', 1, 5);
+  if (typeof decimals !== 'boolean') throw new TypeError('Decimals must be true or false.');
   requireMemoryInteger(readSeconds, 'Read seconds', 1, 60);
   requireMemoryInteger(writeSeconds, 'Write seconds', 1, 300);
 
-  let value = String(randomIndex(9, rng) + 1);
-  for (let index = 1; index < digits; index += 1) value += String(randomIndex(10, rng));
-  return { level, digits, readSeconds, writeSeconds, value };
+  const valueCount = memoryRandomInteger(minimumValues, maximumValues, rng);
+  const digitsByValue = Array.from({ length: valueCount }, () => memoryRandomInteger(minimumDigits, maximumDigits, rng));
+  const values = digitsByValue.map((digits) => createMemoryValue(digits, decimals, rng));
+  return {
+    level,
+    minimumDigits,
+    maximumDigits,
+    minimumValues,
+    maximumValues,
+    decimals,
+    valueCount,
+    digitsByValue,
+    digits: digitsByValue[0],
+    readSeconds,
+    writeSeconds,
+    values,
+    value: values.join(' • '),
+  };
 }
 
 export function scoreMemoryAnswer(challenge, answer) {
-  const normalizedAnswer = typeof answer === 'string' ? answer.replace(/[^\d]/g, '') : '';
+  const expectedValues = Array.isArray(challenge.values) ? challenge.values : [challenge.value];
+  const answerValues = Array.isArray(answer) ? answer : [answer];
+  const normalizeValue = (value) => {
+    const normalized = typeof value === 'string' ? value.replaceAll(/\s/g, '') : '';
+    return /^\d+(?:\.\d+)?$/.test(normalized) ? normalized : '';
+  };
+  const normalizedValues = answerValues.map(normalizeValue);
+  const normalizedAnswer = normalizedValues.join(' • ');
+  const correct = expectedValues.length === normalizedValues.length
+    && expectedValues.every((value, index) => value === normalizedValues[index]);
   return {
-    correct: normalizedAnswer === challenge.value,
+    correct,
     normalizedAnswer,
+    normalizedValues,
   };
 }
 

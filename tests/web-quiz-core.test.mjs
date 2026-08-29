@@ -87,16 +87,60 @@ test('parses fast cash-builder shorthand with bill and coin acronyms', () => {
   assert.equal(parseCashShorthand('2x$10, mystery-token').valid, false);
 });
 
-test('creates configurable memory challenges for each mode and scores normalized answers', () => {
-  assert.equal(MEMORY_MODE_CONFIG.Easy.digits, 4);
-  assert.equal(MEMORY_MODE_CONFIG.Medium.digits, 7);
-  assert.equal(MEMORY_MODE_CONFIG.Hard.digits, 10);
+test('creates ordered decimal memory challenges from configurable value and digit ranges', () => {
+  assert.deepEqual(MEMORY_MODE_CONFIG.Easy, {
+    minimumDigits: 4,
+    maximumDigits: 6,
+    minimumValues: 1,
+    maximumValues: 2,
+    decimals: true,
+    readSeconds: 5,
+    writeSeconds: 10,
+  });
 
-  const challenge = createMemoryChallenge('Medium', { digits: 6, readSeconds: 4, writeSeconds: 8 }, () => 0.25);
-  assert.equal(challenge.value, '322222');
-  assert.equal(challenge.digits, 6);
+  const challenge = createMemoryChallenge('Easy', {
+    minimumDigits: 4,
+    maximumDigits: 4,
+    minimumValues: 3,
+    maximumValues: 3,
+    decimals: true,
+    readSeconds: 4,
+    writeSeconds: 8,
+  }, () => 0.25);
+
+  assert.deepEqual(challenge.values, ['3.222', '3.222', '3.222']);
+  assert.deepEqual(challenge.digitsByValue, [4, 4, 4]);
+  assert.equal(challenge.valueCount, 3);
   assert.equal(challenge.readSeconds, 4);
   assert.equal(challenge.writeSeconds, 8);
+  assert.equal(scoreMemoryAnswer(challenge, ['3.222', '3.222', '3.222']).correct, true);
+  assert.equal(scoreMemoryAnswer(challenge, ['3.222', '322.2', '3.222']).correct, false);
+  assert.equal(scoreMemoryAnswer(challenge, ['3.222', '3.222']).correct, false);
+
+  const upperRangeChallenge = createMemoryChallenge('Easy', {
+    minimumDigits: 4,
+    maximumDigits: 6,
+    minimumValues: 1,
+    maximumValues: 5,
+    decimals: true,
+  }, () => 0.999999);
+  assert.equal(upperRangeChallenge.valueCount, 5);
+  assert.deepEqual(upperRangeChallenge.digitsByValue, [6, 6, 6, 6, 6]);
+  assert.ok(upperRangeChallenge.values.every((value) => /^\d+\.\d+$/.test(value)));
+});
+
+test('keeps one-value non-decimal memory challenges compatible with spaced answers', () => {
+  const challenge = createMemoryChallenge('Medium', {
+    minimumDigits: 6,
+    maximumDigits: 6,
+    minimumValues: 1,
+    maximumValues: 1,
+    decimals: false,
+    readSeconds: 4,
+    writeSeconds: 8,
+  }, () => 0.25);
+
+  assert.deepEqual(challenge.values, ['322222']);
   assert.equal(scoreMemoryAnswer(challenge, '322 222').correct, true);
   assert.equal(scoreMemoryAnswer(challenge, '322223').correct, false);
 });
@@ -156,6 +200,23 @@ test('makes learners total the tendered cash and explains which cash to build', 
   assert.doesNotMatch(app, /amount-tendered/);
   assert.match(app, /Build the change you would give the customer in bills and coins\./);
   assert.match(app, /Build the additional bills and coins the customer still needs to give\./);
+});
+
+test('offers adjustable memory ranges and a single clean cash-entry focus boundary', async () => {
+  const [html, css] = await Promise.all([
+    readFile(new URL('../index.html', import.meta.url), 'utf8'),
+    readFile(new URL('../style.css', import.meta.url), 'utf8'),
+  ]);
+
+  assert.match(html, /id="memory-value-min"/);
+  assert.match(html, /id="memory-value-max"/);
+  assert.match(html, /id="memory-digit-min"/);
+  assert.match(html, /id="memory-digit-max"/);
+  assert.match(html, /id="memory-decimals"/);
+  assert.match(html, /id="memory-answer-list"/);
+  assert.doesNotMatch(html, /id="memory-digits"/);
+  assert.match(css, /\.currency-input:focus-within\s*\{[^}]*outline:/s);
+  assert.match(css, /\.currency-input input:focus-visible\s*\{[^}]*outline:\s*none;/s);
 });
 
 test('cache-busts the stylesheet so mobile fixes reach returning visitors', async () => {

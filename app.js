@@ -28,9 +28,9 @@ const refs = Object.fromEntries([
   'start-another', 'summary-history', 'open-history', 'back-to-setup', 'history-metrics',
   'history-outcome-diagram', 'history-outcome-legend', 'history-outcomes-summary', 'history-accuracy-chart',
   'history-rows', 'download-csv', 'clear-history', 'message', 'submit-answer', 'theme-toggle',
-  'memory-question-count', 'memory-digits', 'memory-read-time', 'memory-write-time', 'memory-read-progress',
-  'memory-read-timer', 'memory-number', 'memory-read-hint', 'memory-answer-form', 'memory-answer-progress',
-  'memory-answer-timer', 'memory-answer', 'memory-answer-heading', 'summary-heading',
+  'memory-question-count', 'memory-value-min', 'memory-value-max', 'memory-digit-min', 'memory-digit-max', 'memory-decimals',
+  'memory-read-time', 'memory-write-time', 'memory-read-progress', 'memory-read-timer', 'memory-number', 'memory-read-hint',
+  'memory-answer-form', 'memory-answer-list', 'memory-answer-progress', 'memory-answer-timer', 'memory-answer-heading', 'summary-heading',
   'easy-description', 'medium-description', 'hard-description',
 ].map((id) => [id, document.getElementById(id)]));
 
@@ -50,7 +50,11 @@ const state = {
   deadline: 0,
   answerSubmitted: false,
   memoryChallenge: null,
-  memoryDigits: MEMORY_MODE_CONFIG.Easy.digits,
+  memoryMinimumDigits: MEMORY_MODE_CONFIG.Easy.minimumDigits,
+  memoryMaximumDigits: MEMORY_MODE_CONFIG.Easy.maximumDigits,
+  memoryMinimumValues: MEMORY_MODE_CONFIG.Easy.minimumValues,
+  memoryMaximumValues: MEMORY_MODE_CONFIG.Easy.maximumValues,
+  memoryDecimals: MEMORY_MODE_CONFIG.Easy.decimals,
   memoryReadSeconds: MEMORY_MODE_CONFIG.Easy.readSeconds,
   memoryWriteSeconds: MEMORY_MODE_CONFIG.Easy.writeSeconds,
   timerTarget: null,
@@ -104,7 +108,7 @@ function showScreen(name) {
     return;
   }
   if (name === 'memory-answer') {
-    window.setTimeout(() => refs['memory-answer'].focus({ preventScroll: true }), 0);
+    window.setTimeout(() => refs['memory-answer-list'].querySelector('input')?.focus({ preventScroll: true }), 0);
     return;
   }
   const heading = document.querySelector(`#${name}-screen h2`);
@@ -155,7 +159,11 @@ function selectedDifficulty() {
 
 function applyMemoryModeDefaults() {
   const defaults = MEMORY_MODE_CONFIG[selectedDifficulty()];
-  refs['memory-digits'].value = String(defaults.digits);
+  refs['memory-value-min'].value = String(defaults.minimumValues);
+  refs['memory-value-max'].value = String(defaults.maximumValues);
+  refs['memory-digit-min'].value = String(defaults.minimumDigits);
+  refs['memory-digit-max'].value = String(defaults.maximumDigits);
+  refs['memory-decimals'].checked = defaults.decimals;
   refs['memory-read-time'].value = String(defaults.readSeconds);
   refs['memory-write-time'].value = String(defaults.writeSeconds);
 }
@@ -167,9 +175,9 @@ function updateGameSetup() {
   refs['memory-setup-options'].hidden = !memoryGame;
   const descriptions = memoryGame
     ? {
-      Easy: '4 digits, 5 seconds to read, 10 seconds to write',
-      Medium: '7 digits, 4 seconds to read, 8 seconds to write',
-      Hard: '10 digits, 3 seconds to read, 6 seconds to write',
+      Easy: '1–2 values, 4–6 digits each',
+      Medium: '2–3 values, 6–8 digits each',
+      Hard: '3–5 values, 8–10 digits each',
     }
     : {
       Easy: 'Up to $200, quarter increments',
@@ -445,8 +453,50 @@ function showNextQuestion() {
   startTimer(state.timeLimitSeconds, refs.timer, () => submitCurrentAnswer(true));
 }
 
+function renderMemoryReadValues(challenge) {
+  refs['memory-number'].replaceChildren(...challenge.values.map((value, index) => {
+    const item = document.createElement('li');
+    const number = document.createElement('span');
+    const label = document.createElement('span');
+    number.textContent = value;
+    label.className = 'memory-value-index';
+    label.textContent = `Value ${index + 1}`;
+    item.append(label, number);
+    return item;
+  }));
+}
+
+function renderMemoryAnswerInputs(valueCount) {
+  refs['memory-answer-list'].replaceChildren(...Array.from({ length: valueCount }, (_, index) => {
+    const label = document.createElement('label');
+    const helper = document.createElement('small');
+    const input = document.createElement('input');
+    const inputId = `memory-answer-${index + 1}`;
+    label.className = 'memory-answer-field';
+    label.htmlFor = inputId;
+    label.append(`Value ${index + 1}`);
+    helper.textContent = `Enter value ${index + 1} of ${valueCount}`;
+    input.id = inputId;
+    input.name = `memoryAnswer${index + 1}`;
+    input.type = 'text';
+    input.inputMode = 'decimal';
+    input.autocomplete = 'off';
+    input.maxLength = 25;
+    input.placeholder = 'Type the value you remember';
+    input.required = true;
+    input.setAttribute('aria-describedby', `${inputId}-help`);
+    helper.id = `${inputId}-help`;
+    label.append(helper, input);
+    return label;
+  }));
+}
+
+function memoryAnswerValues() {
+  return [...refs['memory-answer-list'].querySelectorAll('input')].map((input) => input.value);
+}
+
 function showMemoryAnswer() {
-  refs['memory-answer'].value = '';
+  renderMemoryAnswerInputs(state.memoryChallenge.valueCount);
   refs['memory-answer-progress'].textContent = `Round ${state.questionNumber} of ${state.questionCount}`;
   showScreen('memory-answer');
   startTimer(state.memoryWriteSeconds, refs['memory-answer-timer'], () => submitMemoryAnswer(true));
@@ -460,12 +510,13 @@ function recordMemoryAnswer(answer, score, timedOut, elapsedSeconds) {
     gameType: 'Number memory',
     difficulty: state.difficulty,
     questionNumber: state.questionNumber,
-    numberLength: challenge.digits,
+    valueCount: challenge.valueCount,
+    digitsPerValue: `${challenge.minimumDigits}–${challenge.maximumDigits}`,
     readTimeSeconds: challenge.readSeconds,
     writeTimeSeconds: challenge.writeSeconds,
     timeUsedSeconds: Number(elapsedSeconds.toFixed(1)),
-    expectedAnswer: `Number: ${challenge.value}`,
-    userAnswer: answer,
+    expectedAnswer: `Values: ${challenge.value}`,
+    userAnswer: answer.join(' • '),
     outcome: timedOut ? 'Timed Out' : score.correct ? 'Correct' : 'Incorrect',
   };
 }
@@ -476,12 +527,13 @@ function populateMemoryFeedback(record, score) {
   refs['feedback-heading'].textContent = correct ? 'Correct' : record.outcome === 'Timed Out' ? 'Time expired' : 'Not quite';
   refs['feedback-heading'].dataset.result = correct ? 'correct' : 'incorrect';
   refs['feedback-lead'].textContent = correct
-    ? 'You recalled the number in the correct order.'
-    : `The number was ${state.memoryChallenge.value}.`;
+    ? `You recalled all ${state.memoryChallenge.valueCount} values in the correct order.`
+    : `The correct sequence was ${state.memoryChallenge.value}.`;
   const details = [
-    ['Number to remember', state.memoryChallenge.value],
-    ['Your entry', record.userAnswer || 'No entry'],
-    ['Digits', `${state.memoryChallenge.digits}`],
+    ['Values to remember', state.memoryChallenge.value],
+    ['Your entries', record.userAnswer || 'No entry'],
+    ['Values per round', `${state.memoryChallenge.valueCount}`],
+    ['Digits per value', `${state.memoryChallenge.minimumDigits}–${state.memoryChallenge.maximumDigits}`],
     ['Reading time', `${state.memoryChallenge.readSeconds} seconds`],
     ['Writing time used', `${record.timeUsedSeconds.toFixed(1)} seconds`],
   ];
@@ -503,7 +555,7 @@ function submitMemoryAnswer(timedOut = false) {
     Math.max(0, (Date.now() - (state.deadline - state.memoryWriteSeconds * 1000)) / 1000),
   );
   stopTimer();
-  const answer = timedOut ? '' : refs['memory-answer'].value;
+  const answer = timedOut ? [] : memoryAnswerValues();
   const score = scoreMemoryAnswer(state.memoryChallenge, answer);
   const record = recordMemoryAnswer(answer, score, timedOut, elapsedSeconds);
   state.results.push(record);
@@ -520,14 +572,18 @@ function showNextMemoryQuestion() {
     return;
   }
   state.memoryChallenge = createMemoryChallenge(state.difficulty, {
-    digits: state.memoryDigits,
+    minimumDigits: state.memoryMinimumDigits,
+    maximumDigits: state.memoryMaximumDigits,
+    minimumValues: state.memoryMinimumValues,
+    maximumValues: state.memoryMaximumValues,
+    decimals: state.memoryDecimals,
     readSeconds: state.memoryReadSeconds,
     writeSeconds: state.memoryWriteSeconds,
   });
   state.answerSubmitted = false;
   refs['memory-read-progress'].textContent = `Round ${state.questionNumber} of ${state.questionCount}`;
-  refs['memory-number'].textContent = state.memoryChallenge.value;
-  refs['memory-read-hint'].textContent = `${state.memoryChallenge.digits} digits`;
+  renderMemoryReadValues(state.memoryChallenge);
+  refs['memory-read-hint'].textContent = `${state.memoryChallenge.valueCount} value${state.memoryChallenge.valueCount === 1 ? '' : 's'} in order · ${state.memoryChallenge.minimumDigits}–${state.memoryChallenge.maximumDigits} digits each${state.memoryChallenge.decimals ? ' · decimal points included' : ''}`;
   showScreen('memory-read');
   startTimer(state.memoryReadSeconds, refs['memory-read-timer'], showMemoryAnswer);
 }
@@ -687,7 +743,10 @@ refs['setup-form'].addEventListener('submit', (event) => {
 
   if (game === 'memory') {
     const questionCount = Number(refs['memory-question-count'].value);
-    const digits = Number(refs['memory-digits'].value);
+    const minimumValues = Number(refs['memory-value-min'].value);
+    const maximumValues = Number(refs['memory-value-max'].value);
+    const minimumDigits = Number(refs['memory-digit-min'].value);
+    const maximumDigits = Number(refs['memory-digit-max'].value);
     const readSeconds = Number(refs['memory-read-time'].value);
     const writeSeconds = Number(refs['memory-write-time'].value);
     if (!Number.isInteger(questionCount) || questionCount < 1 || questionCount > 100) {
@@ -695,9 +754,34 @@ refs['setup-form'].addEventListener('submit', (event) => {
       refs['memory-question-count'].focus();
       return;
     }
-    if (!Number.isInteger(digits) || digits < 1 || digits > 24) {
-      setMessage('Choose from 1 to 24 digits to remember.');
-      refs['memory-digits'].focus();
+    if (!Number.isInteger(minimumValues) || minimumValues < 1 || minimumValues > 5) {
+      setMessage('Choose a minimum of 1 to 5 values per round.');
+      refs['memory-value-min'].focus();
+      return;
+    }
+    if (!Number.isInteger(maximumValues) || maximumValues < 1 || maximumValues > 5) {
+      setMessage('Choose a maximum of 1 to 5 values per round.');
+      refs['memory-value-max'].focus();
+      return;
+    }
+    if (minimumValues > maximumValues) {
+      setMessage('The minimum values per round cannot be greater than the maximum.');
+      refs['memory-value-min'].focus();
+      return;
+    }
+    if (!Number.isInteger(minimumDigits) || minimumDigits < 1 || minimumDigits > 24) {
+      setMessage('Choose a minimum of 1 to 24 digits per value.');
+      refs['memory-digit-min'].focus();
+      return;
+    }
+    if (!Number.isInteger(maximumDigits) || maximumDigits < 1 || maximumDigits > 24) {
+      setMessage('Choose a maximum of 1 to 24 digits per value.');
+      refs['memory-digit-max'].focus();
+      return;
+    }
+    if (minimumDigits > maximumDigits) {
+      setMessage('The minimum digits per value cannot be greater than the maximum.');
+      refs['memory-digit-min'].focus();
       return;
     }
     if (!Number.isInteger(readSeconds) || readSeconds < 1 || readSeconds > 60) {
@@ -711,7 +795,11 @@ refs['setup-form'].addEventListener('submit', (event) => {
       return;
     }
     state.questionCount = questionCount;
-    state.memoryDigits = digits;
+    state.memoryMinimumValues = minimumValues;
+    state.memoryMaximumValues = maximumValues;
+    state.memoryMinimumDigits = minimumDigits;
+    state.memoryMaximumDigits = maximumDigits;
+    state.memoryDecimals = refs['memory-decimals'].checked;
     state.memoryReadSeconds = readSeconds;
     state.memoryWriteSeconds = writeSeconds;
     showNextMemoryQuestion();
