@@ -345,6 +345,18 @@ test('provides a browser-only task simulation workflow without leaking instructi
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
 });
 
+test('lets learners begin number-memory recall before the study timer expires', async () => {
+  const [html, app] = await Promise.all([
+    readFile(new URL('../index.html', import.meta.url), 'utf8'),
+    readFile(new URL('../app.js', import.meta.url), 'utf8'),
+  ]);
+
+  assert.match(html, /id="memory-answer-now"[^>]*type="button"/);
+  assert.match(html, /Answer now when you are ready\./);
+  assert.match(app, /'memory-answer-now'/);
+  assert.match(app, /refs\['memory-answer-now'\]\.addEventListener\('click', showMemoryAnswer\)/);
+});
+
 test('keeps every compact task simulation phase visible and its controls usable', async () => {
   const [app, css] = await Promise.all([
     readFile(new URL('../app.js', import.meta.url), 'utf8'),

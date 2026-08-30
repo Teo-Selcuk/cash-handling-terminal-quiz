@@ -14,6 +14,8 @@ function Assert-Contains {
 Assert-Contains 'function ConvertFrom-CashBuilderShorthand' 'cash-builder shorthand parser'
 Assert-Contains 'function New-MemoryChallenge' 'memory challenge generator'
 Assert-Contains 'function Start-MemoryQuiz' 'memory-game terminal workflow'
+Assert-Contains 'function Wait-MemoryReadPhase' 'memory-study early-answer helper'
+Assert-Contains 'Press Enter when you are ready to answer now.' 'memory-study early-answer prompt'
 Assert-Contains 'Apply fast entry' 'cash-builder fast-entry control'
 Assert-Contains '[2] Number memory game' 'memory-game main menu option'
 Assert-Contains 'AutoContinueOnTimeoutEnabled = $false' 'off-by-default auto-continue setting'
@@ -43,6 +45,7 @@ $allDenominations = @(10000, 5000, 2000, 1000, 500, 100, 25, 10, 5, 1 | ForEach-
 foreach ($functionName in @(
     'ConvertFrom-CashBuilderShorthand',
     'New-MemoryChallenge',
+    'Wait-MemoryReadPhase',
     'ConvertTo-NormalizedMemoryAnswer',
     'ConvertTo-NormalizedMemoryAnswerList',
     'Read-AutoContinueOnTimeoutSetting'
@@ -148,6 +151,31 @@ if ($memoryWorkflow.Extent.Text -notmatch 'Minimum values per round' -or
     $memoryWorkflow.Extent.Text -notmatch 'Maximum values per round' -or
     $memoryWorkflow.Extent.Text -notmatch 'Maximum 100') {
     throw 'Number Memory does not expose the 100-value range in the PowerShell workflow.'
+}
+
+if ($memoryWorkflow.Extent.Text -notmatch 'Wait-MemoryReadPhase') {
+    throw 'Number Memory does not allow the study phase to end early.'
+}
+
+$memoryReadPhase = $ast.FindAll({
+    param($node)
+    $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+    $node.Name -eq 'Wait-MemoryReadPhase'
+}, $true) | Select-Object -First 1
+
+if ($memoryReadPhase.Extent.Text -notmatch '\[Console\]::KeyAvailable' -or
+    $memoryReadPhase.Extent.Text -notmatch '\[ConsoleKey\]::Enter') {
+    throw 'The memory-study helper does not respond to Enter.'
+}
+
+$earlyStudyStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+$endedEarly = Wait-MemoryReadPhase -Seconds 2 -GetKey {
+    [pscustomobject]@{ Key = [ConsoleKey]::Enter }
+}
+$earlyStudyStopwatch.Stop()
+
+if (-not $endedEarly -or $earlyStudyStopwatch.Elapsed.TotalSeconds -ge 1) {
+    throw 'Pressing Enter should end the memory-study phase immediately.'
 }
 
 $cashWorkflow = $ast.FindAll({

@@ -36,7 +36,7 @@ const refs = Object.fromEntries([
   'start-another', 'summary-history', 'open-history', 'back-to-setup', 'history-metrics',
   'history-outcome-diagram', 'history-outcome-legend', 'history-outcomes-summary', 'history-accuracy-chart',
   'history-rows', 'download-csv', 'clear-history', 'message', 'submit-answer', 'theme-toggle',
-  'memory-question-count', 'memory-read-progress', 'memory-read-timer', 'memory-number', 'memory-read-hint',
+  'memory-question-count', 'memory-read-progress', 'memory-read-timer', 'memory-number', 'memory-read-hint', 'memory-answer-now',
   'memory-answer-form', 'memory-answer-list', 'memory-answer-progress', 'memory-answer-timer', 'memory-answer-heading', 'summary-heading',
   'task-question-count', 'task-briefing-progress', 'task-briefing-timer', 'task-briefing-heading', 'task-briefing-title', 'task-instruction-list', 'task-start-demo',
   'task-workspace-progress', 'task-timer', 'task-workspace-heading', 'task-phase-status', 'task-demo-controls', 'task-pause-demo', 'task-replay-demo', 'task-skip-demo',
@@ -1722,6 +1722,7 @@ refs['memory-answer-form'].addEventListener('submit', (event) => {
   event.preventDefault();
   submitMemoryAnswer();
 });
+refs['memory-answer-now'].addEventListener('click', showMemoryAnswer);
 refs['task-start-demo'].addEventListener('click', startTaskDemo);
 refs['task-pause-demo'].addEventListener('click', toggleTaskDemoPause);
 refs['task-replay-demo'].addEventListener('click', startTaskDemo);

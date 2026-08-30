@@ -939,6 +939,65 @@
         return $result
     }
 
+    function Wait-MemoryReadPhase {
+        param(
+            [ValidateRange(1, 60)]
+            [int]$Seconds,
+            [scriptblock]$GetKey = {
+                if ([Console]::KeyAvailable) {
+                    return [Console]::ReadKey($true)
+                }
+
+                return $null
+            }
+        )
+
+        $stopwatch = [Diagnostics.Stopwatch]::StartNew()
+        $lastRemaining = -1
+        $consoleKeyInputAvailable = $true
+        $answeredEarly = $false
+
+        try {
+            while ($stopwatch.Elapsed.TotalSeconds -lt $Seconds) {
+                $remaining = [int][Math]::Ceiling(
+                    $Seconds - $stopwatch.Elapsed.TotalSeconds
+                )
+
+                if ($remaining -ne $lastRemaining) {
+                    Write-Progress `
+                        -Activity 'Memorize the number' `
+                        -Status "$remaining seconds remaining - press Enter to answer now" `
+                        -PercentComplete ([Math]::Round((($Seconds - $remaining) * 100.0) / $Seconds, 0))
+                    $lastRemaining = $remaining
+                }
+
+                if ($consoleKeyInputAvailable) {
+                    try {
+                        $key = & $GetKey
+                        if ($null -ne $key -and $key.Key -eq [ConsoleKey]::Enter) {
+                            $answeredEarly = $true
+                            break
+                        }
+                    }
+                    catch [System.InvalidOperationException] {
+                        $consoleKeyInputAvailable = $false
+                    }
+                    catch [System.IO.IOException] {
+                        $consoleKeyInputAvailable = $false
+                    }
+                }
+
+                Start-Sleep -Milliseconds 35
+            }
+        }
+        finally {
+            $stopwatch.Stop()
+            Write-Progress -Activity 'Memorize the number' -Completed
+        }
+
+        return $answeredEarly
+    }
+
     function ConvertFrom-CashAnswer {
         param([string]$Text)
 
@@ -2999,22 +3058,18 @@
                 Write-Host ("Value {0}: {1}" -f ($valueIndex + 1), $challenge.Values[$valueIndex]) -ForegroundColor Green
             }
 
-            for ($secondsRemaining = $readSeconds; $secondsRemaining -gt 0; $secondsRemaining--) {
-                $percentComplete = [Math]::Round(
-                    (($readSeconds - $secondsRemaining) * 100.0) / $readSeconds,
-                    0
-                )
-                Write-Progress `
-                    -Activity 'Memorize the number' `
-                    -Status "$secondsRemaining seconds remaining" `
-                    -PercentComplete $percentComplete
-                Start-Sleep -Seconds 1
-            }
-            Write-Progress -Activity 'Memorize the number' -Completed
+            Write-Host 'Press Enter when you are ready to answer now.' -ForegroundColor DarkGray
+            $answeredEarly = Wait-MemoryReadPhase -Seconds $readSeconds
             Clear-Host
 
             Write-Host 'NUMBER MEMORY GAME' -ForegroundColor Cyan
-            Write-Host "Round $round of $questionCount | The number is hidden." -ForegroundColor White
+            $hiddenMessage = if ($answeredEarly) {
+                'You chose to answer early. The number is hidden.'
+            }
+            else {
+                'The number is hidden.'
+            }
+            Write-Host "Round $round of $questionCount | $hiddenMessage" -ForegroundColor White
             Write-Host "Type $($challenge.ValueCount) value(s) from memory, separated by commas, within $writeSeconds seconds. Press Esc to stop the game." -ForegroundColor DarkGray
 
             $timedAnswer = Read-TimedAnswer -Seconds $writeSeconds
