@@ -272,6 +272,8 @@ input:disabled { background: var(--disabled-surface); color: var(--muted); }
 .task-dialog-form { display: grid; gap: 1rem; }
 .task-recall-note { margin: 1rem 0; }
 .task-demo-target { box-shadow: 0 0 0 0.25rem color-mix(in srgb, var(--accent) 55%, transparent); }
+.task-demo-guide { display: none; }
+.task-demo-guide[hidden] { display: none !important; }
 .task-demo-cursor { position: fixed; z-index: 10; top: 0; left: 0; display: block; width: 1.5rem; height: 1.5rem; border: 0.1875rem solid var(--surface); border-radius: 50%; background: var(--accent); box-shadow: 0 0.125rem 0.5rem rgb(0 0 0 / 30%); color: transparent; pointer-events: none; transform: translate(-100vw, -100vh); }
 .task-demo-cursor[hidden] { display: none; }
 
@@ -365,6 +367,31 @@ footer { width: min(100% - 2rem, 64rem); margin: 0 auto; padding-bottom: 2rem; c
   .task-table td:nth-of-type(3)::before { content: "Priority"; }
   .task-table input[type="text"], .task-table select { width: 100%; min-width: 0; }
   .task-workspace-dialog { max-height: calc(100dvh - 2rem); overflow-y: auto; }
+  .task-demo-guide {
+    position: fixed;
+    z-index: 11;
+    right: 1rem;
+    bottom: max(1rem, env(safe-area-inset-bottom));
+    left: 1rem;
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    margin: 0;
+    padding: 0.75rem;
+    border: 0.0625rem solid var(--brand);
+    border-radius: var(--radius);
+    background: var(--surface);
+    box-shadow: var(--shadow);
+    color: var(--ink);
+    font-size: 0.875rem;
+    font-weight: 750;
+    line-height: 1.4;
+    pointer-events: none;
+  }
+  .task-demo-guide::before { display: grid; width: 1.5rem; height: 1.5rem; place-items: center; border-radius: 999rem; background: var(--accent); color: #fff; content: '→'; flex: 0 0 auto; }
+  .task-demo-guide[data-direction="up"]::before { content: '↑'; }
+  .task-demo-guide[data-direction="down"]::before { content: '↓'; }
+  .task-demo-guide[data-direction="arrived"]::before { content: '✓'; background: var(--success); }
 }
 
 @media (max-width: 36rem) {

@@ -353,11 +353,28 @@ test('keeps every compact task simulation phase visible and its controls usable'
 
   assert.match(app, /function isCompactViewport\(\)/);
   assert.match(app, /scrollIntoView\(\{ block: 'start', inline: 'nearest' \}\)/);
-  assert.match(app, /target\.scrollIntoView\(\{ block: 'center', inline: 'nearest' \}\)/);
+  assert.match(app, /target\.scrollIntoView\(\{ behavior: taskReducedMotion\(\) \? 'auto' : 'smooth', block: 'center', inline: 'nearest' \}\)/);
   assert.match(css, /@media \(max-width: 63\.9375rem\)\s*\{[\s\S]*\.task-workspace-screen[\s\S]*min-width:\s*0/s);
   assert.match(css, /@media \(max-width: 63\.9375rem\)\s*\{[\s\S]*\.task-table\s*\{[\s\S]*display:\s*block/s);
   assert.match(css, /@media \(max-width: 63\.9375rem\)\s*\{[\s\S]*\.task-table-wrap\s*\{[\s\S]*overflow:\s*visible/s);
   assert.match(css, /@media \(max-width: 36rem\)\s*\{[\s\S]*\.task-table tr\s*\{[\s\S]*grid-template-columns:\s*1fr/s);
+});
+
+test('guides compact task-demo scrolling before moving the animation marker', async () => {
+  const [html, app, css] = await Promise.all([
+    readFile(new URL('../index.html', import.meta.url), 'utf8'),
+    readFile(new URL('../app.js', import.meta.url), 'utf8'),
+    readFile(new URL('../style.css', import.meta.url), 'utf8'),
+  ]);
+
+  assert.match(html, /id="task-demo-guide"[^>]*role="status"/);
+  assert.match(app, /function taskDemoGuideDirection\(target\)/);
+  assert.match(app, /function updateTaskDemoGuide\(transition, direction, state\)/);
+  assert.match(app, /behavior: taskReducedMotion\(\) \? 'auto' : 'smooth'/);
+  assert.match(app, /await waitForTaskDemoScroll\(token\)/);
+  assert.match(app, /updateTaskDemoGuide\(transition, direction, 'moving'\)/);
+  assert.match(app, /updateTaskDemoGuide\(transition, 'arrived', 'arrived'\)/);
+  assert.match(css, /@media \(max-width: 63\.9375rem\)\s*\{[\s\S]*\.task-demo-guide\s*\{/s);
 });
 
 test('creates ordered decimal memory challenges from configurable value and digit ranges', () => {

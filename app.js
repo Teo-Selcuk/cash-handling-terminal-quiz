@@ -40,7 +40,7 @@ const refs = Object.fromEntries([
   'memory-answer-form', 'memory-answer-list', 'memory-answer-progress', 'memory-answer-timer', 'memory-answer-heading', 'summary-heading',
   'task-question-count', 'task-briefing-progress', 'task-briefing-timer', 'task-briefing-heading', 'task-briefing-title', 'task-instruction-list', 'task-start-demo',
   'task-workspace-progress', 'task-timer', 'task-workspace-heading', 'task-phase-status', 'task-demo-controls', 'task-pause-demo', 'task-replay-demo', 'task-skip-demo',
-  'task-tablist', 'task-tabpanel', 'task-workspace-content', 'task-workspace-dialog', 'task-save-workspace', 'task-demo-cursor', 'task-recall-note', 'task-row-template',
+  'task-tablist', 'task-tabpanel', 'task-workspace-content', 'task-workspace-dialog', 'task-save-workspace', 'task-demo-guide', 'task-demo-cursor', 'task-recall-note', 'task-row-template',
   'easy-description', 'medium-description', 'hard-description',
   'preset-editor', 'preset-level', 'preset-cash-fields', 'preset-memory-fields', 'preset-task-fields',
   'preset-cash-min-due', 'preset-cash-max-due', 'preset-cash-step', 'preset-cash-max-difference', 'preset-cash-split-count',
@@ -1221,6 +1221,7 @@ function cancelTaskDemo() {
   state.taskDemoPaused = false;
   state.taskDemoResume?.();
   state.taskDemoResume = null;
+  hideTaskDemoGuide();
   refs['task-demo-cursor'].hidden = true;
 }
 
@@ -1236,9 +1237,60 @@ async function waitForTaskDemoResume(token) {
   }
 }
 
-async function animateTaskCursor(target, duration, token) {
+function hideTaskDemoGuide() {
+  refs['task-demo-guide'].hidden = true;
+  refs['task-demo-guide'].textContent = '';
+  delete refs['task-demo-guide'].dataset.direction;
+}
+
+function taskDemoGuideDirection(target) {
+  const targetBounds = target.getBoundingClientRect();
+  const viewportCenter = window.innerHeight / 2;
+  if (targetBounds.top > viewportCenter + 16) return 'down';
+  if (targetBounds.bottom < viewportCenter - 16) return 'up';
+  return 'across';
+}
+
+function updateTaskDemoGuide(transition, direction, state) {
+  if (!isCompactViewport()) return;
+  const guide = refs['task-demo-guide'];
+  const action = state === 'arrived'
+    ? 'Now at'
+    : direction === 'up' ? 'Scrolling up to'
+      : direction === 'down' ? 'Scrolling down to'
+        : 'Moving to';
+  const source = transition.previousInstruction ? `From ${transition.previousInstruction} · ` : '';
+  guide.hidden = false;
+  guide.dataset.direction = direction;
+  guide.textContent = `${source}${action} step ${transition.stepNumber} of ${transition.stepCount}: ${transition.instruction}`;
+}
+
+async function waitForTaskDemoScroll(token) {
+  if (taskReducedMotion()) return;
+  await new Promise((resolve) => {
+    let frames = 0;
+    const nextFrame = () => {
+      if (state.taskDemoToken !== token || frames >= 18) {
+        resolve();
+        return;
+      }
+      frames += 1;
+      window.requestAnimationFrame(nextFrame);
+    };
+    window.requestAnimationFrame(nextFrame);
+  });
+}
+
+async function animateTaskCursor(target, duration, token, transition) {
   target.classList.add('task-demo-target');
-  if (isCompactViewport()) target.scrollIntoView({ block: 'center', inline: 'nearest' });
+  if (isCompactViewport()) {
+    const direction = taskDemoGuideDirection(target);
+    updateTaskDemoGuide(transition, direction, 'moving');
+    target.scrollIntoView({ behavior: taskReducedMotion() ? 'auto' : 'smooth', block: 'center', inline: 'nearest' });
+    await waitForTaskDemoScroll(token);
+    if (state.taskDemoToken !== token) return;
+    updateTaskDemoGuide(transition, 'arrived', 'arrived');
+  }
   if (taskReducedMotion()) return;
   const rect = target.getBoundingClientRect();
   const cursor = refs['task-demo-cursor'];
@@ -1259,12 +1311,18 @@ function wait(milliseconds) {
 }
 
 async function runTaskDemo(token) {
-  for (const step of state.taskChallenge.steps) {
+  for (const [index, step] of state.taskChallenge.steps.entries()) {
     await waitForTaskDemoResume(token);
     if (state.taskDemoToken !== token) return;
     const target = document.getElementById(step.targetId);
+    const transition = {
+      instruction: step.instruction,
+      previousInstruction: state.taskChallenge.steps[index - 1]?.instruction ?? '',
+      stepCount: state.taskChallenge.steps.length,
+      stepNumber: index + 1,
+    };
     refs['task-phase-status'].textContent = `Watch: ${step.instruction}`;
-    if (target) await animateTaskCursor(target, state.taskChallenge.demoStepMilliseconds, token);
+    if (target) await animateTaskCursor(target, state.taskChallenge.demoStepMilliseconds, token, transition);
     if (state.taskDemoToken !== token) return;
     applyTaskDemoStep(step);
     target?.classList.remove('task-demo-target');
