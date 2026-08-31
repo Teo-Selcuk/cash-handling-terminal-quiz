@@ -174,8 +174,8 @@ export function resolveErrorDetectionDifficultyPreset(level, overrides = {}) {
   requirePresetOverrides(overrides);
 
   const preset = { ...defaults, ...overrides };
-  requireMemoryInteger(preset.details, 'Details per card', 3, 8);
-  requireMemoryInteger(preset.maximumErrors, 'Maximum errors', 0, preset.details);
+  requireMemoryInteger(preset.details, 'Selectable clues per puzzle', 3, 8);
+  requireMemoryInteger(preset.maximumErrors, 'Maximum anomalies', 0, preset.details);
   requireMemoryInteger(preset.timeLimitSeconds, 'Seconds per round', 3, 300);
   return preset;
 }
@@ -344,156 +344,41 @@ export function scoreMemoryAnswer(challenge, answer) {
   };
 }
 
-function auditWrongCents(cents, level, rng) {
-  const deltas = level === 'Hard' ? [1, 5, 10] : level === 'Medium' ? [5, 10, 25] : [100, 250, 500];
-  const delta = deltas[randomIndex(deltas.length, rng)];
-  const subtract = cents > delta && randomIndex(2, rng) === 0;
-  return subtract ? cents - delta : cents + delta;
+export const ERROR_DETECTION_PUZZLE_FAMILIES = Object.freeze([
+  'symbol-matrix',
+  'number-machine',
+  'cipher-check',
+  'logic-schedule',
+  'route-network',
+]);
+
+const ERROR_DETECTION_RULE_LAYERS = Object.freeze({ Easy: 1, Medium: 2, Hard: 3 });
+const PUZZLE_SHAPES = Object.freeze(['Circle', 'Square', 'Triangle']);
+const PUZZLE_COLORS = Object.freeze(['Teal', 'Gold', 'Coral']);
+const PUZZLE_FILLS = Object.freeze(['Solid', 'Striped', 'Dotted']);
+const CIPHER_RING = Object.freeze(['A', 'D', 'G', 'J', 'M', 'P', 'S', 'V']);
+const WEEKDAYS = Object.freeze(['Mon', 'Tue', 'Wed', 'Thu', 'Fri']);
+const ROUTE_NODES = Object.freeze(['A', 'B', 'C', 'D', 'E', 'F']);
+
+function errorRuleLayers(level) {
+  const layers = ERROR_DETECTION_RULE_LAYERS[level];
+  if (!layers) throw new RangeError(`Unknown Error Detection difficulty: ${level}`);
+  return layers;
 }
 
-function auditWrongIdentifier(value) {
-  const match = String(value).match(/^(.*?)(\d)$/);
-  if (!match) return `${value}-X`;
-  return `${match[1]}${(Number(match[2]) + 1) % 10}`;
+function cycleValue(values, index) {
+  return values[((index % values.length) + values.length) % values.length];
 }
 
-function createAuditDetail(id, label, expectedValue, incorrectValue, correction = `Should be ${expectedValue}.`) {
-  return { id, label, expectedValue, incorrectValue, correction };
+function digitSum(value) {
+  return String(Math.abs(value)).split('').reduce((sum, digit) => sum + Number(digit), 0);
 }
 
-function createCashReceiptAudit(level, rng) {
-  const step = level === 'Easy' ? 25 : 1;
-  const dueCents = randomSteppedNumber(1250, 9750, step, rng);
-  const changeCents = randomSteppedNumber(step, 3000, step, rng);
-  const tenderedCents = dueCents + changeCents;
-  const receiptId = `RC-${memoryRandomInteger(10000, 99999, rng)}`;
-  const tendered = formatMoney(tenderedCents);
-  const due = formatMoney(dueCents);
-  const change = formatMoney(changeCents);
-  const breakdown = formatBreakdown(buildBreakdown(tenderedCents, DENOMINATIONS, level === 'Hard' ? 2 : 1, rng));
-
-  return {
-    title: 'Cash receipt audit',
-    rule: 'Tender must equal the listed cash. Change equals tender minus amount due, and every receipt calculation must agree with those source values.',
-    facts: [
-      { label: 'Amount due', value: due },
-      { label: 'Listed cash', value: breakdown },
-      { label: 'Receipt reference', value: receiptId },
-    ],
-    details: [
-      createAuditDetail('tender-total', 'Tender entered', tendered, formatMoney(auditWrongCents(tenderedCents, level, rng))),
-      createAuditDetail('change-due', 'Change due', change, formatMoney(auditWrongCents(changeCents, level, rng))),
-      createAuditDetail('receipt-equation', 'Receipt equation', `${tendered} − ${change} = ${due}`, `${tendered} − ${change} = ${formatMoney(auditWrongCents(dueCents, level, rng))}`),
-      createAuditDetail('drawer-increase', 'Drawer increase', due, formatMoney(auditWrongCents(dueCents, level, rng))),
-      createAuditDetail('receipt-reference', 'Receipt reference', receiptId, auditWrongIdentifier(receiptId)),
-      createAuditDetail('cash-method', 'Payment method', 'Cash', 'Debit'),
-      createAuditDetail('reconciliation-status', 'Reconciliation status', 'Balanced', 'Needs review'),
-      createAuditDetail('change-check', 'Tender less change', due, formatMoney(auditWrongCents(dueCents, level, rng))),
-    ],
-  };
+function createPuzzleDetail(id, label, expectedValue, incorrectValue, correction, expectedVisual = null, incorrectVisual = null) {
+  return { id, label, expectedValue, incorrectValue, correction, expectedVisual, incorrectVisual };
 }
 
-function createDrawerReconciliationAudit(level, rng) {
-  const step = level === 'Easy' ? 25 : 1;
-  const openingFloatCents = randomSteppedNumber(10000, 25000, 25, rng);
-  const cashSalesCents = randomSteppedNumber(20000, 180000, step, rng);
-  const payoutsCents = randomSteppedNumber(step, 18000, step, rng);
-  const expectedDrawerCents = openingFloatCents + cashSalesCents - payoutsCents;
-  const depositCents = expectedDrawerCents - openingFloatCents;
-  const countReference = `COUNT-${memoryRandomInteger(1000, 9999, rng)}`;
-  const openingFloat = formatMoney(openingFloatCents);
-  const cashSales = formatMoney(cashSalesCents);
-  const payouts = formatMoney(payoutsCents);
-  const expectedDrawer = formatMoney(expectedDrawerCents);
-  const deposit = formatMoney(depositCents);
-
-  return {
-    title: 'Drawer reconciliation audit',
-    rule: 'Expected drawer cash is opening float plus cash sales minus payouts. The counted drawer and its variance must match that calculation.',
-    facts: [
-      { label: 'Opening float', value: openingFloat },
-      { label: 'Cash sales', value: cashSales },
-      { label: 'Payouts', value: payouts },
-      { label: 'Count sheet reference', value: countReference },
-    ],
-    details: [
-      createAuditDetail('expected-drawer', 'Expected drawer cash', expectedDrawer, formatMoney(auditWrongCents(expectedDrawerCents, level, rng))),
-      createAuditDetail('counted-drawer', 'Counted drawer cash', expectedDrawer, formatMoney(auditWrongCents(expectedDrawerCents, level, rng))),
-      createAuditDetail('drawer-variance', 'Cash variance', '$0.00', formatMoney(auditWrongCents(0, level, rng))),
-      createAuditDetail('drawer-equation', 'Drawer equation', `${openingFloat} + ${cashSales} − ${payouts} = ${expectedDrawer}`, `${openingFloat} + ${cashSales} − ${payouts} = ${formatMoney(auditWrongCents(expectedDrawerCents, level, rng))}`),
-      createAuditDetail('drawer-deposit', 'Deposit after float', deposit, formatMoney(auditWrongCents(depositCents, level, rng))),
-      createAuditDetail('count-reference', 'Count sheet reference', countReference, auditWrongIdentifier(countReference)),
-      createAuditDetail('variance-status', 'Variance status', 'No variance', 'Over by a small amount'),
-      createAuditDetail('drawer-status', 'Close status', 'Reconciled', 'Needs review'),
-    ],
-  };
-}
-
-function createRefundAuthorizationAudit(level, rng) {
-  const step = level === 'Easy' ? 25 : 1;
-  const firstItemCents = randomSteppedNumber(750, 4500, step, rng);
-  const secondItemCents = randomSteppedNumber(500, 3500, step, rng);
-  const refundCents = firstItemCents + secondItemCents;
-  const originalPaymentCents = refundCents + randomSteppedNumber(1000, 10000, step, rng);
-  const remainingPaymentCents = originalPaymentCents - refundCents;
-  const reference = `REF-${memoryRandomInteger(100000, 999999, rng)}`;
-  const firstItem = formatMoney(firstItemCents);
-  const secondItem = formatMoney(secondItemCents);
-  const refund = formatMoney(refundCents);
-  const originalPayment = formatMoney(originalPaymentCents);
-  const remainingPayment = formatMoney(remainingPaymentCents);
-
-  return {
-    title: 'Refund authorization audit',
-    rule: 'The refund must equal the returned line items, cannot exceed the original payment, and must retain the original terminal reference.',
-    facts: [
-      { label: 'Original payment', value: originalPayment },
-      { label: 'Returned line items', value: `${firstItem} + ${secondItem}` },
-      { label: 'Original terminal reference', value: reference },
-    ],
-    details: [
-      createAuditDetail('returned-total', 'Returned item total', refund, formatMoney(auditWrongCents(refundCents, level, rng))),
-      createAuditDetail('approved-refund', 'Approved refund', refund, formatMoney(auditWrongCents(refundCents, level, rng))),
-      createAuditDetail('remaining-payment', 'Original payment remaining', remainingPayment, formatMoney(auditWrongCents(remainingPaymentCents, level, rng))),
-      createAuditDetail('refund-equation', 'Refund equation', `${firstItem} + ${secondItem} = ${refund}`, `${firstItem} + ${secondItem} = ${formatMoney(auditWrongCents(refundCents, level, rng))}`),
-      createAuditDetail('refund-reference', 'Terminal reference', reference, auditWrongIdentifier(reference)),
-      createAuditDetail('refund-limit', 'Authorization check', 'Within original payment', 'Exceeds original payment'),
-      createAuditDetail('returned-count', 'Returned line count', '2', '3'),
-      createAuditDetail('refund-method', 'Refund method', 'Original payment method', 'Store credit'),
-    ],
-  };
-}
-
-function createDepositHandoffAudit(level, rng) {
-  const step = level === 'Easy' ? 25 : 1;
-  const terminalReceiptsCents = randomSteppedNumber(30000, 220000, step, rng);
-  const closeDate = ['2026-08-28', '2026-08-29', '2026-08-30'][randomIndex(3, rng)];
-  const tellerId = String(memoryRandomInteger(10000, 99999, rng));
-  const depositReference = `DEP-${closeDate.replaceAll('-', '')}-${memoryRandomInteger(1000, 9999, rng)}`;
-  const terminalReceipts = formatMoney(terminalReceiptsCents);
-
-  return {
-    title: 'Deposit handoff audit',
-    rule: 'The sealed deposit must equal terminal receipts. Variance is sealed cash minus receipts, and the reference must use DEP-date-serial for the listed closing date.',
-    facts: [
-      { label: 'Closing date', value: closeDate },
-      { label: 'Terminal cash receipts', value: terminalReceipts },
-      { label: 'Teller ID', value: tellerId },
-    ],
-    details: [
-      createAuditDetail('deposit-reference', 'Deposit reference', depositReference, auditWrongIdentifier(depositReference)),
-      createAuditDetail('deposit-total', 'Sealed deposit total', terminalReceipts, formatMoney(auditWrongCents(terminalReceiptsCents, level, rng))),
-      createAuditDetail('receipt-total', 'Terminal receipt total', terminalReceipts, formatMoney(auditWrongCents(terminalReceiptsCents, level, rng))),
-      createAuditDetail('deposit-variance', 'Deposit variance', '$0.00', formatMoney(auditWrongCents(0, level, rng))),
-      createAuditDetail('deposit-equation', 'Variance equation', `${terminalReceipts} − ${terminalReceipts} = $0.00`, `${terminalReceipts} − ${terminalReceipts} = ${formatMoney(auditWrongCents(0, level, rng))}`),
-      createAuditDetail('deposit-close-date', 'Closing date', closeDate, '2026-08-27'),
-      createAuditDetail('deposit-teller', 'Teller ID', tellerId, auditWrongIdentifier(tellerId)),
-      createAuditDetail('deposit-status', 'Handoff status', 'Reconciled', 'Pending variance review'),
-    ],
-  };
-}
-
-function chooseAuditEntries(entries, count, rng) {
+function choosePuzzleEntries(entries, count, rng) {
   const remaining = [...entries];
   const selected = [];
   while (selected.length < count && remaining.length > 0) {
@@ -502,32 +387,348 @@ function chooseAuditEntries(entries, count, rng) {
   return selected;
 }
 
+function symbolValue(symbol, layers) {
+  const parts = [symbol.shape];
+  if (layers >= 2) parts.push(symbol.color);
+  if (layers >= 3) parts.push(symbol.fill);
+  return parts.join(' · ');
+}
+
+function symbolVisual(symbol, layers) {
+  return {
+    type: 'symbol',
+    shape: symbol.shape.toLowerCase(),
+    color: symbol.color.toLowerCase(),
+    fill: symbol.fill.toLowerCase(),
+    ariaLabel: symbolValue(symbol, layers),
+  };
+}
+
+function createSymbolMatrixPuzzle(level, rng) {
+  const layers = errorRuleLayers(level);
+  const start = randomIndex(PUZZLE_SHAPES.length, rng);
+  const expectedAt = (row, column) => ({
+    shape: cycleValue(PUZZLE_SHAPES, start + row + column),
+    color: cycleValue(PUZZLE_COLORS, layers >= 2 ? start + row + column : start),
+    fill: cycleValue(PUZZLE_FILLS, layers >= 3 ? start + row + (column * 2) : start),
+  });
+  const mutate = (symbol) => {
+    const properties = layers === 1 ? ['shape'] : layers === 2 ? ['shape', 'color'] : ['shape', 'color', 'fill'];
+    const property = properties[randomIndex(properties.length, rng)];
+    const next = { ...symbol };
+    const values = property === 'shape' ? PUZZLE_SHAPES : property === 'color' ? PUZZLE_COLORS : PUZZLE_FILLS;
+    next[property] = cycleValue(values, values.indexOf(symbol[property]) + 1);
+    return next;
+  };
+  const details = Array.from({ length: 9 }, (_, position) => {
+    const row = Math.floor(position / 3);
+    const column = position % 3;
+    const expected = expectedAt(row, column);
+    const incorrect = mutate(expected);
+    const coordinate = `${String.fromCharCode(65 + row)}${column + 1}`;
+    return createPuzzleDetail(
+      `matrix-${coordinate.toLowerCase()}`,
+      `Matrix tile ${coordinate}`,
+      symbolValue(expected, layers),
+      symbolValue(incorrect, layers),
+      `Tile ${coordinate} should be ${symbolValue(expected, layers)}.`,
+      symbolVisual(expected, layers),
+      symbolVisual(incorrect, layers),
+    );
+  });
+  const exampleExpected = expectedAt(0, 0);
+  const exampleIncorrect = mutate(exampleExpected);
+  return {
+    family: 'symbol-matrix',
+    title: 'Signal matrix',
+    puzzle: { type: 'symbol-matrix', visual: true, columnCount: 3, legend: 'Circle, square, and triangle tiles form a cyclic visual grid.' },
+    overview: 'Inspect each tile against the active cycles in a three-by-three signal matrix.',
+    ruleSteps: [
+      `The upper-left tile is ${symbolValue(expectedAt(0, 0), layers)}; use it as the start of the matrix.`,
+      'Moving right or down advances the shape through Circle → Square → Triangle → Circle.',
+      'At Medium and Hard, the colour advances through Teal → Gold → Coral in the same cycle.',
+      'At Hard, fill advances one step down and two steps right through Solid → Striped → Dotted.',
+    ],
+    example: {
+      valid: { label: 'Valid A1', value: symbolValue(exampleExpected, layers), visual: symbolVisual(exampleExpected, layers) },
+      anomaly: { label: 'Broken A1', value: symbolValue(exampleIncorrect, layers), visual: symbolVisual(exampleIncorrect, layers) },
+      explanation: 'The valid tile starts every active cycle. Changing any active attribute makes it anomalous.',
+    },
+    details,
+  };
+}
+
+function createNumberMachinePuzzle(level, rng) {
+  const layers = errorRuleLayers(level);
+  const offset = memoryRandomInteger(1, 6, rng);
+  const outputFor = (input) => {
+    let output = (input * 2) + offset;
+    if (layers >= 2) output += digitSum(input);
+    if (layers >= 3) output += input % 2 === 0 ? 4 : -3;
+    return output;
+  };
+  const display = (input, output) => `${input} → ${output}`;
+  const baseInput = memoryRandomInteger(11, 39, rng);
+  const details = Array.from({ length: 8 }, (_, index) => {
+    const input = 11 + ((baseInput + (index * 7)) % 78);
+    const expected = outputFor(input);
+    const delta = [1, 2, 3][randomIndex(3, rng)];
+    const incorrect = expected + (randomIndex(2, rng) === 0 ? -delta : delta);
+    return createPuzzleDetail(
+      `machine-${index + 1}`,
+      `Machine row ${index + 1}`,
+      display(input, expected),
+      display(input, incorrect),
+      `For ${input}, the machine output is ${expected}.`,
+    );
+  });
+  const exampleInput = 14;
+  const exampleExpected = outputFor(exampleInput);
+  return {
+    family: 'number-machine',
+    title: 'Number machine',
+    puzzle: { type: 'number-machine', visual: false, legend: 'Every row sends one input through the same hidden machine.' },
+    overview: 'Read the full machine rule, then locate outputs that do not follow it.',
+    ruleSteps: [
+      'Treat the left value in every row as input n.',
+      `Double n, then add ${offset}.`,
+      'At Medium and Hard, add the digit sum of the original n.',
+      'At Hard, add 4 for even n or subtract 3 for odd n.',
+    ],
+    example: {
+      valid: { label: 'Valid row', value: display(exampleInput, exampleExpected) },
+      anomaly: { label: 'Broken row', value: display(exampleInput, exampleExpected + 1) },
+      explanation: 'The broken row is one away from the computed output, so it is still an anomaly.',
+    },
+    details,
+  };
+}
+
+function createCipherCheckPuzzle(level, rng) {
+  const layers = errorRuleLayers(level);
+  const cipherParts = (start) => {
+    const firstIndex = start % CIPHER_RING.length;
+    const secondIndex = (start + 1) % CIPHER_RING.length;
+    const thirdIndex = (start + 2) % CIPHER_RING.length;
+    const check = ((firstIndex + 1) + (secondIndex + 1) + (thirdIndex + 1)) % 10;
+    return {
+      first: CIPHER_RING[firstIndex],
+      second: CIPHER_RING[secondIndex],
+      third: CIPHER_RING[thirdIndex],
+      check,
+      lock: (9 - check + 10) % 10,
+    };
+  };
+  const display = (parts) => {
+    if (layers === 1) return `${parts.first} → ${parts.second}`;
+    const core = `${parts.first} → ${parts.second} → ${parts.third} · check ${parts.check}`;
+    return layers === 2 ? core : `${core} · lock ${parts.lock}`;
+  };
+  const mutate = (parts) => {
+    const incorrect = { ...parts };
+    if (layers === 1) incorrect.second = cycleValue(CIPHER_RING, CIPHER_RING.indexOf(parts.second) + 1);
+    else if (layers === 2) incorrect.check = (parts.check + 1) % 10;
+    else incorrect.lock = (parts.lock + 1) % 10;
+    return incorrect;
+  };
+  const start = randomIndex(CIPHER_RING.length, rng);
+  const details = Array.from({ length: 8 }, (_, index) => {
+    const expected = cipherParts(start + index);
+    const incorrect = mutate(expected);
+    return createPuzzleDetail(
+      `cipher-${index + 1}`,
+      `Cipher seal ${index + 1}`,
+      display(expected),
+      display(incorrect),
+      `Seal ${index + 1} should read ${display(expected)}.`,
+    );
+  });
+  const exampleExpected = cipherParts(0);
+  return {
+    family: 'cipher-check',
+    title: 'Cipher ring check',
+    puzzle: { type: 'cipher-check', visual: false, legend: 'Each seal follows the same eight-glyph ring and optional check digits.' },
+    overview: 'Decode the ring movement and, at higher levels, the check and lock digits.',
+    ruleSteps: [
+      `Use this ring: ${CIPHER_RING.join(' → ')} → A.`,
+      'A valid seal lists its start glyph followed by the next glyph in the ring.',
+      'At Medium and Hard, add the following glyph and use the final digit of the three ring positions as check.',
+      'At Hard, the lock digit must bring the check digit up to 9.',
+    ],
+    example: {
+      valid: { label: 'Valid seal', value: display(exampleExpected) },
+      anomaly: { label: 'Broken seal', value: display(mutate(exampleExpected)) },
+      explanation: 'The example changes one active part of the seal while leaving the rest plausible.',
+    },
+    details,
+  };
+}
+
+function formatScheduleTime(minutes) {
+  const hour = Math.floor(minutes / 60);
+  return `${String(hour).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+}
+
+function createLogicSchedulePuzzle(level, rng) {
+  const layers = errorRuleLayers(level);
+  const interval = 20;
+  const laneNames = ['Aster', 'Comet', 'Kite', 'Nova', 'Orbit', 'Pulse', 'Vega', 'Zenith'];
+  const startDay = randomIndex(WEEKDAYS.length, rng);
+  const startMinutes = 540 + (randomIndex(4, rng) * interval);
+  const tagMultiplier = 3;
+  const entryAt = (index) => {
+    const dayIndex = (startDay + index) % WEEKDAYS.length;
+    const minutes = startMinutes + (index * interval);
+    const tag = ((dayIndex + 1) + (tagMultiplier * (index + 1))) % 10;
+    return { lane: laneNames[index], dayIndex, minutes, tag };
+  };
+  const display = (entry) => {
+    const parts = [`${entry.lane} · ${WEEKDAYS[entry.dayIndex]}`];
+    if (layers >= 2) parts.push(formatScheduleTime(entry.minutes));
+    if (layers >= 3) parts.push(`tag ${entry.tag}`);
+    return parts.join(' · ');
+  };
+  const mutate = (entry) => {
+    const incorrect = { ...entry };
+    if (layers === 1) incorrect.dayIndex = (entry.dayIndex + 1) % WEEKDAYS.length;
+    else if (layers === 2) incorrect.minutes = entry.minutes + interval;
+    else incorrect.tag = (entry.tag + 1) % 10;
+    return incorrect;
+  };
+  const details = Array.from({ length: 8 }, (_, index) => {
+    const expected = entryAt(index);
+    return createPuzzleDetail(
+      `schedule-${index + 1}`,
+      `Schedule row ${index + 1}`,
+      display(expected),
+      display(mutate(expected)),
+      `Row ${index + 1} should read ${display(expected)}.`,
+    );
+  });
+  const exampleExpected = entryAt(0);
+  return {
+    family: 'logic-schedule',
+    title: 'Logic schedule board',
+    puzzle: { type: 'logic-schedule', visual: false, legend: 'Rows follow a weekday, time, and optional tag progression.' },
+    overview: 'Trace the schedule in row order; higher difficulty activates more linked constraints.',
+    ruleSteps: [
+      `Row 1 begins ${WEEKDAYS[startDay]}${layers >= 2 ? ` at ${formatScheduleTime(startMinutes)}` : ''}.`,
+      'Weekdays advance one working day at a time, with Friday followed by Monday.',
+      `At Medium and Hard, time advances ${interval} minutes per row.`,
+      `At Hard, tag = final digit of weekday number (Mon = 1 through Fri = 5) + ${tagMultiplier} × row number.`,
+    ],
+    example: {
+      valid: { label: 'Valid row', value: display(exampleExpected) },
+      anomaly: { label: 'Broken row', value: display(mutate(exampleExpected)) },
+      explanation: 'Only the active rule layers matter at the selected difficulty.',
+    },
+    details,
+  };
+}
+
+function createRouteNetworkPuzzle(level, rng) {
+  const layers = errorRuleLayers(level);
+  const start = randomIndex(ROUTE_NODES.length, rng);
+  const pathAt = (index) => {
+    const firstIndex = (start + index) % ROUTE_NODES.length;
+    const path = [
+      ROUTE_NODES[firstIndex],
+      ROUTE_NODES[(firstIndex + 1) % ROUTE_NODES.length],
+      ROUTE_NODES[(firstIndex + 2) % ROUTE_NODES.length],
+    ];
+    const crossesBoundary = path[0] === 'F' || path[1] === 'F';
+    let signal = (ROUTE_NODES.indexOf(path[0]) + 1) + (ROUTE_NODES.indexOf(path[2]) + 1);
+    if (layers >= 3 && crossesBoundary) signal += 5;
+    return { path, signal, crossesBoundary };
+  };
+  const display = (route) => {
+    const path = route.path.join(' → ');
+    return layers === 1 ? path : `${path} · S${route.signal}`;
+  };
+  const visual = (route) => ({ type: 'route', path: route.path, signal: layers === 1 ? null : route.signal, ariaLabel: display(route) });
+  const mutate = (route) => {
+    const incorrect = { ...route, path: [...route.path] };
+    if (layers === 1) incorrect.path[2] = cycleValue(ROUTE_NODES, ROUTE_NODES.indexOf(route.path[2]) + 1);
+    else incorrect.signal = route.signal + 1;
+    return incorrect;
+  };
+  const details = Array.from({ length: 8 }, (_, index) => {
+    const expected = pathAt(index);
+    const incorrect = mutate(expected);
+    return createPuzzleDetail(
+      `route-${index + 1}`,
+      `Route trace ${index + 1}`,
+      display(expected),
+      display(incorrect),
+      `Route ${index + 1} should follow ${display(expected)}.`,
+      visual(expected),
+      visual(incorrect),
+    );
+  });
+  const exampleExpected = pathAt(0);
+  return {
+    family: 'route-network',
+    title: 'Route network',
+    puzzle: { type: 'route-network', visual: true, nodeLabels: ROUTE_NODES, legend: 'Trace paths clockwise across a six-node ring.' },
+    overview: 'Follow each route around the visual node ring and verify its signal when required.',
+    ruleSteps: [
+      'Read each trace clockwise around the six-node ring.',
+      'A valid route makes two one-node hops: start → next → next.',
+      'At Medium and Hard, the signal equals the start node number plus the finish node number (A = 1 through F = 6).',
+      'At Hard, add 5 to the signal whenever a hop crosses the F → A boundary.',
+    ],
+    example: {
+      valid: { label: 'Valid route', value: display(exampleExpected), visual: visual(exampleExpected) },
+      anomaly: { label: 'Broken route', value: display(mutate(exampleExpected)), visual: visual(mutate(exampleExpected)) },
+      explanation: 'A route can look plausible while either a hop or its signal violates the active rule.',
+    },
+    details,
+  };
+}
+
 export function createErrorDetectionChallenge(level, options = {}, rng = Math.random) {
-  const preset = resolveErrorDetectionDifficultyPreset(level, options);
-  const auditFactories = [
-    createCashReceiptAudit,
-    createDrawerReconciliationAudit,
-    createRefundAuthorizationAudit,
-    createDepositHandoffAudit,
+  const { puzzleFamily, ...presetOptions } = options;
+  const preset = resolveErrorDetectionDifficultyPreset(level, presetOptions);
+  const puzzleFactories = [
+    createSymbolMatrixPuzzle,
+    createNumberMachinePuzzle,
+    createCipherCheckPuzzle,
+    createLogicSchedulePuzzle,
+    createRouteNetworkPuzzle,
   ];
-  const audit = auditFactories[randomIndex(auditFactories.length, rng)](level, rng);
-  const selectedDetails = chooseAuditEntries(audit.details, preset.details, rng);
+  const forcedFamilyIndex = puzzleFamily === undefined ? -1 : ERROR_DETECTION_PUZZLE_FAMILIES.indexOf(puzzleFamily);
+  if (puzzleFamily !== undefined && forcedFamilyIndex < 0) {
+    throw new RangeError(`Unknown Error Detection puzzle family: ${puzzleFamily}`);
+  }
+  const puzzleFactoryIndex = forcedFamilyIndex >= 0 ? forcedFamilyIndex : randomIndex(puzzleFactories.length, rng);
+  const puzzle = puzzleFactories[puzzleFactoryIndex](level, rng);
+  const selectedDetails = choosePuzzleEntries(puzzle.details, preset.details, rng);
   const errorCount = randomIndex(Math.min(preset.maximumErrors, selectedDetails.length) + 1, rng);
-  const errorIds = new Set(chooseAuditEntries(selectedDetails, errorCount, rng).map((detail) => detail.id));
+  const errorIds = new Set(choosePuzzleEntries(selectedDetails, errorCount, rng).map((detail) => detail.id));
   const details = selectedDetails.map((detail) => ({
     id: detail.id,
     label: detail.label,
     value: errorIds.has(detail.id) ? detail.incorrectValue : detail.expectedValue,
     expectedValue: detail.expectedValue,
     correction: detail.correction,
+    visual: errorIds.has(detail.id) ? detail.incorrectVisual : detail.expectedVisual,
   }));
+  const ruleLayers = errorRuleLayers(level);
+  const briefing = {
+    overview: puzzle.overview,
+    ruleSteps: puzzle.ruleSteps.slice(0, ruleLayers + 1),
+    example: puzzle.example,
+  };
 
   return {
     id: `error-detection-${level.toLowerCase()}-${randomIndex(1000000, rng)}`,
     level,
-    title: audit.title,
-    rule: audit.rule,
-    facts: audit.facts,
+    family: puzzle.family,
+    title: puzzle.title,
+    puzzle: puzzle.puzzle,
+    briefing,
+    ruleLayers,
+    rule: briefing.ruleSteps.join(' '),
     details,
     detailsCount: details.length,
     errorIds: details.filter((detail) => errorIds.has(detail.id)).map((detail) => detail.id),

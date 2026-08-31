@@ -177,38 +177,87 @@ test('resolves editable Error Detection presets without changing shipped difficu
   assert.throws(() => resolveErrorDetectionDifficultyPreset('Easy', { timeLimitSeconds: 301 }), RangeError);
 });
 
-test('generates Error Detection cards with zero, one, and multiple pinpointable errors', () => {
-  const noErrorCard = createErrorDetectionChallenge('Easy', { details: 4, maximumErrors: 1 }, () => 0);
-  const oneErrorCard = createErrorDetectionChallenge('Easy', { details: 4, maximumErrors: 1 }, () => 0.999999);
-  const manyErrorCard = createErrorDetectionChallenge('Hard', { details: 6, maximumErrors: 3 }, () => 0.999999);
+test('generates Error Detection puzzles with zero, one, and multiple pinpointable anomalies', () => {
+  const noAnomalyPuzzle = createErrorDetectionChallenge('Easy', { details: 4, maximumErrors: 1 }, () => 0);
+  const oneAnomalyPuzzle = createErrorDetectionChallenge('Easy', { details: 4, maximumErrors: 1 }, () => 0.999999);
+  const manyAnomalyPuzzle = createErrorDetectionChallenge('Hard', { details: 6, maximumErrors: 3 }, () => 0.999999);
 
-  for (const challenge of [noErrorCard, oneErrorCard, manyErrorCard]) {
+  for (const challenge of [noAnomalyPuzzle, oneAnomalyPuzzle, manyAnomalyPuzzle]) {
     const detailIds = new Set(challenge.details.map((detail) => detail.id));
     assert.match(challenge.id, /^error-detection-/);
+    assert.ok(challenge.family);
     assert.ok(challenge.title);
-    assert.ok(challenge.rule);
+    assert.ok(challenge.puzzle?.type);
+    assert.ok(challenge.briefing?.overview);
+    assert.ok(Array.isArray(challenge.briefing?.ruleSteps));
+    assert.ok(challenge.briefing.ruleSteps.length >= 2);
+    assert.ok(challenge.briefing.example?.valid?.value);
+    assert.ok(challenge.briefing.example?.anomaly?.value);
     assert.equal(challenge.details.length, challenge.detailsCount);
-    assert.ok(challenge.details.every((detail) => detail.label && detail.value));
+    assert.ok(challenge.details.every((detail) => detail.label && detail.value && detail.expectedValue && detail.correction));
     assert.ok(challenge.errorIds.every((id) => detailIds.has(id)));
   }
 
-  assert.equal(noErrorCard.errorIds.length, 0);
-  assert.equal(oneErrorCard.errorIds.length, 1);
-  assert.equal(manyErrorCard.errorIds.length, 3);
+  assert.equal(noAnomalyPuzzle.errorIds.length, 0);
+  assert.equal(oneAnomalyPuzzle.errorIds.length, 1);
+  assert.equal(manyAnomalyPuzzle.errorIds.length, 3);
 });
 
-test('varies Error Detection cards across distinct terminal-audit scenarios', () => {
-  const challenges = [0.01, 0.3, 0.55, 0.8]
+test('varies Error Detection across visual and analytical puzzle families with a learn-before-timed walkthrough', () => {
+  const challenges = [0.01, 0.21, 0.41, 0.61, 0.81]
     .map((value) => createErrorDetectionChallenge('Hard', { details: 6, maximumErrors: 0 }, () => value));
 
-  assert.deepEqual(challenges.map((challenge) => challenge.title), [
-    'Cash receipt audit',
-    'Drawer reconciliation audit',
-    'Refund authorization audit',
-    'Deposit handoff audit',
+  assert.deepEqual(challenges.map((challenge) => challenge.family), [
+    'symbol-matrix',
+    'number-machine',
+    'cipher-check',
+    'logic-schedule',
+    'route-network',
   ]);
-  assert.ok(challenges.every((challenge) => challenge.facts.length >= 3));
+  assert.ok(challenges.some((challenge) => challenge.puzzle.visual === true));
+  assert.ok(challenges.some((challenge) => challenge.puzzle.visual === false));
+  assert.ok(challenges.every((challenge) => challenge.briefing.example.explanation));
   assert.ok(challenges.every((challenge) => challenge.details.every((detail) => detail.expectedValue && detail.correction)));
+
+  const forcedRoute = createErrorDetectionChallenge('Easy', {
+    details: 4,
+    maximumErrors: 0,
+    puzzleFamily: 'route-network',
+  }, () => 0);
+  assert.equal(forcedRoute.family, 'route-network');
+  const forcedMatrix = createErrorDetectionChallenge('Hard', {
+    details: 4,
+    maximumErrors: 0,
+    puzzleFamily: 'symbol-matrix',
+  }, () => 0);
+  assert.match(forcedMatrix.briefing.ruleSteps[0], /upper-left tile is/i);
+  assert.match(forcedMatrix.briefing.ruleSteps.at(-1), /two steps right/i);
+
+  const forcedSchedule = createErrorDetectionChallenge('Hard', {
+    details: 4,
+    maximumErrors: 0,
+    puzzleFamily: 'logic-schedule',
+  }, () => 0);
+  assert.match(forcedSchedule.briefing.ruleSteps[0], /row 1 begins/i);
+  assert.match(forcedSchedule.briefing.ruleSteps[1], /weekdays advance/i);
+
+  assert.throws(() => createErrorDetectionChallenge('Easy', {
+    details: 4,
+    maximumErrors: 0,
+    puzzleFamily: 'unknown-family',
+  }), RangeError);
+});
+
+test('makes Error Detection difficulty increase rule depth instead of only shortening the timer', () => {
+  const easy = createErrorDetectionChallenge('Easy', { details: 4, maximumErrors: 0 }, () => 0.01);
+  const medium = createErrorDetectionChallenge('Medium', { details: 5, maximumErrors: 0 }, () => 0.01);
+  const hard = createErrorDetectionChallenge('Hard', { details: 6, maximumErrors: 0 }, () => 0.01);
+
+  assert.equal(easy.ruleLayers, 1);
+  assert.equal(medium.ruleLayers, 2);
+  assert.equal(hard.ruleLayers, 3);
+  assert.ok(easy.briefing.ruleSteps.length < medium.briefing.ruleSteps.length);
+  assert.ok(medium.briefing.ruleSteps.length < hard.briefing.ruleSteps.length);
 });
 
 test('scores Error Detection selections as an exact set, including no-error cards', () => {
@@ -388,7 +437,8 @@ test('can auto-continue to the next timeout-free screen in all web games', async
   ]);
 
   assert.match(html, /id="auto-continue-toggle"/);
-  assert.match(html, /Immediately start the next round when its timer expires/);
+  assert.match(html, /Immediately advance to the next round when its timer expires/);
+  assert.match(html, /In Error Detection, this opens the next rule briefing/);
   assert.match(app, /autoContinueOnTimeout: false,/);
   assert.match(app, /state\.autoContinueOnTimeout = refs\['auto-continue-toggle'\]\.checked;/);
   assert.match(app, /if \(timedOut && state\.autoContinueOnTimeout\) \{\s*showNextQuestion\(\);\s*return;\s*\}/s);
@@ -397,7 +447,7 @@ test('can auto-continue to the next timeout-free screen in all web games', async
   assert.match(app, /if \(timedOut && state\.autoContinueOnTimeout\) \{\s*showNextErrorDetectionQuestion\(\);\s*return;\s*\}/s);
 });
 
-test('provides a fourth Error Detection game with selectable detail cards and saved presets', async () => {
+test('provides a fourth Error Detection puzzle game with a rule walkthrough, visual clues, and saved presets', async () => {
   const [html, app, css] = await Promise.all([
     readFile(new URL('../index.html', import.meta.url), 'utf8'),
     readFile(new URL('../app.js', import.meta.url), 'utf8'),
@@ -411,17 +461,25 @@ test('provides a fourth Error Detection game with selectable detail cards and sa
   assert.match(html, /id="preset-error-detection-details"/);
   assert.match(html, /id="preset-error-detection-errors"/);
   assert.match(html, /id="preset-error-detection-time"/);
+  assert.match(html, /id="error-detection-briefing-screen"/);
+  assert.match(html, /id="error-detection-rule-steps"/);
+  assert.match(html, /id="error-detection-example"/);
+  assert.match(html, /id="error-detection-start-puzzle"/);
   assert.match(html, /id="error-detection-screen"/);
-  assert.match(html, /id="error-detection-rule"/);
-  assert.match(html, /id="error-detection-facts"/);
+  assert.match(html, /id="error-detection-puzzle-legend"/);
   assert.match(html, /id="error-detection-detail-list"/);
   assert.match(html, /id="error-detection-no-errors"/);
   assert.match(html, /id="error-detection-form"/);
-  assert.match(app, /createErrorDetectionChallenge\(state\.difficulty, state\.errorDetectionPresets\[state\.difficulty\]\)/);
+  assert.doesNotMatch(html, /Terminal audit/);
+  assert.match(app, /showErrorDetectionBriefing\(\)/);
+  assert.match(app, /startErrorDetectionPuzzle\(\)/);
+  assert.match(app, /renderErrorDetectionVisual\(/);
   assert.match(app, /scoreErrorDetectionAttempt\(state\.errorDetectionChallenge, selectedErrorDetailIds\(\), timedOut\)/);
   assert.match(app, /showNextErrorDetectionQuestion\(\)/);
   assert.match(app, /setAttribute\('aria-pressed', String\(selected\)\)/);
-  assert.match(css, /\.error-detection-card\s*\{/);
+  assert.match(css, /\.error-detection-briefing-screen\s*\{/);
+  assert.match(css, /\.puzzle-visual-symbol\s*\{/);
+  assert.match(css, /\.puzzle-visual-route\s*\{/);
   assert.match(css, /\.error-detection-detail\[aria-pressed="true"\]\s*\{/);
 });
 

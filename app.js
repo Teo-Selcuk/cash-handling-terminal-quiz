@@ -2,6 +2,7 @@ import {
   DENOMINATIONS,
   DIFFICULTY_CONFIG,
   ERROR_DETECTION_MODE_CONFIG,
+  ERROR_DETECTION_PUZZLE_FAMILIES,
   MEMORY_MODE_CONFIG,
   TASK_MODE_CONFIG,
   buildBreakdown,
@@ -29,10 +30,10 @@ import {
 const HISTORY_KEY = 'cash-handling-terminal-quiz-history-v1';
 const THEME_KEY = 'cash-handling-terminal-quiz-theme-v1';
 const PRESET_KEY = 'cash-handling-terminal-quiz-presets-v1';
-const screens = ['setup', 'quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'error-detection', 'feedback', 'summary', 'history'];
+const screens = ['setup', 'quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'error-detection-briefing', 'error-detection', 'feedback', 'summary', 'history'];
 const refs = Object.fromEntries([
   'setup-form', 'setup-screen', 'quiz-screen', 'feedback-screen', 'summary-screen', 'history-screen',
-  'memory-read-screen', 'memory-answer-screen', 'task-briefing-screen', 'task-workspace-screen', 'error-detection-screen', 'cash-setup-options', 'memory-setup-options', 'task-setup-options', 'error-detection-setup-options',
+  'memory-read-screen', 'memory-answer-screen', 'task-briefing-screen', 'task-workspace-screen', 'error-detection-briefing-screen', 'error-detection-screen', 'cash-setup-options', 'memory-setup-options', 'task-setup-options', 'error-detection-setup-options',
   'question-count', 'time-limit', 'cash-builder-toggle', 'auto-continue-toggle', 'question-progress', 'timer', 'amount-due',
   'tender-breakdown', 'answer-form', 'answer-amount', 'cash-builder-section', 'cash-builder-heading',
   'cash-builder-purpose', 'cash-builder', 'selected-total', 'builder-status', 'clear-builder', 'quick-cash-entry', 'apply-quick-cash', 'feedback-heading',
@@ -45,7 +46,8 @@ const refs = Object.fromEntries([
   'task-question-count', 'task-briefing-progress', 'task-briefing-timer', 'task-briefing-heading', 'task-briefing-title', 'task-instruction-list', 'task-start-demo',
   'task-workspace-progress', 'task-timer', 'task-workspace-heading', 'task-phase-status', 'task-demo-controls', 'task-pause-demo', 'task-replay-demo', 'task-skip-demo',
   'task-tablist', 'task-tabpanel', 'task-workspace-content', 'task-workspace-dialog', 'task-save-workspace', 'task-demo-guide', 'task-demo-cursor', 'task-recall-note', 'task-row-template',
-  'error-detection-question-count', 'error-detection-progress', 'error-detection-timer', 'error-detection-heading', 'error-detection-title', 'error-detection-rule', 'error-detection-facts', 'error-detection-detail-list', 'error-detection-no-errors', 'error-detection-selection-status', 'error-detection-form',
+  'error-detection-question-count', 'error-detection-briefing-progress', 'error-detection-briefing-heading', 'error-detection-briefing-family', 'error-detection-briefing-title', 'error-detection-briefing-overview', 'error-detection-rule-steps', 'error-detection-example', 'error-detection-start-puzzle',
+  'error-detection-progress', 'error-detection-timer', 'error-detection-heading', 'error-detection-title', 'error-detection-puzzle-family', 'error-detection-puzzle-legend', 'error-detection-detail-list', 'error-detection-no-errors', 'error-detection-selection-status', 'error-detection-form',
   'easy-description', 'medium-description', 'hard-description',
   'preset-editor', 'preset-level', 'preset-cash-fields', 'preset-memory-fields', 'preset-task-fields', 'preset-error-detection-fields',
   'preset-cash-min-due', 'preset-cash-max-due', 'preset-cash-step', 'preset-cash-max-difference', 'preset-cash-split-count',
@@ -82,6 +84,8 @@ const state = {
   taskChallenge: null,
   errorDetectionChallenge: null,
   errorDetailSelections: new Set(),
+  errorDetectionFamilyDeck: [],
+  errorDetectionStartedAt: 0,
   taskActionLog: [],
   taskPhase: '',
   taskDemoToken: 0,
@@ -185,6 +189,29 @@ function makeSessionId() {
   return globalThis.crypto?.randomUUID?.() ?? `session-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+function errorDetectionFamilyLabel(family) {
+  const labels = {
+    'symbol-matrix': 'Visual symbol matrix',
+    'number-machine': 'Number machine',
+    'cipher-check': 'Cipher ring check',
+    'logic-schedule': 'Logic schedule board',
+    'route-network': 'Visual route network',
+  };
+  return labels[family] ?? 'Anomaly puzzle';
+}
+
+function nextErrorDetectionPuzzleFamily() {
+  if (state.errorDetectionFamilyDeck.length === 0) {
+    const deck = [...ERROR_DETECTION_PUZZLE_FAMILIES];
+    for (let index = deck.length - 1; index > 0; index -= 1) {
+      const swapIndex = Math.floor(Math.random() * (index + 1));
+      [deck[index], deck[swapIndex]] = [deck[swapIndex], deck[index]];
+    }
+    state.errorDetectionFamilyDeck = deck;
+  }
+  return state.errorDetectionFamilyDeck.shift();
+}
+
 function isCompactViewport() {
   return window.matchMedia?.('(max-width: 63.9375rem)').matches ?? false;
 }
@@ -194,7 +221,7 @@ function showScreen(name) {
   state.activeScreen = name;
   const activeScreen = refs[`${name}-screen`];
   if (isCompactViewport()) activeScreen.scrollIntoView({ block: 'start', inline: 'nearest' });
-  const roundInProgress = ['quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'error-detection'].includes(name);
+  const roundInProgress = ['quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'error-detection-briefing', 'error-detection'].includes(name);
   refs['open-history'].disabled = roundInProgress;
   if (!roundInProgress) stopTimer();
   if (name === 'quiz') {
@@ -300,19 +327,19 @@ function errorDetectionPresetDescription(level) {
   const preset = state.errorDetectionPresets[level];
   const defaults = ERROR_DETECTION_MODE_CONFIG[level];
   const defaultDescriptions = {
-    Easy: '4 details, up to 1 obvious error',
-    Medium: '5 details, up to 2 subtle errors',
-    Hard: '6 details, up to 3 near-match errors',
+    Easy: '4 clues, one rule, up to 1 anomaly',
+    Medium: '5 clues, two linked rules, up to 2 anomalies',
+    Hard: '6 clues, three linked rules, up to 3 anomalies',
   };
   if (hasPresetValues(preset, defaults, ['details', 'maximumErrors', 'timeLimitSeconds'])) return defaultDescriptions[level];
-  return `${preset.details} details, up to ${preset.maximumErrors} errors, ${preset.timeLimitSeconds}s`;
+  return `${preset.details} clues, up to ${preset.maximumErrors} anomalies, ${preset.timeLimitSeconds}s`;
 }
 
 function gameLabel(game) {
   if (game === 'cash') return 'cash handling';
   if (game === 'memory') return 'number memory';
   if (game === 'task') return 'task simulation';
-  return 'error detection';
+  return 'error detection puzzle';
 }
 
 function renderPresetEditor() {
@@ -902,21 +929,21 @@ function detailsForErrorIds(ids) {
 
 function describeErrorDetails(ids, showExpected = false) {
   const details = detailsForErrorIds(ids);
-  if (details.length === 0) return 'No errors.';
+  if (details.length === 0) return 'No anomalies.';
   return details.map((detail) => `${detail.label}: ${showExpected ? detail.expectedValue : detail.value}`).join(' · ');
 }
 
 function updateErrorDetectionSelection() {
   const selectedCount = state.errorDetailSelections.size;
   refs['error-detection-selection-status'].textContent = selectedCount
-    ? `${selectedCount} detail${selectedCount === 1 ? '' : 's'} flagged for review.`
+    ? `${selectedCount} clue${selectedCount === 1 ? '' : 's'} marked anomalous.`
     : refs['error-detection-no-errors'].checked
-      ? 'This card is marked as having no errors.'
-      : 'No details flagged.';
+      ? 'This puzzle is marked as having no anomalies.'
+      : 'No clues marked.';
   for (const button of refs['error-detection-detail-list'].querySelectorAll('button')) {
     const selected = state.errorDetailSelections.has(button.dataset.detailId);
     button.setAttribute('aria-pressed', String(selected));
-    button.querySelector('.error-detection-detail-status').textContent = selected ? 'Flagged' : 'Select if wrong';
+    button.querySelector('.error-detection-detail-status').textContent = selected ? 'Marked anomaly' : 'Mark if anomalous';
   }
 }
 
@@ -933,25 +960,114 @@ function selectedErrorDetailIds() {
     .map((detail) => detail.id);
 }
 
+function svgElement(name, attributes = {}) {
+  const element = document.createElementNS('http://www.w3.org/2000/svg', name);
+  for (const [attribute, value] of Object.entries(attributes)) element.setAttribute(attribute, String(value));
+  return element;
+}
+
+function renderErrorDetectionVisual(visual) {
+  if (!visual) return null;
+  if (visual.type === 'symbol') {
+    const symbol = document.createElement('span');
+    symbol.className = 'puzzle-visual puzzle-visual-symbol';
+    symbol.dataset.shape = visual.shape;
+    symbol.dataset.color = visual.color;
+    symbol.dataset.fill = visual.fill;
+    symbol.setAttribute('role', 'img');
+    symbol.setAttribute('aria-label', visual.ariaLabel);
+    const glyph = document.createElement('span');
+    glyph.className = 'puzzle-symbol-glyph';
+    glyph.setAttribute('aria-hidden', 'true');
+    symbol.append(glyph);
+    return symbol;
+  }
+  if (visual.type === 'route') {
+    const positions = {
+      A: [50, 9], B: [82, 27], C: [82, 63], D: [50, 81], E: [18, 63], F: [18, 27],
+    };
+    const svg = svgElement('svg', {
+      class: 'puzzle-visual puzzle-visual-route', viewBox: '0 0 100 90', role: 'img', 'aria-label': visual.ariaLabel,
+    });
+    const ring = [...visual.path, visual.path[0]];
+    svg.append(svgElement('polyline', {
+      class: 'puzzle-route-ring', points: [...Object.values(positions), positions.A].map((point) => point.join(',')).join(' '),
+    }));
+    for (let index = 0; index < visual.path.length - 1; index += 1) {
+      const from = positions[visual.path[index]];
+      const to = positions[visual.path[index + 1]];
+      svg.append(svgElement('line', {
+        class: 'puzzle-route-active', x1: from[0], y1: from[1], x2: to[0], y2: to[1],
+      }));
+    }
+    for (const [label, point] of Object.entries(positions)) {
+      const active = ring.includes(label);
+      svg.append(svgElement('circle', {
+        class: active ? 'puzzle-route-node is-active' : 'puzzle-route-node', cx: point[0], cy: point[1], r: 7,
+      }));
+      const text = svgElement('text', { class: 'puzzle-route-label', x: point[0], y: point[1] + 3, 'text-anchor': 'middle' });
+      text.textContent = label;
+      svg.append(text);
+    }
+    return svg;
+  }
+  return null;
+}
+
+function createErrorDetectionExampleCase(example, variant) {
+  const caseCard = document.createElement('div');
+  const heading = document.createElement('strong');
+  const visual = renderErrorDetectionVisual(example.visual);
+  const value = document.createElement('span');
+  caseCard.className = `error-detection-example-case ${variant}`;
+  heading.textContent = example.label;
+  value.className = 'error-detection-example-value';
+  value.textContent = example.value;
+  caseCard.append(heading);
+  if (visual) caseCard.append(visual);
+  caseCard.append(value);
+  return caseCard;
+}
+
+function renderErrorDetectionBriefing(challenge) {
+  refs['error-detection-briefing-progress'].textContent = `Round ${state.questionNumber} of ${state.questionCount}`;
+  refs['error-detection-briefing-family'].textContent = errorDetectionFamilyLabel(challenge.family);
+  refs['error-detection-briefing-title'].textContent = challenge.title;
+  refs['error-detection-briefing-overview'].textContent = challenge.briefing.overview;
+  refs['error-detection-rule-steps'].replaceChildren(...challenge.briefing.ruleSteps.map((step) => {
+    const item = document.createElement('li');
+    item.textContent = step;
+    return item;
+  }));
+  const examples = document.createElement('div');
+  const explanation = document.createElement('p');
+  examples.className = 'error-detection-example-cases';
+  examples.append(
+    createErrorDetectionExampleCase(challenge.briefing.example.valid, 'is-valid'),
+    createErrorDetectionExampleCase(challenge.briefing.example.anomaly, 'is-anomaly'),
+  );
+  explanation.className = 'error-detection-example-explanation';
+  explanation.textContent = challenge.briefing.example.explanation;
+  refs['error-detection-example'].replaceChildren(examples, explanation);
+}
+
+function showErrorDetectionBriefing() {
+  renderErrorDetectionBriefing(state.errorDetectionChallenge);
+  showScreen('error-detection-briefing');
+}
+
 function renderErrorDetectionCard(challenge) {
   refs['error-detection-progress'].textContent = `Round ${state.questionNumber} of ${state.questionCount}`;
   refs['error-detection-title'].textContent = challenge.title;
-  refs['error-detection-rule'].textContent = challenge.rule;
-  refs['error-detection-facts'].replaceChildren(...challenge.facts.map((fact) => {
-    const item = document.createElement('div');
-    const term = document.createElement('dt');
-    const description = document.createElement('dd');
-    item.className = 'error-detection-fact';
-    term.textContent = fact.label;
-    description.textContent = fact.value;
-    item.append(term, description);
-    return item;
-  }));
+  refs['error-detection-puzzle-family'].textContent = errorDetectionFamilyLabel(challenge.family);
+  refs['error-detection-puzzle-legend'].textContent = challenge.puzzle.legend;
+  refs['error-detection-detail-list'].dataset.puzzleType = challenge.puzzle.type;
   state.errorDetailSelections = new Set();
   refs['error-detection-no-errors'].checked = false;
   refs['error-detection-detail-list'].replaceChildren(...challenge.details.map((detail) => {
     const button = document.createElement('button');
     const content = document.createElement('span');
+    const copy = document.createElement('span');
     const label = document.createElement('span');
     const value = document.createElement('span');
     const status = document.createElement('span');
@@ -959,12 +1075,18 @@ function renderErrorDetectionCard(challenge) {
     button.type = 'button';
     button.dataset.detailId = detail.id;
     button.setAttribute('aria-pressed', 'false');
+    button.setAttribute('aria-label', `${detail.label}: ${detail.value}. Mark this clue if it is anomalous.`);
+    content.className = 'error-detection-detail-content';
+    copy.className = 'error-detection-detail-copy';
     label.className = 'error-detection-detail-label';
     label.textContent = detail.label;
     value.className = 'error-detection-detail-value';
     value.textContent = detail.value;
     status.className = 'error-detection-detail-status';
-    content.append(label, value);
+    const visual = renderErrorDetectionVisual(detail.visual);
+    copy.append(label, value);
+    if (visual) content.append(visual);
+    content.append(copy);
     button.append(content, status);
     button.addEventListener('click', () => toggleErrorDetail(detail.id));
     return button;
@@ -983,6 +1105,8 @@ function recordErrorDetectionAttempt(score, timedOut, elapsedSeconds) {
     difficulty: state.difficulty,
     questionNumber: state.questionNumber,
     scenario: challenge.title,
+    puzzleFamily: errorDetectionFamilyLabel(challenge.family),
+    ruleLayers: challenge.ruleLayers,
     rule: challenge.rule,
     detailCount: challenge.detailsCount,
     expectedErrorCount: score.errorCount,
@@ -995,29 +1119,30 @@ function recordErrorDetectionAttempt(score, timedOut, elapsedSeconds) {
     timeUsedSeconds: Number(elapsedSeconds.toFixed(1)),
     expectedAnswer: expectedDetails.length
       ? expectedDetails.map((detail) => `${detail.label} should be ${detail.expectedValue}`).join(' · ')
-      : 'No errors.',
-    userAnswer: selectedDetails.length ? describeErrorDetails(score.selectedDetailIds) : 'No details flagged.',
+      : 'No anomalies.',
+    userAnswer: selectedDetails.length ? describeErrorDetails(score.selectedDetailIds) : 'No clues marked.',
     outcome: timedOut ? 'Timed Out' : score.correct ? 'Correct' : 'Incorrect',
   };
 }
 
 function populateErrorDetectionFeedback(record, score) {
   const correct = score.correct;
-  refs['feedback-kicker'].textContent = record.outcome === 'Timed Out' ? 'Time expired' : 'Detail result';
+  refs['feedback-kicker'].textContent = record.outcome === 'Timed Out' ? 'Time expired' : 'Puzzle result';
   refs['feedback-heading'].textContent = correct ? 'Correct' : record.outcome === 'Timed Out' ? 'Time expired' : 'Not quite';
   refs['feedback-heading'].dataset.result = correct ? 'correct' : 'incorrect';
   refs['feedback-lead'].textContent = correct
-    ? 'You pinpointed every incorrect detail and left the valid details alone.'
+    ? 'You pinpointed every anomaly and left the valid clues alone.'
     : score.errorCount === 0
-      ? 'This was a clean card: no details violated the rule.'
-      : 'Review the missed errors and any valid details that were flagged.';
+      ? 'This was a clean puzzle: no clues violated the rule.'
+      : 'Review the missed anomalies and any valid clues that were marked.';
   const details = [
-    ['Scenario', record.scenario],
-    ['Your flags', record.userAnswer],
-    ['Correct flags', record.expectedAnswer],
-    ['Correctly flagged', `${record.correctlyFlagged} of ${record.expectedErrorCount}`],
-    ['Missed errors', record.missedErrors],
-    ['False flags', record.falseFlags],
+    ['Puzzle', record.scenario],
+    ['Family', record.puzzleFamily],
+    ['Your marks', record.userAnswer],
+    ['Correct marks', record.expectedAnswer],
+    ['Correctly marked', `${record.correctlyFlagged} of ${record.expectedErrorCount}`],
+    ['Missed anomalies', record.missedErrors],
+    ['False marks', record.falseFlags],
     ['Time used', `${record.timeUsedSeconds.toFixed(1)} seconds`],
   ];
   refs['feedback-details'].replaceChildren();
@@ -1033,14 +1158,14 @@ function populateErrorDetectionFeedback(record, score) {
 function submitErrorDetectionAttempt(timedOut = false) {
   if (state.answerSubmitted) return;
   if (!timedOut && state.errorDetailSelections.size === 0 && !refs['error-detection-no-errors'].checked) {
-    setMessage('Flag an incorrect detail or choose No errors on this card before submitting.');
+    setMessage('Mark an anomalous clue or choose No anomalies before submitting.');
     refs['error-detection-no-errors'].focus();
     return;
   }
   state.answerSubmitted = true;
   const elapsedSeconds = Math.min(
     state.errorDetectionChallenge.timeLimitSeconds,
-    Math.max(0, (Date.now() - (state.deadline - state.errorDetectionChallenge.timeLimitSeconds * 1000)) / 1000),
+    Math.max(0, (Date.now() - state.errorDetectionStartedAt) / 1000),
   );
   stopTimer();
   const score = scoreErrorDetectionAttempt(state.errorDetectionChallenge, selectedErrorDetailIds(), timedOut);
@@ -1062,10 +1187,20 @@ function showNextErrorDetectionQuestion() {
     showScreen('summary');
     return;
   }
-  state.errorDetectionChallenge = createErrorDetectionChallenge(state.difficulty, state.errorDetectionPresets[state.difficulty]);
+  state.errorDetectionChallenge = createErrorDetectionChallenge(state.difficulty, {
+    ...state.errorDetectionPresets[state.difficulty],
+    puzzleFamily: nextErrorDetectionPuzzleFamily(),
+  });
   state.answerSubmitted = false;
+  state.errorDetectionStartedAt = 0;
+  showErrorDetectionBriefing();
+}
+
+function startErrorDetectionPuzzle() {
+  if (!state.errorDetectionChallenge || state.answerSubmitted) return;
   renderErrorDetectionCard(state.errorDetectionChallenge);
   showScreen('error-detection');
+  state.errorDetectionStartedAt = Date.now();
   startTimer(state.errorDetectionChallenge.timeLimitSeconds, refs['error-detection-timer'], () => submitErrorDetectionAttempt(true));
 }
 
@@ -1750,9 +1885,9 @@ function makeMetrics(records) {
     const falseFlags = records.reduce((sum, record) => sum + Number(record.falseFlagCount || 0), 0);
     return [
       [`${summary.answered}`, 'Rounds'],
-      [`${summary.accuracyPercent}%`, 'Perfect cards'],
-      [`${missedErrors}`, 'Missed errors'],
-      [`${falseFlags}`, 'False flags'],
+      [`${summary.accuracyPercent}%`, 'Perfect puzzles'],
+      [`${missedErrors}`, 'Missed anomalies'],
+      [`${falseFlags}`, 'False marks'],
       [`${averageTime.toFixed(1)}s`, 'Average time'],
     ];
   }
@@ -1911,6 +2046,8 @@ refs['setup-form'].addEventListener('submit', (event) => {
   state.difficulty = difficulty;
   state.questionNumber = 0;
   state.results = [];
+  state.errorDetectionFamilyDeck = [];
+  state.errorDetectionStartedAt = 0;
   state.autoContinueOnTimeout = refs['auto-continue-toggle'].checked;
 
   if (game === 'error-detection') {
@@ -1999,6 +2136,7 @@ refs['error-detection-form'].addEventListener('submit', (event) => {
   event.preventDefault();
   submitErrorDetectionAttempt();
 });
+refs['error-detection-start-puzzle'].addEventListener('click', startErrorDetectionPuzzle);
 refs['error-detection-no-errors'].addEventListener('change', () => {
   if (refs['error-detection-no-errors'].checked) state.errorDetailSelections.clear();
   updateErrorDetectionSelection();

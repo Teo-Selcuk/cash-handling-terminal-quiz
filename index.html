@@ -3,19 +3,19 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="Fast, local-only cash handling, number memory, task simulation, and terminal-audit practice games.">
+    <meta name="description" content="Fast, local-only cash handling, number memory, task simulation, and complex anomaly-puzzle games.">
     <meta name="theme-color" content="#12343b">
     <title>Cash, Memory &amp; Detail Trainer</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="style.css?v=20260830-error-detection">
+    <link rel="stylesheet" href="style.css?v=20260830-puzzle-lab">
   </head>
   <body>
     <main class="app-shell">
       <header class="site-header">
         <div>
-          <p class="eyebrow">Cash, memory, task, and detail practice</p>
+          <p class="eyebrow">Cash, memory, workflow, and puzzle practice</p>
           <h1>Cash, Memory &amp; Detail Trainer</h1>
-          <p class="subtitle">Practice cash transactions, number memory, office-style workflows, or terminal-audit detail checks. Your history stays on this device.</p>
+          <p class="subtitle">Practice cash transactions, number memory, office-style workflows, or complex visual and logic anomaly puzzles. Your history stays on this device.</p>
         </div>
         <div class="header-actions">
           <button class="secondary-button theme-toggle" id="theme-toggle" type="button" aria-pressed="false">Dark mode</button>
@@ -38,7 +38,7 @@
               <label class="choice-card"><input type="radio" name="game" value="cash" checked><span><strong>Cash handling</strong><small>Practice exact, change, and short transactions.</small></span></label>
               <label class="choice-card"><input type="radio" name="game" value="memory"><span><strong>Number memory</strong><small>Read a number, then type it back from memory.</small></span></label>
               <label class="choice-card"><input type="radio" name="game" value="task"><span><strong>Task simulation</strong><small>Watch a workflow, then repeat its tabs, fields, and selections from memory.</small></span></label>
-              <label class="choice-card"><input type="radio" name="game" value="error-detection"><span><strong>Error detection</strong><small>Audit a terminal card and flag every wrong detail—or confirm that it has none.</small></span></label>
+              <label class="choice-card"><input type="radio" name="game" value="error-detection"><span><strong>Error detection</strong><small>Study a complex rule, then pinpoint anomalies in visual and logic puzzles.</small></span></label>
             </div>
           </fieldset>
 
@@ -53,7 +53,7 @@
 
           <label class="toggle-row" for="auto-continue-toggle">
             <input id="auto-continue-toggle" name="autoContinueOnTimeout" type="checkbox">
-            <span><strong>Auto-continue after timeout</strong><small>Immediately start the next round when its timer expires. The final timeout still shows your session results.</small></span>
+            <span><strong>Auto-continue after timeout</strong><small>Immediately advance to the next round when its timer expires. In Error Detection, this opens the next rule briefing; the final timeout still shows your session results.</small></span>
           </label>
 
           <details class="preset-editor" id="preset-editor">
@@ -129,10 +129,10 @@
               </div>
 
               <div class="preset-form-grid" id="preset-error-detection-fields" hidden>
-                <label for="preset-error-detection-details">Details per card
+                <label for="preset-error-detection-details">Selectable clues per puzzle
                   <input id="preset-error-detection-details" type="number" min="3" max="8" step="1" inputmode="numeric">
                 </label>
-                <label for="preset-error-detection-errors">Maximum errors per card
+                <label for="preset-error-detection-errors">Maximum anomalies per puzzle
                   <input id="preset-error-detection-errors" type="number" min="0" max="8" step="1" inputmode="numeric">
                 </label>
                 <label for="preset-error-detection-time">Seconds per round
@@ -179,7 +179,7 @@
           </div>
 
           <div id="error-detection-setup-options" hidden>
-            <p class="setup-note">Each round gives you a rule and source facts. Flag every wrong detail, or choose no errors when the card is clean.</p>
+            <p class="setup-note">Each round starts with an untimed rule walkthrough and worked example. Click Next when ready, then pinpoint every anomaly in the timed puzzle.</p>
             <label for="error-detection-question-count">Rounds
               <input id="error-detection-question-count" name="errorDetectionQuestionCount" type="number" value="10" min="1" max="100" inputmode="numeric" required>
             </label>
@@ -313,30 +313,48 @@
         </tr>
       </template>
 
+      <section class="screen error-detection-briefing-screen" id="error-detection-briefing-screen" hidden aria-labelledby="error-detection-briefing-heading">
+        <div class="question-header">
+          <p class="eyebrow" id="error-detection-briefing-progress">Round 1 of 10</p>
+          <p class="timer timer-static">Untimed study</p>
+        </div>
+        <h2 id="error-detection-briefing-heading" tabindex="-1">Learn the puzzle rule</h2>
+        <p class="memory-instruction" id="error-detection-briefing-overview"></p>
+        <article class="error-detection-briefing-card" aria-labelledby="error-detection-briefing-title">
+          <p class="eyebrow" id="error-detection-briefing-family">Pattern puzzle</p>
+          <h3 id="error-detection-briefing-title">Signal matrix</h3>
+          <ol class="error-detection-rule-steps" id="error-detection-rule-steps"></ol>
+          <section class="error-detection-example" aria-labelledby="error-detection-example-heading">
+            <h4 id="error-detection-example-heading">Worked example</h4>
+            <div id="error-detection-example"></div>
+          </section>
+        </article>
+        <button class="primary-button" id="error-detection-start-puzzle" type="button">Next: start timed puzzle</button>
+      </section>
+
       <section class="screen error-detection-screen" id="error-detection-screen" hidden aria-labelledby="error-detection-heading">
         <div class="question-header">
           <p class="eyebrow" id="error-detection-progress">Round 1 of 10</p>
-          <time class="timer" id="error-detection-timer" aria-label="Time remaining for this audit card">0:30</time>
+          <time class="timer" id="error-detection-timer" aria-label="Time remaining for this anomaly puzzle">0:30</time>
         </div>
-        <h2 id="error-detection-heading" tabindex="-1">Find the incorrect details</h2>
-        <p class="memory-instruction">Use the rule and source facts below. Flag every card detail that is wrong; some cards are entirely correct.</p>
+        <h2 id="error-detection-heading" tabindex="-1">Find every anomaly</h2>
+        <p class="memory-instruction">Use the rule you just studied. Some puzzles have no anomalies at all.</p>
         <article class="error-detection-card" aria-labelledby="error-detection-title">
-          <p class="eyebrow">Terminal audit</p>
-          <h3 id="error-detection-title">Cash receipt audit</h3>
-          <p class="error-detection-rule" id="error-detection-rule"></p>
-          <dl class="error-detection-facts" id="error-detection-facts"></dl>
+          <p class="eyebrow" id="error-detection-puzzle-family">Logic puzzle</p>
+          <h3 id="error-detection-title">Signal matrix</h3>
+          <p class="error-detection-puzzle-legend" id="error-detection-puzzle-legend"></p>
         </article>
         <form class="answer-form" id="error-detection-form">
           <fieldset>
-            <legend>Flag every incorrect detail</legend>
+            <legend>Mark every anomalous clue</legend>
             <p class="setup-note" id="error-detection-selection-status" role="status" aria-live="polite">No details flagged.</p>
             <div class="error-detection-detail-list" id="error-detection-detail-list" aria-describedby="error-detection-selection-status"></div>
           </fieldset>
           <label class="toggle-row" for="error-detection-no-errors">
             <input id="error-detection-no-errors" type="checkbox">
-            <span><strong>No errors on this card</strong><small>Use this only when every displayed detail follows the rule and source facts.</small></span>
+            <span><strong>No anomalies in this puzzle</strong><small>Use this only when every displayed clue follows the rule.</small></span>
           </label>
-          <button class="primary-button" id="submit-error-detection" type="submit">Check flagged details</button>
+          <button class="primary-button" id="submit-error-detection" type="submit">Check marked clues</button>
         </form>
       </section>
 
@@ -404,6 +422,6 @@
     </main>
 
     <footer>Browser edition. The original PowerShell quiz remains in this repository.</footer>
-    <script type="module" src="app.js?v=20260830-error-detection"></script>
+    <script type="module" src="app.js?v=20260830-puzzle-lab"></script>
   </body>
 </html>
