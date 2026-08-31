@@ -95,8 +95,8 @@ h2 { margin-bottom: 0.5rem; font-size: clamp(1.5rem, 4vw, 2rem); letter-spacing:
 }
 
 .section-heading { margin-bottom: 1.5rem; }
-.setup-form, .answer-form, #cash-setup-options, #memory-setup-options, #task-setup-options { display: grid; gap: 1.5rem; }
-#cash-setup-options[hidden], #memory-setup-options[hidden], #task-setup-options[hidden] { display: none !important; }
+.setup-form, .answer-form, #cash-setup-options, #memory-setup-options, #task-setup-options, #error-detection-setup-options { display: grid; gap: 1.5rem; }
+#cash-setup-options[hidden], #memory-setup-options[hidden], #task-setup-options[hidden], #error-detection-setup-options[hidden] { display: none !important; }
 fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 legend { margin-bottom: 0.75rem; font-weight: 750; }
 
@@ -208,6 +208,24 @@ input:disabled { background: var(--disabled-surface); color: var(--muted); }
 .memory-answer-field small { color: var(--muted); font-weight: 400; }
 .memory-answer-field input { min-width: 0; }
 .memory-screen .answer-form { max-width: 60rem; margin: 1.5rem auto 0; text-align: left; }
+
+.error-detection-screen { max-width: 60rem; margin: 0 auto; }
+.error-detection-card { margin: 1.5rem 0; padding: 1rem; border: 0.0625rem solid var(--line); border-left: 0.25rem solid var(--accent); border-radius: var(--radius); background: var(--surface-quiet); }
+.error-detection-card h3 { margin-bottom: 0.5rem; font-size: 1.25rem; }
+.error-detection-rule { margin-bottom: 1rem; color: var(--ink); font-weight: 700; line-height: 1.5; }
+.error-detection-facts { display: grid; gap: 0.75rem; margin: 0; }
+.error-detection-fact { min-width: 0; padding: 0.75rem; border: 0.0625rem solid var(--line); border-radius: 0.25rem; background: var(--surface); }
+.error-detection-fact dt { margin-bottom: 0.25rem; color: var(--muted); font-size: 0.75rem; font-weight: 750; letter-spacing: 0.04em; text-transform: uppercase; }
+.error-detection-fact dd { margin: 0; overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 0.9375rem; font-weight: 700; }
+.error-detection-detail-list { display: grid; gap: 0.75rem; }
+.error-detection-detail { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.75rem; align-items: center; width: 100%; min-height: 4.5rem; padding: 0.875rem 1rem; border: 0.0625rem solid var(--line); border-radius: 0.25rem; background: var(--surface); color: var(--ink); text-align: left; }
+.error-detection-detail:hover { background: var(--surface-quiet); }
+.error-detection-detail[aria-pressed="true"] { border-color: var(--brand-fill); background: var(--brand-fill); color: #fff; }
+.error-detection-detail-label, .error-detection-detail-value { display: block; }
+.error-detection-detail-label { margin-bottom: 0.25rem; color: inherit; font-size: 0.8125rem; font-weight: 750; letter-spacing: 0.04em; text-transform: uppercase; }
+.error-detection-detail-value { overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 1rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+.error-detection-detail-status { justify-self: end; padding: 0.25rem 0.5rem; border: 0.0625rem solid currentColor; border-radius: 999rem; color: var(--muted); font-size: 0.75rem; font-weight: 750; white-space: nowrap; }
+.error-detection-detail[aria-pressed="true"] .error-detection-detail-status { color: #fff; }
 
 .task-briefing-screen { max-width: 52rem; margin: 0 auto; }
 .task-instruction-list { display: grid; gap: 0.75rem; margin: 1.5rem 0; padding-left: 1.5rem; }
@@ -324,9 +342,10 @@ footer { width: min(100% - 2rem, 64rem); margin: 0 auto; padding-bottom: 2rem; c
 
 @media (min-width: 42rem) {
   .choice-grid { grid-template-columns: repeat(3, 1fr); }
-  .game-choice-grid { grid-template-columns: repeat(3, 1fr); }
+  .game-choice-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .form-grid { grid-template-columns: repeat(2, 1fr); }
   .preset-form-grid { grid-template-columns: repeat(2, 1fr); }
+  .error-detection-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .metric-grid { grid-template-columns: repeat(4, 1fr); }
   .history-visuals { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

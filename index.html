@@ -3,19 +3,19 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="Fast, local-only cash handling, number memory, and task simulation practice games.">
+    <meta name="description" content="Fast, local-only cash handling, number memory, task simulation, and terminal-audit practice games.">
     <meta name="theme-color" content="#12343b">
-    <title>Cash, Memory &amp; Task Trainer</title>
+    <title>Cash, Memory &amp; Detail Trainer</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="style.css?v=20260829-memory-answer-now">
+    <link rel="stylesheet" href="style.css?v=20260830-error-detection">
   </head>
   <body>
     <main class="app-shell">
       <header class="site-header">
         <div>
-          <p class="eyebrow">Cash, memory, and task practice</p>
-          <h1>Cash, Memory &amp; Task Trainer</h1>
-          <p class="subtitle">Practice cash transactions, number memory, or office-style workflows. Your history stays on this device.</p>
+          <p class="eyebrow">Cash, memory, task, and detail practice</p>
+          <h1>Cash, Memory &amp; Detail Trainer</h1>
+          <p class="subtitle">Practice cash transactions, number memory, office-style workflows, or terminal-audit detail checks. Your history stays on this device.</p>
         </div>
         <div class="header-actions">
           <button class="secondary-button theme-toggle" id="theme-toggle" type="button" aria-pressed="false">Dark mode</button>
@@ -38,6 +38,7 @@
               <label class="choice-card"><input type="radio" name="game" value="cash" checked><span><strong>Cash handling</strong><small>Practice exact, change, and short transactions.</small></span></label>
               <label class="choice-card"><input type="radio" name="game" value="memory"><span><strong>Number memory</strong><small>Read a number, then type it back from memory.</small></span></label>
               <label class="choice-card"><input type="radio" name="game" value="task"><span><strong>Task simulation</strong><small>Watch a workflow, then repeat its tabs, fields, and selections from memory.</small></span></label>
+              <label class="choice-card"><input type="radio" name="game" value="error-detection"><span><strong>Error detection</strong><small>Audit a terminal card and flag every wrong detail—or confirm that it has none.</small></span></label>
             </div>
           </fieldset>
 
@@ -52,7 +53,7 @@
 
           <label class="toggle-row" for="auto-continue-toggle">
             <input id="auto-continue-toggle" name="autoContinueOnTimeout" type="checkbox">
-            <span><strong>Auto-continue after timeout</strong><small>Immediately start the next round when its recall timer expires. The final timeout still shows your session results.</small></span>
+            <span><strong>Auto-continue after timeout</strong><small>Immediately start the next round when its timer expires. The final timeout still shows your session results.</small></span>
           </label>
 
           <details class="preset-editor" id="preset-editor">
@@ -127,6 +128,18 @@
                 </label>
               </div>
 
+              <div class="preset-form-grid" id="preset-error-detection-fields" hidden>
+                <label for="preset-error-detection-details">Details per card
+                  <input id="preset-error-detection-details" type="number" min="3" max="8" step="1" inputmode="numeric">
+                </label>
+                <label for="preset-error-detection-errors">Maximum errors per card
+                  <input id="preset-error-detection-errors" type="number" min="0" max="8" step="1" inputmode="numeric">
+                </label>
+                <label for="preset-error-detection-time">Seconds per round
+                  <input id="preset-error-detection-time" type="number" min="3" max="300" step="1" inputmode="numeric">
+                </label>
+              </div>
+
               <div class="preset-actions">
                 <button class="secondary-button" id="save-preset" type="button">Save selected preset</button>
                 <button class="text-button" id="reset-selected-preset" type="button">Reset selected preset</button>
@@ -162,6 +175,13 @@
             <p class="setup-note">Each round shows a briefing, demonstrates the workflow, then resets the workspace for recall.</p>
             <label for="task-question-count">Rounds
               <input id="task-question-count" name="taskQuestionCount" type="number" value="10" min="1" max="100" inputmode="numeric" required>
+            </label>
+          </div>
+
+          <div id="error-detection-setup-options" hidden>
+            <p class="setup-note">Each round gives you a rule and source facts. Flag every wrong detail, or choose no errors when the card is clean.</p>
+            <label for="error-detection-question-count">Rounds
+              <input id="error-detection-question-count" name="errorDetectionQuestionCount" type="number" value="10" min="1" max="100" inputmode="numeric" required>
             </label>
           </div>
 
@@ -293,6 +313,33 @@
         </tr>
       </template>
 
+      <section class="screen error-detection-screen" id="error-detection-screen" hidden aria-labelledby="error-detection-heading">
+        <div class="question-header">
+          <p class="eyebrow" id="error-detection-progress">Round 1 of 10</p>
+          <time class="timer" id="error-detection-timer" aria-label="Time remaining for this audit card">0:30</time>
+        </div>
+        <h2 id="error-detection-heading" tabindex="-1">Find the incorrect details</h2>
+        <p class="memory-instruction">Use the rule and source facts below. Flag every card detail that is wrong; some cards are entirely correct.</p>
+        <article class="error-detection-card" aria-labelledby="error-detection-title">
+          <p class="eyebrow">Terminal audit</p>
+          <h3 id="error-detection-title">Cash receipt audit</h3>
+          <p class="error-detection-rule" id="error-detection-rule"></p>
+          <dl class="error-detection-facts" id="error-detection-facts"></dl>
+        </article>
+        <form class="answer-form" id="error-detection-form">
+          <fieldset>
+            <legend>Flag every incorrect detail</legend>
+            <p class="setup-note" id="error-detection-selection-status" role="status" aria-live="polite">No details flagged.</p>
+            <div class="error-detection-detail-list" id="error-detection-detail-list" aria-describedby="error-detection-selection-status"></div>
+          </fieldset>
+          <label class="toggle-row" for="error-detection-no-errors">
+            <input id="error-detection-no-errors" type="checkbox">
+            <span><strong>No errors on this card</strong><small>Use this only when every displayed detail follows the rule and source facts.</small></span>
+          </label>
+          <button class="primary-button" id="submit-error-detection" type="submit">Check flagged details</button>
+        </form>
+      </section>
+
       <section class="screen feedback-screen" id="feedback-screen" hidden aria-labelledby="feedback-heading">
         <p class="eyebrow" id="feedback-kicker">Answer result</p>
         <h2 id="feedback-heading" tabindex="-1">Correct</h2>
@@ -357,6 +404,6 @@
     </main>
 
     <footer>Browser edition. The original PowerShell quiz remains in this repository.</footer>
-    <script type="module" src="app.js?v=20260829-memory-answer-now"></script>
+    <script type="module" src="app.js?v=20260830-error-detection"></script>
   </body>
 </html>

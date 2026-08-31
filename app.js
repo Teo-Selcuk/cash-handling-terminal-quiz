@@ -1,10 +1,12 @@
 import {
   DENOMINATIONS,
   DIFFICULTY_CONFIG,
+  ERROR_DETECTION_MODE_CONFIG,
   MEMORY_MODE_CONFIG,
   TASK_MODE_CONFIG,
   buildBreakdown,
   countTotalCents,
+  createErrorDetectionChallenge,
   createMemoryChallenge,
   createTaskChallenge,
   createQuestion,
@@ -13,11 +15,13 @@ import {
   parseCashShorthand,
   parseAmountToCents,
   resolveCashDifficultyPreset,
+  resolveErrorDetectionDifficultyPreset,
   resolveMemoryDifficultyPreset,
   resolveTaskDifficultyPreset,
   scoreMemoryAnswer,
   scoreTaskAttempt,
   scoreAnswer,
+  scoreErrorDetectionAttempt,
   summarizeHistory,
   toCsv,
 } from './quiz-core.mjs';
@@ -25,10 +29,10 @@ import {
 const HISTORY_KEY = 'cash-handling-terminal-quiz-history-v1';
 const THEME_KEY = 'cash-handling-terminal-quiz-theme-v1';
 const PRESET_KEY = 'cash-handling-terminal-quiz-presets-v1';
-const screens = ['setup', 'quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'feedback', 'summary', 'history'];
+const screens = ['setup', 'quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'error-detection', 'feedback', 'summary', 'history'];
 const refs = Object.fromEntries([
   'setup-form', 'setup-screen', 'quiz-screen', 'feedback-screen', 'summary-screen', 'history-screen',
-  'memory-read-screen', 'memory-answer-screen', 'task-briefing-screen', 'task-workspace-screen', 'cash-setup-options', 'memory-setup-options', 'task-setup-options',
+  'memory-read-screen', 'memory-answer-screen', 'task-briefing-screen', 'task-workspace-screen', 'error-detection-screen', 'cash-setup-options', 'memory-setup-options', 'task-setup-options', 'error-detection-setup-options',
   'question-count', 'time-limit', 'cash-builder-toggle', 'auto-continue-toggle', 'question-progress', 'timer', 'amount-due',
   'tender-breakdown', 'answer-form', 'answer-amount', 'cash-builder-section', 'cash-builder-heading',
   'cash-builder-purpose', 'cash-builder', 'selected-total', 'builder-status', 'clear-builder', 'quick-cash-entry', 'apply-quick-cash', 'feedback-heading',
@@ -41,12 +45,14 @@ const refs = Object.fromEntries([
   'task-question-count', 'task-briefing-progress', 'task-briefing-timer', 'task-briefing-heading', 'task-briefing-title', 'task-instruction-list', 'task-start-demo',
   'task-workspace-progress', 'task-timer', 'task-workspace-heading', 'task-phase-status', 'task-demo-controls', 'task-pause-demo', 'task-replay-demo', 'task-skip-demo',
   'task-tablist', 'task-tabpanel', 'task-workspace-content', 'task-workspace-dialog', 'task-save-workspace', 'task-demo-guide', 'task-demo-cursor', 'task-recall-note', 'task-row-template',
+  'error-detection-question-count', 'error-detection-progress', 'error-detection-timer', 'error-detection-heading', 'error-detection-title', 'error-detection-rule', 'error-detection-facts', 'error-detection-detail-list', 'error-detection-no-errors', 'error-detection-selection-status', 'error-detection-form',
   'easy-description', 'medium-description', 'hard-description',
-  'preset-editor', 'preset-level', 'preset-cash-fields', 'preset-memory-fields', 'preset-task-fields',
+  'preset-editor', 'preset-level', 'preset-cash-fields', 'preset-memory-fields', 'preset-task-fields', 'preset-error-detection-fields',
   'preset-cash-min-due', 'preset-cash-max-due', 'preset-cash-step', 'preset-cash-max-difference', 'preset-cash-split-count',
   'preset-memory-value-min', 'preset-memory-value-max', 'preset-memory-digit-min', 'preset-memory-digit-max',
   'preset-memory-read-time', 'preset-memory-write-time', 'preset-memory-decimals',
   'preset-task-step-min', 'preset-task-step-max', 'preset-task-rows', 'preset-task-tabs', 'preset-task-briefing-time', 'preset-task-recall-time', 'preset-task-demo-speed',
+  'preset-error-detection-details', 'preset-error-detection-errors', 'preset-error-detection-time',
   'save-preset', 'reset-selected-preset', 'reset-all-presets',
 ].map((id) => [id, document.getElementById(id)]));
 
@@ -64,6 +70,7 @@ const state = {
   cashPresets: savedPresetState.cash,
   memoryPresets: savedPresetState.memory,
   taskPresets: savedPresetState.task,
+  errorDetectionPresets: savedPresetState.errorDetection,
   questionNumber: 0,
   question: null,
   results: [],
@@ -73,6 +80,8 @@ const state = {
   answerSubmitted: false,
   memoryChallenge: null,
   taskChallenge: null,
+  errorDetectionChallenge: null,
+  errorDetailSelections: new Set(),
   taskActionLog: [],
   taskPhase: '',
   taskDemoToken: 0,
@@ -104,11 +113,16 @@ function builtInTaskPresets() {
   return Object.fromEntries(Object.keys(TASK_MODE_CONFIG).map((level) => [level, resolveTaskDifficultyPreset(level)]));
 }
 
+function builtInErrorDetectionPresets() {
+  return Object.fromEntries(Object.keys(ERROR_DETECTION_MODE_CONFIG).map((level) => [level, resolveErrorDetectionDifficultyPreset(level)]));
+}
+
 function loadPresetState() {
   const presets = {
     cash: builtInCashPresets(),
     memory: builtInMemoryPresets(),
     task: builtInTaskPresets(),
+    errorDetection: builtInErrorDetectionPresets(),
   };
   try {
     const saved = JSON.parse(localStorage.getItem(PRESET_KEY) ?? 'null');
@@ -116,6 +130,7 @@ function loadPresetState() {
       if (saved?.cash?.[level]) presets.cash[level] = resolveCashDifficultyPreset(level, saved.cash[level]);
       if (saved?.memory?.[level]) presets.memory[level] = resolveMemoryDifficultyPreset(level, saved.memory[level]);
       if (saved?.task?.[level]) presets.task[level] = resolveTaskDifficultyPreset(level, saved.task[level]);
+      if (saved?.errorDetection?.[level]) presets.errorDetection[level] = resolveErrorDetectionDifficultyPreset(level, saved.errorDetection[level]);
     }
   } catch {
     // Keep the shipped presets if a browser has an old or invalid saved value.
@@ -125,7 +140,12 @@ function loadPresetState() {
 
 function persistPresetState() {
   try {
-    localStorage.setItem(PRESET_KEY, JSON.stringify({ cash: state.cashPresets, memory: state.memoryPresets, task: state.taskPresets }));
+    localStorage.setItem(PRESET_KEY, JSON.stringify({
+      cash: state.cashPresets,
+      memory: state.memoryPresets,
+      task: state.taskPresets,
+      errorDetection: state.errorDetectionPresets,
+    }));
     return true;
   } catch {
     setMessage('The preset is active for this visit, but this browser could not save it locally.');
@@ -174,7 +194,7 @@ function showScreen(name) {
   state.activeScreen = name;
   const activeScreen = refs[`${name}-screen`];
   if (isCompactViewport()) activeScreen.scrollIntoView({ block: 'start', inline: 'nearest' });
-  const roundInProgress = ['quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace'].includes(name);
+  const roundInProgress = ['quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'error-detection'].includes(name);
   refs['open-history'].disabled = roundInProgress;
   if (!roundInProgress) stopTimer();
   if (name === 'quiz') {
@@ -183,6 +203,10 @@ function showScreen(name) {
   }
   if (name === 'memory-answer') {
     window.setTimeout(() => refs['memory-answer-list'].querySelector('input')?.focus({ preventScroll: true }), 0);
+    return;
+  }
+  if (name === 'error-detection') {
+    window.setTimeout(() => refs['error-detection-detail-list'].querySelector('button')?.focus({ preventScroll: true }), 0);
     return;
   }
   const heading = document.querySelector(`#${name}-screen h2`);
@@ -272,15 +296,36 @@ function taskPresetDescription(level) {
   return `${preset.minimumSteps}–${preset.maximumSteps} steps, ${preset.rows} rows, ${preset.tabs} tabs`;
 }
 
+function errorDetectionPresetDescription(level) {
+  const preset = state.errorDetectionPresets[level];
+  const defaults = ERROR_DETECTION_MODE_CONFIG[level];
+  const defaultDescriptions = {
+    Easy: '4 details, up to 1 obvious error',
+    Medium: '5 details, up to 2 subtle errors',
+    Hard: '6 details, up to 3 near-match errors',
+  };
+  if (hasPresetValues(preset, defaults, ['details', 'maximumErrors', 'timeLimitSeconds'])) return defaultDescriptions[level];
+  return `${preset.details} details, up to ${preset.maximumErrors} errors, ${preset.timeLimitSeconds}s`;
+}
+
+function gameLabel(game) {
+  if (game === 'cash') return 'cash handling';
+  if (game === 'memory') return 'number memory';
+  if (game === 'task') return 'task simulation';
+  return 'error detection';
+}
+
 function renderPresetEditor() {
   const game = selectedGame();
   const level = selectedDifficulty();
   const cashGame = game === 'cash';
   const memoryGame = game === 'memory';
+  const errorDetectionGame = game === 'error-detection';
   refs['preset-level'].textContent = level;
   refs['preset-cash-fields'].hidden = !cashGame;
   refs['preset-memory-fields'].hidden = !memoryGame;
   refs['preset-task-fields'].hidden = game !== 'task';
+  refs['preset-error-detection-fields'].hidden = !errorDetectionGame;
 
   if (cashGame) {
     const preset = state.cashPresets[level];
@@ -304,6 +349,14 @@ function renderPresetEditor() {
     return;
   }
 
+  if (errorDetectionGame) {
+    const preset = state.errorDetectionPresets[level];
+    refs['preset-error-detection-details'].value = String(preset.details);
+    refs['preset-error-detection-errors'].value = String(preset.maximumErrors);
+    refs['preset-error-detection-time'].value = String(preset.timeLimitSeconds);
+    return;
+  }
+
   const preset = state.taskPresets[level];
   refs['preset-task-step-min'].value = String(preset.minimumSteps);
   refs['preset-task-step-max'].value = String(preset.maximumSteps);
@@ -318,12 +371,20 @@ function updateGameSetup() {
   const game = selectedGame();
   const memoryGame = game === 'memory';
   const taskGame = game === 'task';
-  refs['cash-setup-options'].hidden = memoryGame || taskGame;
+  const errorDetectionGame = game === 'error-detection';
+  refs['cash-setup-options'].hidden = memoryGame || taskGame || errorDetectionGame;
   refs['memory-setup-options'].hidden = !memoryGame;
   refs['task-setup-options'].hidden = !taskGame;
+  refs['error-detection-setup-options'].hidden = !errorDetectionGame;
   const descriptions = Object.fromEntries(['Easy', 'Medium', 'Hard'].map((level) => [
     level,
-    memoryGame ? memoryPresetDescription(level) : taskGame ? taskPresetDescription(level) : cashPresetDescription(level),
+    memoryGame
+      ? memoryPresetDescription(level)
+      : taskGame
+        ? taskPresetDescription(level)
+        : errorDetectionGame
+          ? errorDetectionPresetDescription(level)
+          : cashPresetDescription(level),
   ]));
   refs['easy-description'].textContent = descriptions.Easy;
   refs['medium-description'].textContent = descriptions.Medium;
@@ -371,7 +432,7 @@ function saveSelectedPreset() {
         readSeconds: readPresetInteger(refs['preset-memory-read-time'], 'Reading seconds'),
         writeSeconds: readPresetInteger(refs['preset-memory-write-time'], 'Writing seconds'),
       });
-    } else {
+    } else if (game === 'task') {
       state.taskPresets[level] = resolveTaskDifficultyPreset(level, {
         minimumSteps: readPresetInteger(refs['preset-task-step-min'], 'Minimum steps'),
         maximumSteps: readPresetInteger(refs['preset-task-step-max'], 'Maximum steps'),
@@ -381,11 +442,17 @@ function saveSelectedPreset() {
         recallSeconds: readPresetInteger(refs['preset-task-recall-time'], 'Recall seconds'),
         demoStepMilliseconds: readPresetDemoMilliseconds(refs['preset-task-demo-speed']),
       });
+    } else {
+      state.errorDetectionPresets[level] = resolveErrorDetectionDifficultyPreset(level, {
+        details: readPresetInteger(refs['preset-error-detection-details'], 'Details per card'),
+        maximumErrors: readPresetInteger(refs['preset-error-detection-errors'], 'Maximum errors'),
+        timeLimitSeconds: readPresetInteger(refs['preset-error-detection-time'], 'Seconds per round'),
+      });
     }
     const saved = persistPresetState();
     updateGameSetup();
     refs['preset-editor'].open = true;
-    if (saved) setMessage(`Saved the ${level} ${game === 'cash' ? 'cash handling' : game === 'memory' ? 'number memory' : 'task simulation'} preset on this device.`);
+    if (saved) setMessage(`Saved the ${level} ${gameLabel(game)} preset on this device.`);
   } catch (error) {
     setMessage(error instanceof Error ? error.message : 'The preset could not be saved.');
   }
@@ -397,19 +464,22 @@ function resetSelectedPreset() {
   if (game === 'cash') state.cashPresets[level] = resolveCashDifficultyPreset(level);
   else if (game === 'memory') {
     state.memoryPresets[level] = resolveMemoryDifficultyPreset(level);
-  } else {
+  } else if (game === 'task') {
     state.taskPresets[level] = resolveTaskDifficultyPreset(level);
+  } else {
+    state.errorDetectionPresets[level] = resolveErrorDetectionDifficultyPreset(level);
   }
   const saved = persistPresetState();
   updateGameSetup();
   refs['preset-editor'].open = true;
-  if (saved) setMessage(`Restored the normal ${level} ${game === 'cash' ? 'cash handling' : game === 'memory' ? 'number memory' : 'task simulation'} preset.`);
+  if (saved) setMessage(`Restored the normal ${level} ${gameLabel(game)} preset.`);
 }
 
 function resetAllPresets() {
   state.cashPresets = builtInCashPresets();
   state.memoryPresets = builtInMemoryPresets();
   state.taskPresets = builtInTaskPresets();
+  state.errorDetectionPresets = builtInErrorDetectionPresets();
   const saved = persistPresetState();
   updateGameSetup();
   refs['preset-editor'].open = true;
@@ -823,6 +893,180 @@ function showNextMemoryQuestion() {
   refs['memory-read-hint'].textContent = `${state.memoryChallenge.valueCount} value${state.memoryChallenge.valueCount === 1 ? '' : 's'} in order · ${state.memoryChallenge.minimumDigits}–${state.memoryChallenge.maximumDigits} digits each${state.memoryChallenge.decimals ? ' · decimal points included' : ''}`;
   showScreen('memory-read');
   startTimer(state.memoryChallenge.readSeconds, refs['memory-read-timer'], showMemoryAnswer);
+}
+
+function detailsForErrorIds(ids) {
+  const selected = new Set(ids);
+  return state.errorDetectionChallenge.details.filter((detail) => selected.has(detail.id));
+}
+
+function describeErrorDetails(ids, showExpected = false) {
+  const details = detailsForErrorIds(ids);
+  if (details.length === 0) return 'No errors.';
+  return details.map((detail) => `${detail.label}: ${showExpected ? detail.expectedValue : detail.value}`).join(' · ');
+}
+
+function updateErrorDetectionSelection() {
+  const selectedCount = state.errorDetailSelections.size;
+  refs['error-detection-selection-status'].textContent = selectedCount
+    ? `${selectedCount} detail${selectedCount === 1 ? '' : 's'} flagged for review.`
+    : refs['error-detection-no-errors'].checked
+      ? 'This card is marked as having no errors.'
+      : 'No details flagged.';
+  for (const button of refs['error-detection-detail-list'].querySelectorAll('button')) {
+    const selected = state.errorDetailSelections.has(button.dataset.detailId);
+    button.setAttribute('aria-pressed', String(selected));
+    button.querySelector('.error-detection-detail-status').textContent = selected ? 'Flagged' : 'Select if wrong';
+  }
+}
+
+function toggleErrorDetail(detailId) {
+  if (state.errorDetailSelections.has(detailId)) state.errorDetailSelections.delete(detailId);
+  else state.errorDetailSelections.add(detailId);
+  if (state.errorDetailSelections.size > 0) refs['error-detection-no-errors'].checked = false;
+  updateErrorDetectionSelection();
+}
+
+function selectedErrorDetailIds() {
+  return state.errorDetectionChallenge.details
+    .filter((detail) => state.errorDetailSelections.has(detail.id))
+    .map((detail) => detail.id);
+}
+
+function renderErrorDetectionCard(challenge) {
+  refs['error-detection-progress'].textContent = `Round ${state.questionNumber} of ${state.questionCount}`;
+  refs['error-detection-title'].textContent = challenge.title;
+  refs['error-detection-rule'].textContent = challenge.rule;
+  refs['error-detection-facts'].replaceChildren(...challenge.facts.map((fact) => {
+    const item = document.createElement('div');
+    const term = document.createElement('dt');
+    const description = document.createElement('dd');
+    item.className = 'error-detection-fact';
+    term.textContent = fact.label;
+    description.textContent = fact.value;
+    item.append(term, description);
+    return item;
+  }));
+  state.errorDetailSelections = new Set();
+  refs['error-detection-no-errors'].checked = false;
+  refs['error-detection-detail-list'].replaceChildren(...challenge.details.map((detail) => {
+    const button = document.createElement('button');
+    const content = document.createElement('span');
+    const label = document.createElement('span');
+    const value = document.createElement('span');
+    const status = document.createElement('span');
+    button.className = 'error-detection-detail';
+    button.type = 'button';
+    button.dataset.detailId = detail.id;
+    button.setAttribute('aria-pressed', 'false');
+    label.className = 'error-detection-detail-label';
+    label.textContent = detail.label;
+    value.className = 'error-detection-detail-value';
+    value.textContent = detail.value;
+    status.className = 'error-detection-detail-status';
+    content.append(label, value);
+    button.append(content, status);
+    button.addEventListener('click', () => toggleErrorDetail(detail.id));
+    return button;
+  }));
+  updateErrorDetectionSelection();
+}
+
+function recordErrorDetectionAttempt(score, timedOut, elapsedSeconds) {
+  const challenge = state.errorDetectionChallenge;
+  const expectedDetails = detailsForErrorIds(score.expectedErrorIds);
+  const selectedDetails = detailsForErrorIds(score.selectedDetailIds);
+  return {
+    timestamp: new Date().toISOString(),
+    sessionId: state.sessionId,
+    gameType: 'Error detection',
+    difficulty: state.difficulty,
+    questionNumber: state.questionNumber,
+    scenario: challenge.title,
+    rule: challenge.rule,
+    detailCount: challenge.detailsCount,
+    expectedErrorCount: score.errorCount,
+    selectedErrorCount: score.selectedDetailIds.length,
+    correctlyFlagged: score.correctlyFlagged,
+    falseFlagCount: score.falseFlagIds.length,
+    missedErrors: describeErrorDetails(score.missedErrorIds, true),
+    falseFlags: describeErrorDetails(score.falseFlagIds),
+    timeLimitSeconds: challenge.timeLimitSeconds,
+    timeUsedSeconds: Number(elapsedSeconds.toFixed(1)),
+    expectedAnswer: expectedDetails.length
+      ? expectedDetails.map((detail) => `${detail.label} should be ${detail.expectedValue}`).join(' · ')
+      : 'No errors.',
+    userAnswer: selectedDetails.length ? describeErrorDetails(score.selectedDetailIds) : 'No details flagged.',
+    outcome: timedOut ? 'Timed Out' : score.correct ? 'Correct' : 'Incorrect',
+  };
+}
+
+function populateErrorDetectionFeedback(record, score) {
+  const correct = score.correct;
+  refs['feedback-kicker'].textContent = record.outcome === 'Timed Out' ? 'Time expired' : 'Detail result';
+  refs['feedback-heading'].textContent = correct ? 'Correct' : record.outcome === 'Timed Out' ? 'Time expired' : 'Not quite';
+  refs['feedback-heading'].dataset.result = correct ? 'correct' : 'incorrect';
+  refs['feedback-lead'].textContent = correct
+    ? 'You pinpointed every incorrect detail and left the valid details alone.'
+    : score.errorCount === 0
+      ? 'This was a clean card: no details violated the rule.'
+      : 'Review the missed errors and any valid details that were flagged.';
+  const details = [
+    ['Scenario', record.scenario],
+    ['Your flags', record.userAnswer],
+    ['Correct flags', record.expectedAnswer],
+    ['Correctly flagged', `${record.correctlyFlagged} of ${record.expectedErrorCount}`],
+    ['Missed errors', record.missedErrors],
+    ['False flags', record.falseFlags],
+    ['Time used', `${record.timeUsedSeconds.toFixed(1)} seconds`],
+  ];
+  refs['feedback-details'].replaceChildren();
+  for (const [term, description] of details) {
+    const dt = document.createElement('dt');
+    const dd = document.createElement('dd');
+    dt.textContent = term;
+    dd.textContent = description;
+    refs['feedback-details'].append(dt, dd);
+  }
+}
+
+function submitErrorDetectionAttempt(timedOut = false) {
+  if (state.answerSubmitted) return;
+  if (!timedOut && state.errorDetailSelections.size === 0 && !refs['error-detection-no-errors'].checked) {
+    setMessage('Flag an incorrect detail or choose No errors on this card before submitting.');
+    refs['error-detection-no-errors'].focus();
+    return;
+  }
+  state.answerSubmitted = true;
+  const elapsedSeconds = Math.min(
+    state.errorDetectionChallenge.timeLimitSeconds,
+    Math.max(0, (Date.now() - (state.deadline - state.errorDetectionChallenge.timeLimitSeconds * 1000)) / 1000),
+  );
+  stopTimer();
+  const score = scoreErrorDetectionAttempt(state.errorDetectionChallenge, selectedErrorDetailIds(), timedOut);
+  const record = recordErrorDetectionAttempt(score, timedOut, elapsedSeconds);
+  state.results.push(record);
+  persistRecord(record);
+  if (timedOut && state.autoContinueOnTimeout) {
+    showNextErrorDetectionQuestion();
+    return;
+  }
+  populateErrorDetectionFeedback(record, score);
+  showScreen('feedback');
+}
+
+function showNextErrorDetectionQuestion() {
+  state.questionNumber += 1;
+  if (state.questionNumber > state.questionCount) {
+    renderSummary();
+    showScreen('summary');
+    return;
+  }
+  state.errorDetectionChallenge = createErrorDetectionChallenge(state.difficulty, state.errorDetectionPresets[state.difficulty]);
+  state.answerSubmitted = false;
+  renderErrorDetectionCard(state.errorDetectionChallenge);
+  showScreen('error-detection');
+  startTimer(state.errorDetectionChallenge.timeLimitSeconds, refs['error-detection-timer'], () => submitErrorDetectionAttempt(true));
 }
 
 function renderTaskInstructions(challenge) {
@@ -1501,6 +1745,17 @@ function makeMetrics(records) {
       [`${averageTime.toFixed(1)}s`, 'Average time'],
     ];
   }
+  if (state.game === 'error-detection') {
+    const missedErrors = records.reduce((sum, record) => sum + Number(record.expectedErrorCount || 0) - Number(record.correctlyFlagged || 0), 0);
+    const falseFlags = records.reduce((sum, record) => sum + Number(record.falseFlagCount || 0), 0);
+    return [
+      [`${summary.answered}`, 'Rounds'],
+      [`${summary.accuracyPercent}%`, 'Perfect cards'],
+      [`${missedErrors}`, 'Missed errors'],
+      [`${falseFlags}`, 'False flags'],
+      [`${averageTime.toFixed(1)}s`, 'Average time'],
+    ];
+  }
   return [
     [`${summary.answered}`, 'Questions'],
     [`${summary.accuracyPercent}%`, 'Accuracy'],
@@ -1524,7 +1779,11 @@ function renderMetrics(target, metrics) {
 function renderSummary() {
   refs['summary-heading'].textContent = state.game === 'memory'
     ? 'Your memory results'
-    : state.game === 'task' ? 'Your task simulation results' : 'Your cash results';
+    : state.game === 'task'
+      ? 'Your task simulation results'
+      : state.game === 'error-detection'
+        ? 'Your error detection results'
+        : 'Your cash results';
   renderMetrics(refs['session-metrics'], makeMetrics(state.results));
 }
 
@@ -1618,7 +1877,7 @@ function renderHistory() {
 }
 
 function openHistory() {
-  if (['quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace'].includes(state.activeScreen)) {
+  if (['quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'error-detection'].includes(state.activeScreen)) {
     setMessage('Finish the current round before opening history.');
     return;
   }
@@ -1653,6 +1912,18 @@ refs['setup-form'].addEventListener('submit', (event) => {
   state.questionNumber = 0;
   state.results = [];
   state.autoContinueOnTimeout = refs['auto-continue-toggle'].checked;
+
+  if (game === 'error-detection') {
+    const questionCount = Number(refs['error-detection-question-count'].value);
+    if (!Number.isInteger(questionCount) || questionCount < 1 || questionCount > 100) {
+      setMessage('Choose between 1 and 100 Error Detection rounds.');
+      refs['error-detection-question-count'].focus();
+      return;
+    }
+    state.questionCount = questionCount;
+    showNextErrorDetectionQuestion();
+    return;
+  }
 
   if (game === 'task') {
     const questionCount = Number(refs['task-question-count'].value);
@@ -1716,6 +1987,7 @@ refs['apply-quick-cash'].addEventListener('click', applyQuickCashEntry);
 refs['next-question'].addEventListener('click', () => {
   if (state.game === 'memory') showNextMemoryQuestion();
   else if (state.game === 'task') showNextTaskQuestion();
+  else if (state.game === 'error-detection') showNextErrorDetectionQuestion();
   else showNextQuestion();
 });
 refs['memory-answer-form'].addEventListener('submit', (event) => {
@@ -1723,6 +1995,14 @@ refs['memory-answer-form'].addEventListener('submit', (event) => {
   submitMemoryAnswer();
 });
 refs['memory-answer-now'].addEventListener('click', showMemoryAnswer);
+refs['error-detection-form'].addEventListener('submit', (event) => {
+  event.preventDefault();
+  submitErrorDetectionAttempt();
+});
+refs['error-detection-no-errors'].addEventListener('change', () => {
+  if (refs['error-detection-no-errors'].checked) state.errorDetailSelections.clear();
+  updateErrorDetectionSelection();
+});
 refs['task-start-demo'].addEventListener('click', startTaskDemo);
 refs['task-pause-demo'].addEventListener('click', toggleTaskDemoPause);
 refs['task-replay-demo'].addEventListener('click', startTaskDemo);

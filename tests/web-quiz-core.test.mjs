@@ -388,12 +388,41 @@ test('can auto-continue to the next timeout-free screen in all web games', async
   ]);
 
   assert.match(html, /id="auto-continue-toggle"/);
-  assert.match(html, /Immediately start the next round when its recall timer expires/);
+  assert.match(html, /Immediately start the next round when its timer expires/);
   assert.match(app, /autoContinueOnTimeout: false,/);
   assert.match(app, /state\.autoContinueOnTimeout = refs\['auto-continue-toggle'\]\.checked;/);
   assert.match(app, /if \(timedOut && state\.autoContinueOnTimeout\) \{\s*showNextQuestion\(\);\s*return;\s*\}/s);
   assert.match(app, /if \(timedOut && state\.autoContinueOnTimeout\) \{\s*showNextMemoryQuestion\(\);\s*return;\s*\}/s);
   assert.match(app, /if \(timedOut && state\.autoContinueOnTimeout\) \{\s*showNextTaskQuestion\(\);\s*return;\s*\}/s);
+  assert.match(app, /if \(timedOut && state\.autoContinueOnTimeout\) \{\s*showNextErrorDetectionQuestion\(\);\s*return;\s*\}/s);
+});
+
+test('provides a fourth Error Detection game with selectable detail cards and saved presets', async () => {
+  const [html, app, css] = await Promise.all([
+    readFile(new URL('../index.html', import.meta.url), 'utf8'),
+    readFile(new URL('../app.js', import.meta.url), 'utf8'),
+    readFile(new URL('../style.css', import.meta.url), 'utf8'),
+  ]);
+
+  assert.match(html, /value="error-detection"/);
+  assert.match(html, /id="error-detection-setup-options"/);
+  assert.match(html, /id="error-detection-question-count"/);
+  assert.match(html, /id="preset-error-detection-fields"/);
+  assert.match(html, /id="preset-error-detection-details"/);
+  assert.match(html, /id="preset-error-detection-errors"/);
+  assert.match(html, /id="preset-error-detection-time"/);
+  assert.match(html, /id="error-detection-screen"/);
+  assert.match(html, /id="error-detection-rule"/);
+  assert.match(html, /id="error-detection-facts"/);
+  assert.match(html, /id="error-detection-detail-list"/);
+  assert.match(html, /id="error-detection-no-errors"/);
+  assert.match(html, /id="error-detection-form"/);
+  assert.match(app, /createErrorDetectionChallenge\(state\.difficulty, state\.errorDetectionPresets\[state\.difficulty\]\)/);
+  assert.match(app, /scoreErrorDetectionAttempt\(state\.errorDetectionChallenge, selectedErrorDetailIds\(\), timedOut\)/);
+  assert.match(app, /showNextErrorDetectionQuestion\(\)/);
+  assert.match(app, /setAttribute\('aria-pressed', String\(selected\)\)/);
+  assert.match(css, /\.error-detection-card\s*\{/);
+  assert.match(css, /\.error-detection-detail\[aria-pressed="true"\]\s*\{/);
 });
 
 test('provides a browser-only task simulation workflow without leaking instructions during recall', async () => {
