@@ -5,9 +5,11 @@ import test from 'node:test';
 import {
   DENOMINATIONS,
   DIFFICULTY_CONFIG,
+  ERROR_DETECTION_MODE_CONFIG,
   MEMORY_MODE_CONFIG,
   TASK_MODE_CONFIG,
   buildBreakdown,
+  createErrorDetectionChallenge,
   countTotalCents,
   createMemoryChallenge,
   createTaskChallenge,
@@ -16,11 +18,13 @@ import {
   parseCashShorthand,
   parseAmountToCents,
   resolveCashDifficultyPreset,
+  resolveErrorDetectionDifficultyPreset,
   resolveMemoryDifficultyPreset,
   resolveTaskDifficultyPreset,
   scoreMemoryAnswer,
   scoreTaskAttempt,
   scoreAnswer,
+  scoreErrorDetectionAttempt,
   summarizeHistory,
   toCsv,
 } from '../quiz-core.mjs';
@@ -149,6 +153,83 @@ test('resolves editable task presets without changing the built-in defaults', ()
   assert.throws(() => resolveTaskDifficultyPreset('Easy', { briefingSeconds: 301 }), RangeError);
   assert.throws(() => resolveTaskDifficultyPreset('Easy', { recallSeconds: 901 }), RangeError);
   assert.throws(() => resolveTaskDifficultyPreset('Easy', { demoStepMilliseconds: 249 }), RangeError);
+});
+
+test('resolves editable Error Detection presets without changing shipped difficulty', () => {
+  const preset = resolveErrorDetectionDifficultyPreset('Medium', {
+    details: 7,
+    maximumErrors: 3,
+    timeLimitSeconds: 42,
+  });
+
+  assert.deepEqual(ERROR_DETECTION_MODE_CONFIG.Hard, {
+    details: 6,
+    maximumErrors: 3,
+    timeLimitSeconds: 20,
+  });
+  assert.deepEqual(preset, {
+    details: 7,
+    maximumErrors: 3,
+    timeLimitSeconds: 42,
+  });
+  assert.throws(() => resolveErrorDetectionDifficultyPreset('Easy', { details: 2 }), RangeError);
+  assert.throws(() => resolveErrorDetectionDifficultyPreset('Easy', { maximumErrors: 7 }), RangeError);
+  assert.throws(() => resolveErrorDetectionDifficultyPreset('Easy', { timeLimitSeconds: 301 }), RangeError);
+});
+
+test('generates Error Detection cards with zero, one, and multiple pinpointable errors', () => {
+  const noErrorCard = createErrorDetectionChallenge('Easy', { details: 4, maximumErrors: 1 }, () => 0);
+  const oneErrorCard = createErrorDetectionChallenge('Easy', { details: 4, maximumErrors: 1 }, () => 0.999999);
+  const manyErrorCard = createErrorDetectionChallenge('Hard', { details: 6, maximumErrors: 3 }, () => 0.999999);
+
+  for (const challenge of [noErrorCard, oneErrorCard, manyErrorCard]) {
+    const detailIds = new Set(challenge.details.map((detail) => detail.id));
+    assert.match(challenge.id, /^error-detection-/);
+    assert.ok(challenge.title);
+    assert.ok(challenge.rule);
+    assert.equal(challenge.details.length, challenge.detailsCount);
+    assert.ok(challenge.details.every((detail) => detail.label && detail.value));
+    assert.ok(challenge.errorIds.every((id) => detailIds.has(id)));
+  }
+
+  assert.equal(noErrorCard.errorIds.length, 0);
+  assert.equal(oneErrorCard.errorIds.length, 1);
+  assert.equal(manyErrorCard.errorIds.length, 3);
+});
+
+test('varies Error Detection cards across distinct terminal-audit scenarios', () => {
+  const challenges = [0.01, 0.3, 0.55, 0.8]
+    .map((value) => createErrorDetectionChallenge('Hard', { details: 6, maximumErrors: 0 }, () => value));
+
+  assert.deepEqual(challenges.map((challenge) => challenge.title), [
+    'Cash receipt audit',
+    'Drawer reconciliation audit',
+    'Refund authorization audit',
+    'Deposit handoff audit',
+  ]);
+  assert.ok(challenges.every((challenge) => challenge.facts.length >= 3));
+  assert.ok(challenges.every((challenge) => challenge.details.every((detail) => detail.expectedValue && detail.correction)));
+});
+
+test('scores Error Detection selections as an exact set, including no-error cards', () => {
+  const challenge = {
+    details: [{ id: 'detail-a' }, { id: 'detail-b' }, { id: 'detail-c' }],
+    errorIds: ['detail-a', 'detail-c'],
+  };
+  const perfect = scoreErrorDetectionAttempt(challenge, ['detail-c', 'detail-a']);
+  const missedAndFalse = scoreErrorDetectionAttempt(challenge, ['detail-b']);
+  const timedOut = scoreErrorDetectionAttempt(challenge, ['detail-a', 'detail-c'], true);
+
+  assert.equal(perfect.correct, true);
+  assert.deepEqual(perfect.missedErrorIds, []);
+  assert.deepEqual(perfect.falseFlagIds, []);
+  assert.deepEqual(perfect.selectedDetailIds, ['detail-a', 'detail-c']);
+  assert.equal(missedAndFalse.correct, false);
+  assert.deepEqual(missedAndFalse.missedErrorIds, ['detail-a', 'detail-c']);
+  assert.deepEqual(missedAndFalse.falseFlagIds, ['detail-b']);
+  assert.equal(timedOut.correct, false);
+  assert.equal(timedOut.timedOut, true);
+  assert.equal(scoreErrorDetectionAttempt({ details: [{ id: 'detail-a' }], errorIds: [] }, []).correct, true);
 });
 
 test('generates deterministic task challenges with valid, unique targets and instructions', () => {

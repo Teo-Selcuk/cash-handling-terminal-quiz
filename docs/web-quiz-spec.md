@@ -46,6 +46,9 @@ Unit tests cover denomination totals, money formatting, generated question invar
 - A Task Simulation session generates synthetic records, case-management, and invoice-review workspaces from local data at every difficulty. It can use native dialogs, an opened secondary workspace tab, verification-and-retyping fields, dropdowns, checkboxes, and addition, multiplication, or division before an answer is entered. It presents a briefing, demonstrates the same declarative steps with a browser-native cursor animation, resets the workspace, and grades the recalled semantic action sequence only after Save or timeout.
 - Task presets are locally editable and resettable for steps, rows, tabs, briefing time, recall time (including untimed practice), and demo speed. The Task Simulation setup contains only Rounds.
 - Task controls use native tables and form elements, keyboard-operable tabs, end-only feedback, reduced-motion cursor fallback, and compact browser-local history fields.
+- Error Detection is the fourth browser-only mode. Each timed round generates a self-contained terminal-audit card with a simple rule, fixed source facts, and selectable detail cards. A learner must flag every detail that violates the rule, or explicitly select that there are no errors; generated cards can contain zero, one, or multiple errors.
+- Error Detection presets are saved and resettable per Easy, Medium, and Hard level. They control the number of details, maximum possible errors, and seconds per round. Difficulty changes error subtlety and the number of plausible distractors: Hard may use near-match arithmetic, transposed identifiers, and close validation values rather than merely a shorter timer.
+- Error Detection scoring compares the exact flagged-detail set, records missed errors and false flags in local history/CSV, provides post-round feedback, and honors the shared optional auto-continue-on-timeout setting.
 - The page is keyboard accessible and responsive from 320px wide upward.
 - The deployment workflow tests the application, uploads the static artifact, and deploys it to GitHub Pages from `main`.
 
@@ -54,7 +57,8 @@ Unit tests cover denomination totals, money formatting, generated question invar
 1. Add and test pure quiz rules, including cents-only question generation and CSV export.
 2. Add the responsive browser UI, timer, cash builder, feedback, history screens, and Task Simulation workflow.
 3. Keep the task generator, demonstration, and scorer on one shared step contract; test its preset bounds, generated targets, timing, and end-only scoring.
-4. Verify the committed site locally and after push.
+4. Keep the Error Detection generator and scorer on one shared detail-card contract; test preset bounds, zero/one/many error cases, exact-set scoring, timing, and the browser controls.
+5. Verify the committed site locally and after push.
 
 ## Deployment Reference
 

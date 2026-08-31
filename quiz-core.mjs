@@ -29,6 +29,12 @@ export const TASK_MODE_CONFIG = Object.freeze({
   Hard: Object.freeze({ minimumSteps: 6, maximumSteps: 8, rows: 8, tabs: 4, briefingSeconds: 10, recallSeconds: 45, demoStepMilliseconds: 850 }),
 });
 
+export const ERROR_DETECTION_MODE_CONFIG = Object.freeze({
+  Easy: Object.freeze({ details: 4, maximumErrors: 1, timeLimitSeconds: 35 }),
+  Medium: Object.freeze({ details: 5, maximumErrors: 2, timeLimitSeconds: 28 }),
+  Hard: Object.freeze({ details: 6, maximumErrors: 3, timeLimitSeconds: 20 }),
+});
+
 const TASK_TAB_LABELS = Object.freeze(['Orders', 'Clients', 'Projects', 'Reviews', 'Archive']);
 const TASK_PEOPLE = Object.freeze([
   'Morgan Dawson', 'Avery Brooks', 'Riley Chen', 'Jordan Patel', 'Casey Rivera', 'Taylor Nguyen',
@@ -159,6 +165,18 @@ export function resolveTaskDifficultyPreset(level, overrides = {}) {
   requireMemoryInteger(preset.briefingSeconds, 'Briefing seconds', 0, 300);
   requireMemoryInteger(preset.recallSeconds, 'Recall seconds', 0, 900);
   requireMemoryInteger(preset.demoStepMilliseconds, 'Demo step milliseconds', 250, 3000);
+  return preset;
+}
+
+export function resolveErrorDetectionDifficultyPreset(level, overrides = {}) {
+  const defaults = ERROR_DETECTION_MODE_CONFIG[level];
+  if (!defaults) throw new RangeError(`Unknown Error Detection difficulty: ${level}`);
+  requirePresetOverrides(overrides);
+
+  const preset = { ...defaults, ...overrides };
+  requireMemoryInteger(preset.details, 'Details per card', 3, 8);
+  requireMemoryInteger(preset.maximumErrors, 'Maximum errors', 0, preset.details);
+  requireMemoryInteger(preset.timeLimitSeconds, 'Seconds per round', 3, 300);
   return preset;
 }
 
@@ -323,6 +341,224 @@ export function scoreMemoryAnswer(challenge, answer) {
     correct,
     normalizedAnswer,
     normalizedValues,
+  };
+}
+
+function auditWrongCents(cents, level, rng) {
+  const deltas = level === 'Hard' ? [1, 5, 10] : level === 'Medium' ? [5, 10, 25] : [100, 250, 500];
+  const delta = deltas[randomIndex(deltas.length, rng)];
+  const subtract = cents > delta && randomIndex(2, rng) === 0;
+  return subtract ? cents - delta : cents + delta;
+}
+
+function auditWrongIdentifier(value) {
+  const match = String(value).match(/^(.*?)(\d)$/);
+  if (!match) return `${value}-X`;
+  return `${match[1]}${(Number(match[2]) + 1) % 10}`;
+}
+
+function createAuditDetail(id, label, expectedValue, incorrectValue, correction = `Should be ${expectedValue}.`) {
+  return { id, label, expectedValue, incorrectValue, correction };
+}
+
+function createCashReceiptAudit(level, rng) {
+  const step = level === 'Easy' ? 25 : 1;
+  const dueCents = randomSteppedNumber(1250, 9750, step, rng);
+  const changeCents = randomSteppedNumber(step, 3000, step, rng);
+  const tenderedCents = dueCents + changeCents;
+  const receiptId = `RC-${memoryRandomInteger(10000, 99999, rng)}`;
+  const tendered = formatMoney(tenderedCents);
+  const due = formatMoney(dueCents);
+  const change = formatMoney(changeCents);
+  const breakdown = formatBreakdown(buildBreakdown(tenderedCents, DENOMINATIONS, level === 'Hard' ? 2 : 1, rng));
+
+  return {
+    title: 'Cash receipt audit',
+    rule: 'Tender must equal the listed cash. Change equals tender minus amount due, and every receipt calculation must agree with those source values.',
+    facts: [
+      { label: 'Amount due', value: due },
+      { label: 'Listed cash', value: breakdown },
+      { label: 'Receipt reference', value: receiptId },
+    ],
+    details: [
+      createAuditDetail('tender-total', 'Tender entered', tendered, formatMoney(auditWrongCents(tenderedCents, level, rng))),
+      createAuditDetail('change-due', 'Change due', change, formatMoney(auditWrongCents(changeCents, level, rng))),
+      createAuditDetail('receipt-equation', 'Receipt equation', `${tendered} − ${change} = ${due}`, `${tendered} − ${change} = ${formatMoney(auditWrongCents(dueCents, level, rng))}`),
+      createAuditDetail('drawer-increase', 'Drawer increase', due, formatMoney(auditWrongCents(dueCents, level, rng))),
+      createAuditDetail('receipt-reference', 'Receipt reference', receiptId, auditWrongIdentifier(receiptId)),
+      createAuditDetail('cash-method', 'Payment method', 'Cash', 'Debit'),
+      createAuditDetail('reconciliation-status', 'Reconciliation status', 'Balanced', 'Needs review'),
+      createAuditDetail('change-check', 'Tender less change', due, formatMoney(auditWrongCents(dueCents, level, rng))),
+    ],
+  };
+}
+
+function createDrawerReconciliationAudit(level, rng) {
+  const step = level === 'Easy' ? 25 : 1;
+  const openingFloatCents = randomSteppedNumber(10000, 25000, 25, rng);
+  const cashSalesCents = randomSteppedNumber(20000, 180000, step, rng);
+  const payoutsCents = randomSteppedNumber(step, 18000, step, rng);
+  const expectedDrawerCents = openingFloatCents + cashSalesCents - payoutsCents;
+  const depositCents = expectedDrawerCents - openingFloatCents;
+  const countReference = `COUNT-${memoryRandomInteger(1000, 9999, rng)}`;
+  const openingFloat = formatMoney(openingFloatCents);
+  const cashSales = formatMoney(cashSalesCents);
+  const payouts = formatMoney(payoutsCents);
+  const expectedDrawer = formatMoney(expectedDrawerCents);
+  const deposit = formatMoney(depositCents);
+
+  return {
+    title: 'Drawer reconciliation audit',
+    rule: 'Expected drawer cash is opening float plus cash sales minus payouts. The counted drawer and its variance must match that calculation.',
+    facts: [
+      { label: 'Opening float', value: openingFloat },
+      { label: 'Cash sales', value: cashSales },
+      { label: 'Payouts', value: payouts },
+      { label: 'Count sheet reference', value: countReference },
+    ],
+    details: [
+      createAuditDetail('expected-drawer', 'Expected drawer cash', expectedDrawer, formatMoney(auditWrongCents(expectedDrawerCents, level, rng))),
+      createAuditDetail('counted-drawer', 'Counted drawer cash', expectedDrawer, formatMoney(auditWrongCents(expectedDrawerCents, level, rng))),
+      createAuditDetail('drawer-variance', 'Cash variance', '$0.00', formatMoney(auditWrongCents(0, level, rng))),
+      createAuditDetail('drawer-equation', 'Drawer equation', `${openingFloat} + ${cashSales} − ${payouts} = ${expectedDrawer}`, `${openingFloat} + ${cashSales} − ${payouts} = ${formatMoney(auditWrongCents(expectedDrawerCents, level, rng))}`),
+      createAuditDetail('drawer-deposit', 'Deposit after float', deposit, formatMoney(auditWrongCents(depositCents, level, rng))),
+      createAuditDetail('count-reference', 'Count sheet reference', countReference, auditWrongIdentifier(countReference)),
+      createAuditDetail('variance-status', 'Variance status', 'No variance', 'Over by a small amount'),
+      createAuditDetail('drawer-status', 'Close status', 'Reconciled', 'Needs review'),
+    ],
+  };
+}
+
+function createRefundAuthorizationAudit(level, rng) {
+  const step = level === 'Easy' ? 25 : 1;
+  const firstItemCents = randomSteppedNumber(750, 4500, step, rng);
+  const secondItemCents = randomSteppedNumber(500, 3500, step, rng);
+  const refundCents = firstItemCents + secondItemCents;
+  const originalPaymentCents = refundCents + randomSteppedNumber(1000, 10000, step, rng);
+  const remainingPaymentCents = originalPaymentCents - refundCents;
+  const reference = `REF-${memoryRandomInteger(100000, 999999, rng)}`;
+  const firstItem = formatMoney(firstItemCents);
+  const secondItem = formatMoney(secondItemCents);
+  const refund = formatMoney(refundCents);
+  const originalPayment = formatMoney(originalPaymentCents);
+  const remainingPayment = formatMoney(remainingPaymentCents);
+
+  return {
+    title: 'Refund authorization audit',
+    rule: 'The refund must equal the returned line items, cannot exceed the original payment, and must retain the original terminal reference.',
+    facts: [
+      { label: 'Original payment', value: originalPayment },
+      { label: 'Returned line items', value: `${firstItem} + ${secondItem}` },
+      { label: 'Original terminal reference', value: reference },
+    ],
+    details: [
+      createAuditDetail('returned-total', 'Returned item total', refund, formatMoney(auditWrongCents(refundCents, level, rng))),
+      createAuditDetail('approved-refund', 'Approved refund', refund, formatMoney(auditWrongCents(refundCents, level, rng))),
+      createAuditDetail('remaining-payment', 'Original payment remaining', remainingPayment, formatMoney(auditWrongCents(remainingPaymentCents, level, rng))),
+      createAuditDetail('refund-equation', 'Refund equation', `${firstItem} + ${secondItem} = ${refund}`, `${firstItem} + ${secondItem} = ${formatMoney(auditWrongCents(refundCents, level, rng))}`),
+      createAuditDetail('refund-reference', 'Terminal reference', reference, auditWrongIdentifier(reference)),
+      createAuditDetail('refund-limit', 'Authorization check', 'Within original payment', 'Exceeds original payment'),
+      createAuditDetail('returned-count', 'Returned line count', '2', '3'),
+      createAuditDetail('refund-method', 'Refund method', 'Original payment method', 'Store credit'),
+    ],
+  };
+}
+
+function createDepositHandoffAudit(level, rng) {
+  const step = level === 'Easy' ? 25 : 1;
+  const terminalReceiptsCents = randomSteppedNumber(30000, 220000, step, rng);
+  const closeDate = ['2026-08-28', '2026-08-29', '2026-08-30'][randomIndex(3, rng)];
+  const tellerId = String(memoryRandomInteger(10000, 99999, rng));
+  const depositReference = `DEP-${closeDate.replaceAll('-', '')}-${memoryRandomInteger(1000, 9999, rng)}`;
+  const terminalReceipts = formatMoney(terminalReceiptsCents);
+
+  return {
+    title: 'Deposit handoff audit',
+    rule: 'The sealed deposit must equal terminal receipts. Variance is sealed cash minus receipts, and the reference must use DEP-date-serial for the listed closing date.',
+    facts: [
+      { label: 'Closing date', value: closeDate },
+      { label: 'Terminal cash receipts', value: terminalReceipts },
+      { label: 'Teller ID', value: tellerId },
+    ],
+    details: [
+      createAuditDetail('deposit-reference', 'Deposit reference', depositReference, auditWrongIdentifier(depositReference)),
+      createAuditDetail('deposit-total', 'Sealed deposit total', terminalReceipts, formatMoney(auditWrongCents(terminalReceiptsCents, level, rng))),
+      createAuditDetail('receipt-total', 'Terminal receipt total', terminalReceipts, formatMoney(auditWrongCents(terminalReceiptsCents, level, rng))),
+      createAuditDetail('deposit-variance', 'Deposit variance', '$0.00', formatMoney(auditWrongCents(0, level, rng))),
+      createAuditDetail('deposit-equation', 'Variance equation', `${terminalReceipts} − ${terminalReceipts} = $0.00`, `${terminalReceipts} − ${terminalReceipts} = ${formatMoney(auditWrongCents(0, level, rng))}`),
+      createAuditDetail('deposit-close-date', 'Closing date', closeDate, '2026-08-27'),
+      createAuditDetail('deposit-teller', 'Teller ID', tellerId, auditWrongIdentifier(tellerId)),
+      createAuditDetail('deposit-status', 'Handoff status', 'Reconciled', 'Pending variance review'),
+    ],
+  };
+}
+
+function chooseAuditEntries(entries, count, rng) {
+  const remaining = [...entries];
+  const selected = [];
+  while (selected.length < count && remaining.length > 0) {
+    selected.push(remaining.splice(randomIndex(remaining.length, rng), 1)[0]);
+  }
+  return selected;
+}
+
+export function createErrorDetectionChallenge(level, options = {}, rng = Math.random) {
+  const preset = resolveErrorDetectionDifficultyPreset(level, options);
+  const auditFactories = [
+    createCashReceiptAudit,
+    createDrawerReconciliationAudit,
+    createRefundAuthorizationAudit,
+    createDepositHandoffAudit,
+  ];
+  const audit = auditFactories[randomIndex(auditFactories.length, rng)](level, rng);
+  const selectedDetails = chooseAuditEntries(audit.details, preset.details, rng);
+  const errorCount = randomIndex(Math.min(preset.maximumErrors, selectedDetails.length) + 1, rng);
+  const errorIds = new Set(chooseAuditEntries(selectedDetails, errorCount, rng).map((detail) => detail.id));
+  const details = selectedDetails.map((detail) => ({
+    id: detail.id,
+    label: detail.label,
+    value: errorIds.has(detail.id) ? detail.incorrectValue : detail.expectedValue,
+    expectedValue: detail.expectedValue,
+    correction: detail.correction,
+  }));
+
+  return {
+    id: `error-detection-${level.toLowerCase()}-${randomIndex(1000000, rng)}`,
+    level,
+    title: audit.title,
+    rule: audit.rule,
+    facts: audit.facts,
+    details,
+    detailsCount: details.length,
+    errorIds: details.filter((detail) => errorIds.has(detail.id)).map((detail) => detail.id),
+    timeLimitSeconds: preset.timeLimitSeconds,
+  };
+}
+
+export function scoreErrorDetectionAttempt(challenge, selectedDetailIds = [], timedOut = false) {
+  if (!Array.isArray(challenge?.details) || !Array.isArray(challenge?.errorIds)) {
+    throw new TypeError('Error Detection challenge details and error IDs must be arrays.');
+  }
+  if (!Array.isArray(selectedDetailIds)) throw new TypeError('Selected detail IDs must be an array.');
+
+  const detailIds = challenge.details.map((detail) => detail.id);
+  const knownIds = new Set(detailIds);
+  const expected = new Set(challenge.errorIds.filter((id) => knownIds.has(id)));
+  const selected = new Set(selectedDetailIds.filter((id) => knownIds.has(id)));
+  const expectedErrorIds = detailIds.filter((id) => expected.has(id));
+  const normalizedSelectedIds = detailIds.filter((id) => selected.has(id));
+  const missedErrorIds = expectedErrorIds.filter((id) => !selected.has(id));
+  const falseFlagIds = normalizedSelectedIds.filter((id) => !expected.has(id));
+
+  return {
+    correct: !timedOut && missedErrorIds.length === 0 && falseFlagIds.length === 0,
+    expectedErrorIds,
+    selectedDetailIds: normalizedSelectedIds,
+    missedErrorIds,
+    falseFlagIds,
+    correctlyFlagged: expectedErrorIds.length - missedErrorIds.length,
+    errorCount: expectedErrorIds.length,
+    timedOut: Boolean(timedOut),
   };
 }
 
