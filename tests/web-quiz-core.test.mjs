@@ -844,7 +844,7 @@ test('exports history as escaped CSV with a header row', () => {
   assert.match(csv, /"Quarter, then ""dime"""/);
 });
 
-test('offers gated, off-by-default distraction noises in every browser practice mode', async () => {
+test('offers one off-by-default continuous distraction-noise toggle for every browser practice mode', async () => {
   const [html, app, css] = await Promise.all([
     readFile(new URL('../index.html', import.meta.url), 'utf8'),
     readFile(new URL('../app.js', import.meta.url), 'utf8'),
@@ -852,16 +852,21 @@ test('offers gated, off-by-default distraction noises in every browser practice 
   ]);
 
   assert.match(html, /id="distraction-noise-toggle"[^>]*type="checkbox"/);
-  assert.match(html, /id="distraction-audio-safety-check"[^>]*type="checkbox"/);
+  assert.doesNotMatch(html, /id="distraction-audio-safety-check"/);
   assert.match(html, /cannot verify (?:whether )?Windows (?:11 )?system mute/i);
   assert.match(app, /distractionNoisesEnabled: false/);
   assert.match(app, /function prepareDistractionAudio\(\)/);
-  assert.match(app, /function playDistractionBurst\(\)/);
+  assert.match(app, /function startContinuousDistractionNoise\(\)/);
+  assert.match(app, /function stopContinuousDistractionNoise\(\)/);
+  assert.match(app, /function varyContinuousDistractionNoise\(\)/);
   assert.match(app, /window\.AudioContext \|\| window\.webkitAudioContext/);
+  assert.match(app, /createBufferSource\(\)/);
   assert.match(app, /createGain\(\)/);
-  assert.match(app, /showNextQuestion\(\)[\s\S]*playDistractionBurst\(\)/);
-  assert.match(app, /showNextMemoryQuestion\(\)[\s\S]*playDistractionBurst\(\)/);
-  assert.match(app, /startTaskRecall\(\)[\s\S]*playDistractionBurst\(\)/);
-  assert.match(app, /startErrorDetectionPuzzle\(\)[\s\S]*playDistractionBurst\(\)/);
-  assert.match(css, /\.distraction-audio-warning\s*\{/);
+  assert.match(app, /source\.loop = true/);
+  assert.match(app, /showNextQuestion\(\)[\s\S]*startContinuousDistractionNoise\(\)/);
+  assert.match(app, /showNextMemoryQuestion\(\)[\s\S]*startContinuousDistractionNoise\(\)/);
+  assert.match(app, /startTaskRecall\(\)[\s\S]*startContinuousDistractionNoise\(\)/);
+  assert.match(app, /startErrorDetectionPuzzle\(\)[\s\S]*startContinuousDistractionNoise\(\)/);
+  assert.match(app, /function renderSummary\(\)[\s\S]*stopContinuousDistractionNoise\(\)/);
+  assert.match(css, /\.distraction-audio-settings\s*\{/);
 });

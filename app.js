@@ -35,7 +35,7 @@ const screens = ['setup', 'quiz', 'memory-read', 'memory-answer', 'task-briefing
 const refs = Object.fromEntries([
   'setup-form', 'setup-screen', 'quiz-screen', 'feedback-screen', 'summary-screen', 'history-screen',
   'memory-read-screen', 'memory-answer-screen', 'task-briefing-screen', 'task-workspace-screen', 'error-detection-briefing-screen', 'error-detection-screen', 'cash-setup-options', 'memory-setup-options', 'task-setup-options', 'error-detection-setup-options',
-  'question-count', 'time-limit', 'cash-builder-toggle', 'customer-bill-request-toggle', 'auto-continue-toggle', 'distraction-noise-toggle', 'distraction-audio-warning', 'distraction-audio-safety-check', 'distraction-audio-status', 'question-progress', 'timer', 'amount-due',
+  'question-count', 'time-limit', 'cash-builder-toggle', 'customer-bill-request-toggle', 'auto-continue-toggle', 'distraction-noise-toggle', 'question-progress', 'timer', 'amount-due',
   'tender-breakdown', 'customer-bill-request', 'customer-bill-request-text', 'customer-bill-request-status', 'flag-bill-request', 'answer-form', 'answer-amount', 'cash-builder-section', 'cash-builder-heading',
   'cash-builder-purpose', 'cash-builder', 'selected-total', 'builder-status', 'clear-builder', 'quick-cash-entry', 'apply-quick-cash', 'feedback-heading',
   'feedback-kicker', 'feedback-lead', 'feedback-details', 'next-question', 'session-metrics',
@@ -74,6 +74,9 @@ const state = {
   autoContinueOnTimeout: false,
   distractionNoisesEnabled: false,
   distractionAudioContext: null,
+  distractionAudioSource: null,
+  distractionAudioGain: null,
+  distractionAudioLevelTimer: null,
   cashPresets: savedPresetState.cash,
   memoryPresets: savedPresetState.memory,
   taskPresets: savedPresetState.task,
@@ -110,24 +113,10 @@ function setMessage(message) {
   refs.message.textContent = message;
 }
 
-function updateDistractionAudioSetup() {
-  const requested = refs['distraction-noise-toggle'].checked;
-  refs['distraction-audio-warning'].hidden = !requested;
-  refs['distraction-audio-safety-check'].disabled = !requested;
-  if (!requested) {
-    refs['distraction-audio-safety-check'].checked = false;
-    refs['distraction-audio-status'].textContent = 'Distraction sounds are off.';
-    return;
-  }
-  refs['distraction-audio-status'].textContent = refs['distraction-audio-safety-check'].checked
-    ? 'Muted-volume confirmation received. Sounds will be enabled only for this practice session.'
-    : 'Confirm that you muted or lowered the device volume to enable the sounds.';
-}
-
 function prepareDistractionAudio() {
+  stopContinuousDistractionNoise();
   state.distractionNoisesEnabled = false;
   if (!refs['distraction-noise-toggle'].checked) return false;
-  if (!refs['distraction-audio-safety-check'].checked) return false;
 
   const AudioContextConstructor = window.AudioContext || window.webkitAudioContext;
   if (!AudioContextConstructor) {
@@ -142,6 +131,7 @@ function prepareDistractionAudio() {
     if (state.distractionAudioContext.state === 'suspended') {
       state.distractionAudioContext.resume().catch(() => {
         state.distractionNoisesEnabled = false;
+        stopContinuousDistractionNoise();
         setMessage('Your browser kept audio paused, so distraction sounds are off for this session.');
       });
     }
@@ -153,39 +143,72 @@ function prepareDistractionAudio() {
   }
 }
 
-function playDistractionBurst() {
+function varyContinuousDistractionNoise() {
+  const audioContext = state.distractionAudioContext;
+  const gain = state.distractionAudioGain;
+  if (!state.distractionNoisesEnabled || !audioContext || !gain || audioContext.state !== 'running') return;
+  const nextLevel = [0.009, 0.016, 0.027, 0.04][Math.floor(Math.random() * 4)];
+  const now = audioContext.currentTime;
+  gain.gain.cancelScheduledValues(now);
+  gain.gain.setValueAtTime(Math.max(gain.gain.value, 0.0001), now);
+  gain.gain.linearRampToValueAtTime(nextLevel, now + 0.1);
+}
+
+function startContinuousDistractionNoise() {
   if (!state.distractionNoisesEnabled || !state.distractionAudioContext) return;
   const audioContext = state.distractionAudioContext;
   if (audioContext.state === 'suspended') {
-    audioContext.resume().then(playDistractionBurst).catch(() => {
+    audioContext.resume().then(startContinuousDistractionNoise).catch(() => {
       state.distractionNoisesEnabled = false;
     });
     return;
   }
-  if (audioContext.state !== 'running') return;
+  if (audioContext.state !== 'running' || state.distractionAudioSource) return;
 
-  const frequencies = [587, 911, 1321, 1733];
-  const startAt = audioContext.currentTime + 0.02;
-  for (const [index, frequency] of frequencies.entries()) {
-    const burstStart = startAt + (index * 0.11);
-    const oscillator = audioContext.createOscillator();
-    const gain = audioContext.createGain();
-    oscillator.type = index % 2 === 0 ? 'square' : 'sawtooth';
-    oscillator.frequency.setValueAtTime(frequency, burstStart);
-    gain.gain.setValueAtTime(0.0001, burstStart);
-    gain.gain.exponentialRampToValueAtTime(0.055, burstStart + 0.01);
-    gain.gain.exponentialRampToValueAtTime(0.0001, burstStart + 0.08);
-    oscillator.connect(gain).connect(audioContext.destination);
-    oscillator.start(burstStart);
-    oscillator.stop(burstStart + 0.085);
+  const buffer = audioContext.createBuffer(1, audioContext.sampleRate, audioContext.sampleRate);
+  const samples = buffer.getChannelData(0);
+  for (let index = 0; index < samples.length; index += 1) {
+    samples[index] = (Math.random() * 2 - 1) * (index % 257 < 18 ? 1 : 0.62);
   }
+  const source = audioContext.createBufferSource();
+  const gain = audioContext.createGain();
+  source.buffer = buffer;
+  source.loop = true;
+  gain.gain.setValueAtTime(0.009, audioContext.currentTime);
+  source.connect(gain).connect(audioContext.destination);
+  source.start();
+  source.addEventListener('ended', () => {
+    if (state.distractionAudioSource === source) {
+      state.distractionAudioSource = null;
+      state.distractionAudioGain = null;
+    }
+  });
+  state.distractionAudioSource = source;
+  state.distractionAudioGain = gain;
+  varyContinuousDistractionNoise();
+  state.distractionAudioLevelTimer = window.setInterval(varyContinuousDistractionNoise, 650);
+}
+
+function stopContinuousDistractionNoise() {
+  if (state.distractionAudioLevelTimer !== null) window.clearInterval(state.distractionAudioLevelTimer);
+  state.distractionAudioLevelTimer = null;
+  const source = state.distractionAudioSource;
+  const gain = state.distractionAudioGain;
+  state.distractionAudioSource = null;
+  state.distractionAudioGain = null;
+  try {
+    source?.stop();
+  } catch {
+    // The source may already have stopped while a browser is suspending audio.
+  }
+  source?.disconnect();
+  gain?.disconnect();
 }
 
 function resetDistractionAudioSetup() {
+  stopContinuousDistractionNoise();
   state.distractionNoisesEnabled = false;
   refs['distraction-noise-toggle'].checked = false;
-  refs['distraction-audio-safety-check'].checked = false;
-  updateDistractionAudioSetup();
   state.distractionAudioContext?.suspend().catch(() => undefined);
 }
 
@@ -928,7 +951,7 @@ function showNextQuestion() {
   renderQuestion();
   showScreen('quiz');
   startTimer(state.timeLimitSeconds, refs.timer, () => submitCurrentAnswer(true));
-  playDistractionBurst();
+  startContinuousDistractionNoise();
 }
 
 function renderMemoryReadValues(challenge) {
@@ -1060,7 +1083,7 @@ function showNextMemoryQuestion() {
   refs['memory-read-hint'].textContent = `${state.memoryChallenge.valueCount} value${state.memoryChallenge.valueCount === 1 ? '' : 's'} in order · ${state.memoryChallenge.minimumDigits}–${state.memoryChallenge.maximumDigits} digits each${state.memoryChallenge.decimals ? ' · decimal points included' : ''}`;
   showScreen('memory-read');
   startTimer(state.memoryChallenge.readSeconds, refs['memory-read-timer'], showMemoryAnswer);
-  playDistractionBurst();
+  startContinuousDistractionNoise();
 }
 
 function detailsForErrorIds(ids) {
@@ -1343,7 +1366,7 @@ function startErrorDetectionPuzzle() {
   showScreen('error-detection');
   state.errorDetectionStartedAt = Date.now();
   startTimer(state.errorDetectionChallenge.timeLimitSeconds, refs['error-detection-timer'], () => submitErrorDetectionAttempt(true));
-  playDistractionBurst();
+  startContinuousDistractionNoise();
 }
 
 function renderTaskInstructions(challenge) {
@@ -1896,7 +1919,7 @@ function startTaskRecall() {
   refs['task-phase-status'].textContent = 'Instructions are hidden. Repeat the workflow, then save your changes.';
   refs['task-recall-note'].textContent = 'Use the tabs and controls from memory. Feedback appears only after you save or time runs out.';
   startOptionalTimer(state.taskChallenge.recallSeconds, refs['task-timer'], () => submitTaskAttempt(true));
-  playDistractionBurst();
+  startContinuousDistractionNoise();
   window.setTimeout(() => refs['task-tablist'].querySelector('button')?.focus({ preventScroll: true }), 0);
 }
 
@@ -2055,6 +2078,7 @@ function renderMetrics(target, metrics) {
 }
 
 function renderSummary() {
+  stopContinuousDistractionNoise();
   refs['summary-heading'].textContent = state.game === 'memory'
     ? 'Your memory results'
     : state.game === 'task'
@@ -2159,6 +2183,7 @@ function openHistory() {
     setMessage('Finish the current round before opening history.');
     return;
   }
+  stopContinuousDistractionNoise();
   renderHistory();
   showScreen('history');
 }
@@ -2182,12 +2207,6 @@ function downloadHistory() {
 
 refs['setup-form'].addEventListener('submit', (event) => {
   event.preventDefault();
-  if (refs['distraction-noise-toggle'].checked && !refs['distraction-audio-safety-check'].checked) {
-    updateDistractionAudioSetup();
-    setMessage('Confirm that you muted or lowered device volume before enabling distraction sounds.');
-    refs['distraction-audio-safety-check'].focus();
-    return;
-  }
   prepareDistractionAudio();
   const game = selectedGame();
   const difficulty = selectedDifficulty();
@@ -2257,7 +2276,6 @@ refs['setup-form'].addEventListener('submit', (event) => {
 });
 
 applyTheme(initialTheme());
-updateDistractionAudioSetup();
 updateGameSetup();
 
 refs['answer-form'].addEventListener('submit', (event) => {
@@ -2286,8 +2304,6 @@ refs['customer-bill-request-toggle'].addEventListener('change', () => {
     setMessage('Cash builder turned on for customer bill requests.');
   }
 });
-refs['distraction-noise-toggle'].addEventListener('change', updateDistractionAudioSetup);
-refs['distraction-audio-safety-check'].addEventListener('change', updateDistractionAudioSetup);
 refs['flag-bill-request'].addEventListener('click', () => {
   const request = state.question?.customerBillRequest;
   if (!request?.canFlag) return;

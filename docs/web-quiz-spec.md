@@ -55,7 +55,7 @@ Unit tests cover denomination totals, money formatting, generated question invar
 - Error Detection presets are saved and resettable per Easy, Medium, and Hard level. They control the number of selectable clues, maximum possible anomalies, and seconds per round. Easy uses a single rule and transparent changes; Medium combines rules and plausible near-misses; Hard combines dependent transformations, positional constraints, and near-match distractors rather than merely reducing the timer.
 - Error Detection records the puzzle family, missed anomalies, false flags, and corrections in local history/CSV, provides post-round feedback, and honors the shared optional auto-continue-on-timeout setting.
 - The page is keyboard accessible and responsive from 320px wide upward.
-- An off-by-default browser-only distraction-sound option is available for all four practice modes. The learner must confirm that they muted or lowered device volume for that session; the site clearly states it cannot inspect Windows 11 system-mute state and leaves sounds off without confirmation.
+- One off-by-default browser-only distraction-sound option is available for all four practice modes. When enabled, its capped, level-changing synthetic noise begins at the first timed practice phase, continues through feedback and question transitions, and stops at results or an explicit exit. The site clearly states it cannot inspect Windows 11 system-mute state.
 - The deployment workflow tests the application, uploads the static artifact, and deploys it to GitHub Pages from `main`.
 
 ## Implementation Plan
@@ -67,7 +67,7 @@ Unit tests cover denomination totals, money formatting, generated question invar
 5. Keep the task generator, demonstration, and scorer on one shared step contract; test its preset bounds, generated targets, timing, and end-only scoring.
 6. Keep the Error Detection puzzle generator and scorer on one shared anomaly contract; test five puzzle families, rule walkthrough examples, zero/one/many anomaly cases, exact-set scoring, timing, responsive visual rendering, and browser controls.
 7. Verify the committed site locally and after push.
-8. Keep optional distraction noises behind a per-session acknowledgement, use a capped Web Audio gain, and begin audio setup only from Start quiz.
+8. Keep optional continuous distraction noise behind one off-by-default toggle, use a capped Web Audio gain with bounded level variation, begin audio setup only from Start quiz, and stop it at quiz results or exit.
 
 ## Deployment Reference
 

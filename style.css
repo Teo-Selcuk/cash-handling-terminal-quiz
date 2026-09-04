@@ -115,9 +115,6 @@ legend { margin-bottom: 0.75rem; font-weight: 750; }
 .choice-card span, .toggle-row span { display: grid; gap: 0.125rem; }
 .choice-card small, .toggle-row small { color: var(--muted); }
 .distraction-audio-settings { display: grid; gap: 0.75rem; }
-.distraction-audio-warning { padding: 0.75rem; border: 0.0625rem solid var(--accent); border-radius: var(--radius); background: var(--danger-quiet); }
-.distraction-audio-warning[hidden] { display: none !important; }
-.distraction-audio-warning > p { margin: 0.75rem 0 0; color: var(--muted); font-size: 0.875rem; }
 
 .form-grid { display: grid; gap: 1rem; grid-template-columns: 1fr; }
 .preset-editor { border: 0.0625rem solid var(--line); border-radius: var(--radius); background: var(--surface-quiet); }

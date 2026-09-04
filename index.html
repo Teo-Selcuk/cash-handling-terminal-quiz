@@ -7,7 +7,7 @@
     <meta name="theme-color" content="#12343b">
     <title>Cash, Memory &amp; Detail Trainer</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="style.css?v=20260903-practice-sounds">
+    <link rel="stylesheet" href="style.css?v=20260903-continuous-sounds">
   </head>
   <body>
     <main class="app-shell">
@@ -60,15 +60,8 @@
             <legend>Optional distraction sounds</legend>
             <label class="toggle-row" for="distraction-noise-toggle">
               <input id="distraction-noise-toggle" name="distractionNoises" type="checkbox">
-              <span><strong>Use harsh distraction noises</strong><small>Play short synthetic bursts when a timed Cash Handling, Number Memory, Task Simulation, or Error Detection practice phase begins.</small></span>
+              <span><strong>Use continuous harsh distraction noises</strong><small>Run synthetic noise through Cash Handling, Number Memory, Task Simulation, or Error Detection from the first timed practice phase until your quiz results appear. The level changes while you play. This site cannot verify whether Windows 11 system mute is on, so mute or lower your device volume before enabling it.</small></span>
             </label>
-            <div class="distraction-audio-warning" id="distraction-audio-warning" hidden>
-              <label class="toggle-row" for="distraction-audio-safety-check">
-                <input id="distraction-audio-safety-check" name="distractionAudioSafety" type="checkbox" disabled>
-                <span><strong>I muted or lowered my device volume</strong><small>This site cannot verify whether Windows 11 system mute is on. Mute or lower your device volume before confirming; without this confirmation, distraction sounds stay off.</small></span>
-              </label>
-              <p id="distraction-audio-status" role="status" aria-live="polite"></p>
-            </div>
           </fieldset>
 
           <details class="preset-editor" id="preset-editor">
@@ -454,6 +447,6 @@
     </main>
 
     <footer>Browser edition. The original PowerShell quiz remains in this repository.</footer>
-    <script type="module" src="app.js?v=20260903-practice-sounds"></script>
+    <script type="module" src="app.js?v=20260903-continuous-sounds"></script>
   </body>
 </html>
