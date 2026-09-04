@@ -114,6 +114,10 @@ legend { margin-bottom: 0.75rem; font-weight: 750; }
 .choice-card input, .toggle-row input { width: 1.125rem; height: 1.125rem; margin-top: 0.125rem; accent-color: var(--brand); }
 .choice-card span, .toggle-row span { display: grid; gap: 0.125rem; }
 .choice-card small, .toggle-row small { color: var(--muted); }
+.distraction-audio-settings { display: grid; gap: 0.75rem; }
+.distraction-audio-warning { padding: 0.75rem; border: 0.0625rem solid var(--accent); border-radius: var(--radius); background: var(--danger-quiet); }
+.distraction-audio-warning[hidden] { display: none !important; }
+.distraction-audio-warning > p { margin: 0.75rem 0 0; color: var(--muted); font-size: 0.875rem; }
 
 .form-grid { display: grid; gap: 1rem; grid-template-columns: 1fr; }
 .preset-editor { border: 0.0625rem solid var(--line); border-radius: var(--radius); background: var(--surface-quiet); }
@@ -162,6 +166,14 @@ input:disabled { background: var(--disabled-surface); color: var(--muted); }
 .transaction-rule { height: 0.0625rem; margin: 1.5rem 0; background: rgb(255 255 255 / 28%); }
 .breakdown { margin: 0; color: var(--transaction-text); }
 .tender-instruction { margin: 0.75rem 0 0; color: var(--transaction-muted); font-size: 0.875rem; line-height: 1.45; }
+
+.customer-bill-request { display: grid; gap: 0.75rem; margin-top: 1rem; padding: 1rem; border: 0.0625rem solid var(--line); border-left: 0.25rem solid var(--accent); border-radius: var(--radius); background: var(--surface-quiet); }
+.customer-bill-request[hidden] { display: none !important; }
+.customer-bill-request .eyebrow { margin-bottom: 0.25rem; }
+.customer-bill-request h3 { margin: 0; font-size: 1.125rem; }
+.customer-bill-request > p { margin: 0; font-weight: 700; line-height: 1.5; }
+.customer-bill-request-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; justify-content: space-between; }
+.customer-bill-request-actions p { flex: 1 1 18rem; margin: 0; color: var(--muted); font-size: 0.875rem; line-height: 1.45; }
 
 .answer-choices { display: grid; gap: 0.75rem; grid-template-columns: repeat(3, 1fr); }
 .answer-choices label { display: grid; }

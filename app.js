@@ -11,6 +11,7 @@ import {
   createMemoryChallenge,
   createTaskChallenge,
   createQuestion,
+  evaluateCustomerBillRequest,
   formatBreakdown,
   formatMoney,
   parseCashShorthand,
@@ -34,8 +35,8 @@ const screens = ['setup', 'quiz', 'memory-read', 'memory-answer', 'task-briefing
 const refs = Object.fromEntries([
   'setup-form', 'setup-screen', 'quiz-screen', 'feedback-screen', 'summary-screen', 'history-screen',
   'memory-read-screen', 'memory-answer-screen', 'task-briefing-screen', 'task-workspace-screen', 'error-detection-briefing-screen', 'error-detection-screen', 'cash-setup-options', 'memory-setup-options', 'task-setup-options', 'error-detection-setup-options',
-  'question-count', 'time-limit', 'cash-builder-toggle', 'auto-continue-toggle', 'question-progress', 'timer', 'amount-due',
-  'tender-breakdown', 'answer-form', 'answer-amount', 'cash-builder-section', 'cash-builder-heading',
+  'question-count', 'time-limit', 'cash-builder-toggle', 'customer-bill-request-toggle', 'auto-continue-toggle', 'distraction-noise-toggle', 'distraction-audio-warning', 'distraction-audio-safety-check', 'distraction-audio-status', 'question-progress', 'timer', 'amount-due',
+  'tender-breakdown', 'customer-bill-request', 'customer-bill-request-text', 'customer-bill-request-status', 'flag-bill-request', 'answer-form', 'answer-amount', 'cash-builder-section', 'cash-builder-heading',
   'cash-builder-purpose', 'cash-builder', 'selected-total', 'builder-status', 'clear-builder', 'quick-cash-entry', 'apply-quick-cash', 'feedback-heading',
   'feedback-kicker', 'feedback-lead', 'feedback-details', 'next-question', 'session-metrics',
   'start-another', 'summary-history', 'open-history', 'back-to-setup', 'history-metrics',
@@ -68,7 +69,11 @@ const state = {
   questionCount: 10,
   timeLimitSeconds: 30,
   cashBuilderEnabled: false,
+  customerBillRequestsEnabled: false,
+  customerRequestFlagged: false,
   autoContinueOnTimeout: false,
+  distractionNoisesEnabled: false,
+  distractionAudioContext: null,
   cashPresets: savedPresetState.cash,
   memoryPresets: savedPresetState.memory,
   taskPresets: savedPresetState.task,
@@ -103,6 +108,85 @@ const state = {
 
 function setMessage(message) {
   refs.message.textContent = message;
+}
+
+function updateDistractionAudioSetup() {
+  const requested = refs['distraction-noise-toggle'].checked;
+  refs['distraction-audio-warning'].hidden = !requested;
+  refs['distraction-audio-safety-check'].disabled = !requested;
+  if (!requested) {
+    refs['distraction-audio-safety-check'].checked = false;
+    refs['distraction-audio-status'].textContent = 'Distraction sounds are off.';
+    return;
+  }
+  refs['distraction-audio-status'].textContent = refs['distraction-audio-safety-check'].checked
+    ? 'Muted-volume confirmation received. Sounds will be enabled only for this practice session.'
+    : 'Confirm that you muted or lowered the device volume to enable the sounds.';
+}
+
+function prepareDistractionAudio() {
+  state.distractionNoisesEnabled = false;
+  if (!refs['distraction-noise-toggle'].checked) return false;
+  if (!refs['distraction-audio-safety-check'].checked) return false;
+
+  const AudioContextConstructor = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextConstructor) {
+    setMessage('This browser does not support the optional distraction sounds. Your practice session will remain silent.');
+    return false;
+  }
+
+  try {
+    if (!state.distractionAudioContext || state.distractionAudioContext.state === 'closed') {
+      state.distractionAudioContext = new AudioContextConstructor();
+    }
+    if (state.distractionAudioContext.state === 'suspended') {
+      state.distractionAudioContext.resume().catch(() => {
+        state.distractionNoisesEnabled = false;
+        setMessage('Your browser kept audio paused, so distraction sounds are off for this session.');
+      });
+    }
+    state.distractionNoisesEnabled = true;
+    return true;
+  } catch {
+    setMessage('The optional distraction sounds could not start. Your practice session will remain silent.');
+    return false;
+  }
+}
+
+function playDistractionBurst() {
+  if (!state.distractionNoisesEnabled || !state.distractionAudioContext) return;
+  const audioContext = state.distractionAudioContext;
+  if (audioContext.state === 'suspended') {
+    audioContext.resume().then(playDistractionBurst).catch(() => {
+      state.distractionNoisesEnabled = false;
+    });
+    return;
+  }
+  if (audioContext.state !== 'running') return;
+
+  const frequencies = [587, 911, 1321, 1733];
+  const startAt = audioContext.currentTime + 0.02;
+  for (const [index, frequency] of frequencies.entries()) {
+    const burstStart = startAt + (index * 0.11);
+    const oscillator = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+    oscillator.type = index % 2 === 0 ? 'square' : 'sawtooth';
+    oscillator.frequency.setValueAtTime(frequency, burstStart);
+    gain.gain.setValueAtTime(0.0001, burstStart);
+    gain.gain.exponentialRampToValueAtTime(0.055, burstStart + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, burstStart + 0.08);
+    oscillator.connect(gain).connect(audioContext.destination);
+    oscillator.start(burstStart);
+    oscillator.stop(burstStart + 0.085);
+  }
+}
+
+function resetDistractionAudioSetup() {
+  state.distractionNoisesEnabled = false;
+  refs['distraction-noise-toggle'].checked = false;
+  refs['distraction-audio-safety-check'].checked = false;
+  updateDistractionAudioSetup();
+  state.distractionAudioContext?.suspend().catch(() => undefined);
 }
 
 function builtInCashPresets() {
@@ -574,6 +658,43 @@ function selectedBreakdown() {
     .map((item) => ({ ...item, count: state.builderCounts.get(item.cents) }));
 }
 
+function customerRequestHandlingText(request, score) {
+  if (!request) return '';
+  if (score.customerRequestFlagged) return 'Flagged as impossible';
+  if (!request.isValid) return score.breakdownMatches ? 'Exact amount provided instead' : 'Not resolved';
+  return score.customerRequestMatches ? 'Honored' : 'Not honored';
+}
+
+function updateCustomerBillRequestStatus() {
+  const request = state.question?.customerBillRequest;
+  if (!request) return;
+
+  const flagged = Boolean(request.canFlag && state.customerRequestFlagged);
+  refs['flag-bill-request'].setAttribute('aria-pressed', String(flagged));
+  refs['flag-bill-request'].textContent = flagged ? 'Unflag request' : 'Flag impossible request';
+  if (flagged) {
+    refs['customer-bill-request-status'].textContent = 'Request flagged. Calculate the correct change; no cash selection is required for this invalid request.';
+    return;
+  }
+  if (!request.isValid) {
+    refs['customer-bill-request-status'].textContent = 'This request cannot be fulfilled as stated. Flag it or give the exact change with available bills and coins.';
+    return;
+  }
+  const evaluation = evaluateCustomerBillRequest(request, selectedBreakdown());
+  refs['customer-bill-request-status'].textContent = evaluation.matches
+    ? 'Selected bills follow the customer request.'
+    : 'Build the exact change while following the customer’s bill preference.';
+}
+
+function renderCustomerBillRequest() {
+  const request = state.question?.customerBillRequest;
+  refs['customer-bill-request'].hidden = !request;
+  if (!request) return;
+  refs['customer-bill-request-text'].textContent = request.text;
+  refs['flag-bill-request'].hidden = !request.canFlag;
+  updateCustomerBillRequestStatus();
+}
+
 function updateCashBuilderPurpose(type) {
   const copyByType = {
     Exact: {
@@ -610,7 +731,9 @@ function updateCashBuilder() {
   const type = selectedAnswerType();
   updateCashBuilderPurpose(type);
   const declaredAmount = type === 'Exact' ? 0 : parseAmountToCents(refs['answer-amount'].value);
-  if (!type) {
+  if (state.customerRequestFlagged && state.question?.customerBillRequest?.canFlag) {
+    refs['builder-status'].textContent = 'The impossible request is flagged. You may submit after calculating the correct change.';
+  } else if (!type) {
     refs['builder-status'].textContent = 'Choose an answer to compare your cash selection.';
   } else if (declaredAmount === null) {
     refs['builder-status'].textContent = 'Enter the amount you declared, then match it with the selected cash.';
@@ -622,10 +745,12 @@ function updateCashBuilder() {
       ? `Selected cash is ${formatMoney(difference)} over the declared amount.`
       : `Selected cash is ${formatMoney(difference)} short of the declared amount.`;
   }
+  updateCustomerBillRequestStatus();
 }
 
 function renderQuestion() {
   const question = state.question;
+  state.customerRequestFlagged = false;
   refs['question-progress'].textContent = `Question ${state.questionNumber} of ${state.questionCount}`;
   refs['amount-due'].textContent = formatMoney(question.dueCents);
   refs['tender-breakdown'].textContent = question.breakdownText;
@@ -633,6 +758,7 @@ function renderQuestion() {
   refs['answer-amount'].disabled = true;
   refs['cash-builder-section'].hidden = !state.cashBuilderEnabled;
   resetBuilder();
+  renderCustomerBillRequest();
 }
 
 function startTimer(seconds, target, expiryAction) {
@@ -693,12 +819,18 @@ function collectAnswer() {
     refs['answer-amount'].focus();
     return null;
   }
-  return { type, amountCents, breakdown: selectedBreakdown() };
+  return {
+    type,
+    amountCents,
+    breakdown: selectedBreakdown(),
+    requestFlagged: state.customerRequestFlagged,
+  };
 }
 
 function recordAnswer(answer, score, timedOut, elapsedSeconds) {
   const question = state.question;
   const selectedCash = answer?.breakdown ?? [];
+  const customerRequest = question.customerBillRequest;
   const outcome = timedOut ? 'Timed Out' : score.correct ? 'Correct' : 'Incorrect';
   const declaredAmount = answer ? formatMoney(answer.amountCents) : '';
   return {
@@ -707,7 +839,7 @@ function recordAnswer(answer, score, timedOut, elapsedSeconds) {
     gameType: 'Cash handling',
     difficulty: state.difficulty,
     questionNumber: state.questionNumber,
-    answerMode: state.cashBuilderEnabled ? 'Cash builder' : 'Normal',
+    answerMode: state.customerBillRequestsEnabled ? 'Cash builder + customer requests' : state.cashBuilderEnabled ? 'Cash builder' : 'Normal',
     timeLimitSeconds: state.timeLimitSeconds,
     timeUsedSeconds: Number(elapsedSeconds.toFixed(1)),
     amountDue: formatMoney(question.dueCents),
@@ -716,7 +848,7 @@ function recordAnswer(answer, score, timedOut, elapsedSeconds) {
     cashGivenCents: question.tenderedCents,
     cashBreakdown: question.breakdownText,
     expectedAnswer: expectedAnswerText(question),
-    recommendedBreakdown: formatBreakdown(buildBreakdown(question.expectedAmountCents)),
+    recommendedBreakdown: formatBreakdown(customerRequest?.expectedBreakdown ?? buildBreakdown(question.expectedAmountCents)),
     userAnswer: answer?.type ?? '',
     userDeclaredAmount: declaredAmount,
     userDeclaredAmountCents: answer?.amountCents ?? 0,
@@ -724,6 +856,9 @@ function recordAnswer(answer, score, timedOut, elapsedSeconds) {
     userCashTotalCents: state.cashBuilderEnabled ? score.cashTotalCents : 0,
     userCashBreakdown: state.cashBuilderEnabled ? formatBreakdown(selectedCash) : '',
     breakdownMatchesDeclaredAmount: score.breakdownMatches,
+    customerBillRequest: customerRequest?.text ?? '',
+    customerBillRequestKind: customerRequest?.kind ?? '',
+    customerBillRequestHandling: customerRequestHandlingText(customerRequest, score),
     outcome,
   };
 }
@@ -742,9 +877,13 @@ function populateFeedback(record, score) {
     ['Customer owes', formatMoney(question.dueCents)],
     ['Customer gave', `${formatMoney(question.tenderedCents)} — ${question.breakdownText}`],
     ['Your answer', record.userAnswer ? `${record.userAnswer}${record.userDeclaredAmount ? ` ${record.userDeclaredAmount}` : ''}` : 'No answer'],
-    ['Example breakdown', formatBreakdown(buildBreakdown(question.expectedAmountCents))],
+    ['Example breakdown', record.recommendedBreakdown],
     ['Time used', `${record.timeUsedSeconds.toFixed(1)} seconds`],
   ];
+  if (question.customerBillRequest) details.splice(2, 0,
+    ['Customer request', record.customerBillRequest],
+    ['Request handling', record.customerBillRequestHandling],
+  );
   if (state.cashBuilderEnabled) details.splice(3, 0, ['Selected cash', `${record.userCashTotal} — ${record.userCashBreakdown}`]);
   for (const [term, description] of details) {
     const dt = document.createElement('dt');
@@ -765,7 +904,7 @@ function submitCurrentAnswer(timedOut = false) {
   const elapsedSeconds = Math.min(state.timeLimitSeconds, Math.max(0, (Date.now() - (state.deadline - state.timeLimitSeconds * 1000)) / 1000));
   const score = timedOut
     ? { correct: false, breakdownMatches: false, cashTotalCents: 0 }
-    : scoreAnswer(state.question, answer, state.cashBuilderEnabled);
+    : scoreAnswer(state.question, answer, state.cashBuilderEnabled, state.question.customerBillRequest);
   const record = recordAnswer(answer, score, timedOut, elapsedSeconds);
   state.results.push(record);
   persistRecord(record);
@@ -784,11 +923,12 @@ function showNextQuestion() {
     showScreen('summary');
     return;
   }
-  state.question = createQuestion(state.difficulty, Math.random, state.cashPresets[state.difficulty]);
+  state.question = createQuestion(state.difficulty, Math.random, state.cashPresets[state.difficulty], { customerBillRequests: state.customerBillRequestsEnabled });
   state.answerSubmitted = false;
   renderQuestion();
   showScreen('quiz');
   startTimer(state.timeLimitSeconds, refs.timer, () => submitCurrentAnswer(true));
+  playDistractionBurst();
 }
 
 function renderMemoryReadValues(challenge) {
@@ -920,6 +1060,7 @@ function showNextMemoryQuestion() {
   refs['memory-read-hint'].textContent = `${state.memoryChallenge.valueCount} value${state.memoryChallenge.valueCount === 1 ? '' : 's'} in order · ${state.memoryChallenge.minimumDigits}–${state.memoryChallenge.maximumDigits} digits each${state.memoryChallenge.decimals ? ' · decimal points included' : ''}`;
   showScreen('memory-read');
   startTimer(state.memoryChallenge.readSeconds, refs['memory-read-timer'], showMemoryAnswer);
+  playDistractionBurst();
 }
 
 function detailsForErrorIds(ids) {
@@ -1202,6 +1343,7 @@ function startErrorDetectionPuzzle() {
   showScreen('error-detection');
   state.errorDetectionStartedAt = Date.now();
   startTimer(state.errorDetectionChallenge.timeLimitSeconds, refs['error-detection-timer'], () => submitErrorDetectionAttempt(true));
+  playDistractionBurst();
 }
 
 function renderTaskInstructions(challenge) {
@@ -1754,6 +1896,7 @@ function startTaskRecall() {
   refs['task-phase-status'].textContent = 'Instructions are hidden. Repeat the workflow, then save your changes.';
   refs['task-recall-note'].textContent = 'Use the tabs and controls from memory. Feedback appears only after you save or time runs out.';
   startOptionalTimer(state.taskChallenge.recallSeconds, refs['task-timer'], () => submitTaskAttempt(true));
+  playDistractionBurst();
   window.setTimeout(() => refs['task-tablist'].querySelector('button')?.focus({ preventScroll: true }), 0);
 }
 
@@ -2039,6 +2182,13 @@ function downloadHistory() {
 
 refs['setup-form'].addEventListener('submit', (event) => {
   event.preventDefault();
+  if (refs['distraction-noise-toggle'].checked && !refs['distraction-audio-safety-check'].checked) {
+    updateDistractionAudioSetup();
+    setMessage('Confirm that you muted or lowered device volume before enabling distraction sounds.');
+    refs['distraction-audio-safety-check'].focus();
+    return;
+  }
+  prepareDistractionAudio();
   const game = selectedGame();
   const difficulty = selectedDifficulty();
   state.sessionId = makeSessionId();
@@ -2100,11 +2250,14 @@ refs['setup-form'].addEventListener('submit', (event) => {
   }
   state.questionCount = questionCount;
   state.timeLimitSeconds = timeLimitSeconds;
-  state.cashBuilderEnabled = refs['cash-builder-toggle'].checked;
+  state.customerBillRequestsEnabled = refs['customer-bill-request-toggle'].checked;
+  state.cashBuilderEnabled = refs['cash-builder-toggle'].checked || state.customerBillRequestsEnabled;
+  refs['cash-builder-toggle'].checked = state.cashBuilderEnabled;
   showNextQuestion();
 });
 
 applyTheme(initialTheme());
+updateDistractionAudioSetup();
 updateGameSetup();
 
 refs['answer-form'].addEventListener('submit', (event) => {
@@ -2121,6 +2274,26 @@ document.querySelectorAll('input[name="answerType"]').forEach((input) => input.a
 refs['answer-amount'].addEventListener('input', updateCashBuilder);
 refs['clear-builder'].addEventListener('click', resetBuilder);
 refs['apply-quick-cash'].addEventListener('click', applyQuickCashEntry);
+refs['cash-builder-toggle'].addEventListener('change', () => {
+  if (!refs['cash-builder-toggle'].checked && refs['customer-bill-request-toggle'].checked) {
+    refs['customer-bill-request-toggle'].checked = false;
+    setMessage('Customer bill requests were turned off because they require the cash builder.');
+  }
+});
+refs['customer-bill-request-toggle'].addEventListener('change', () => {
+  if (refs['customer-bill-request-toggle'].checked) {
+    refs['cash-builder-toggle'].checked = true;
+    setMessage('Cash builder turned on for customer bill requests.');
+  }
+});
+refs['distraction-noise-toggle'].addEventListener('change', updateDistractionAudioSetup);
+refs['distraction-audio-safety-check'].addEventListener('change', updateDistractionAudioSetup);
+refs['flag-bill-request'].addEventListener('click', () => {
+  const request = state.question?.customerBillRequest;
+  if (!request?.canFlag) return;
+  state.customerRequestFlagged = !state.customerRequestFlagged;
+  updateCashBuilder();
+});
 refs['next-question'].addEventListener('click', () => {
   if (state.game === 'memory') showNextMemoryQuestion();
   else if (state.game === 'task') showNextTaskQuestion();
@@ -2163,10 +2336,16 @@ document.querySelectorAll('input[name="difficulty"]').forEach((input) => input.a
 refs['save-preset'].addEventListener('click', saveSelectedPreset);
 refs['reset-selected-preset'].addEventListener('click', resetSelectedPreset);
 refs['reset-all-presets'].addEventListener('click', resetAllPresets);
-refs['start-another'].addEventListener('click', () => showScreen('setup'));
+refs['start-another'].addEventListener('click', () => {
+  resetDistractionAudioSetup();
+  showScreen('setup');
+});
 refs['open-history'].addEventListener('click', openHistory);
 refs['summary-history'].addEventListener('click', openHistory);
-refs['back-to-setup'].addEventListener('click', () => showScreen('setup'));
+refs['back-to-setup'].addEventListener('click', () => {
+  resetDistractionAudioSetup();
+  showScreen('setup');
+});
 refs['theme-toggle'].addEventListener('click', () => {
   const isDark = document.documentElement.dataset.theme === 'dark';
   applyTheme(isDark ? 'light' : 'dark', true);

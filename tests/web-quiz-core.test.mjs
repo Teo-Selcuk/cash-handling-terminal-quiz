@@ -9,11 +9,13 @@ import {
   MEMORY_MODE_CONFIG,
   TASK_MODE_CONFIG,
   buildBreakdown,
+  createCustomerBillRequest,
   createErrorDetectionChallenge,
   countTotalCents,
   createMemoryChallenge,
   createTaskChallenge,
   createQuestion,
+  evaluateCustomerBillRequest,
   formatMoney,
   parseCashShorthand,
   parseAmountToCents,
@@ -49,6 +51,57 @@ test('builds a valid denomination breakdown for bills and coins', () => {
   assert.ok(breakdown.every((item) => item.count > 0));
 });
 
+test('handles exact, preference, mismatched, and unsupported customer bill requests', () => {
+  const targetCents = 32000;
+  const requestKinds = ['specific', 'remainder', 'mixed', 'low', 'high'];
+
+  for (const kind of requestKinds) {
+    const request = createCustomerBillRequest(targetCents, () => 0.25, kind);
+    assert.equal(request.kind, kind);
+    assert.equal(request.isValid, true);
+    assert.equal(request.targetCents, targetCents);
+    assert.equal(countTotalCents(request.expectedBreakdown), targetCents);
+    assert.equal(evaluateCustomerBillRequest(request, request.expectedBreakdown).matches, true, `${kind} request should accept its example breakdown`);
+  }
+
+  const specific = createCustomerBillRequest(targetCents, () => 0.25, 'specific');
+  const highBills = createCustomerBillRequest(targetCents, () => 0.25, 'high');
+  assert.equal(evaluateCustomerBillRequest(specific, highBills.expectedBreakdown).matches, false);
+
+  const mismatched = createCustomerBillRequest(targetCents, () => 0.25, 'mismatch');
+  assert.equal(mismatched.isValid, false);
+  assert.equal(mismatched.canFlag, true);
+  assert.equal(mismatched.requestedCents, 35000);
+  assert.match(mismatched.text, /10 x \$20 bills, 1 x \$50 bill, and 1 x \$100 bill/i);
+  assert.match(mismatched.text, /does not equal/i);
+
+  const unsupported = createCustomerBillRequest(targetCents, () => 0.25, 'unsupported');
+  assert.equal(unsupported.isValid, false);
+  assert.equal(unsupported.canFlag, true);
+  assert.match(unsupported.text, /\$30 bill/i);
+});
+
+test('accepts an exact payout or a flag for an impossible customer bill request', () => {
+  const question = { expectedType: 'Change', expectedAmountCents: 32000 };
+  const mismatched = createCustomerBillRequest(32000, () => 0.25, 'mismatch');
+  const exactBreakdown = buildBreakdown(32000);
+
+  assert.equal(scoreAnswer(question, {
+    type: 'Change', amountCents: 32000, breakdown: exactBreakdown,
+  }, true, mismatched).correct, true);
+  assert.equal(scoreAnswer(question, {
+    type: 'Change', amountCents: 32000, breakdown: [], requestFlagged: true,
+  }, true, mismatched).correct, true);
+
+  const validRequest = createCustomerBillRequest(32000, () => 0.25, 'specific');
+  assert.equal(scoreAnswer(question, {
+    type: 'Change', amountCents: 32000, breakdown: exactBreakdown,
+  }, true, validRequest).correct, false);
+  assert.equal(scoreAnswer(question, {
+    type: 'Change', amountCents: 32000, breakdown: validRequest.expectedBreakdown,
+  }, true, validRequest).correct, true);
+});
+
 test('generates questions that obey each difficulty contract', () => {
   for (const level of Object.keys(DIFFICULTY_CONFIG)) {
     const config = DIFFICULTY_CONFIG[level];
@@ -71,6 +124,28 @@ test('generates questions that obey each difficulty contract', () => {
       }
     }
   }
+});
+
+test('adds customer bill requests only to opted-in change questions', () => {
+  const changeRandomizer = (() => {
+    const values = [0.5, 0.1, 0.8];
+    return () => values.shift() ?? 0.25;
+  })();
+  const requestedChange = createQuestion('Easy', changeRandomizer, {}, {
+    customerBillRequests: true,
+    customerRequestKind: 'mismatch',
+  });
+  assert.equal(requestedChange.expectedType, 'Change');
+  assert.equal(requestedChange.customerBillRequest.kind, 'mismatch');
+  assert.equal(requestedChange.customerBillRequest.targetCents, requestedChange.expectedAmountCents);
+
+  const exactRandomizer = (() => {
+    const values = [0.5, 0.95];
+    return () => values.shift() ?? 0.25;
+  })();
+  const exactQuestion = createQuestion('Easy', exactRandomizer, {}, { customerBillRequests: true });
+  assert.equal(exactQuestion.expectedType, 'Exact');
+  assert.equal(exactQuestion.customerBillRequest, null);
 });
 
 test('resolves editable cash and memory presets without changing the built-in defaults', () => {
@@ -688,6 +763,25 @@ test('makes learners total the tendered cash and explains which cash to build', 
   assert.match(app, /Build the additional bills and coins the customer still needs to give\./);
 });
 
+test('offers an opt-in customer bill-request flow with an invalid-request flag', async () => {
+  const [html, app, css] = await Promise.all([
+    readFile(new URL('../index.html', import.meta.url), 'utf8'),
+    readFile(new URL('../app.js', import.meta.url), 'utf8'),
+    readFile(new URL('../style.css', import.meta.url), 'utf8'),
+  ]);
+
+  assert.match(html, /id="customer-bill-request-toggle"/);
+  assert.match(html, /Automatically turns on cash builder/i);
+  assert.match(html, /id="customer-bill-request"/);
+  assert.match(html, /id="flag-bill-request"/);
+  assert.match(app, /customerBillRequestsEnabled: false/);
+  assert.match(app, /customerBillRequests: state\.customerBillRequestsEnabled/);
+  assert.match(app, /scoreAnswer\(state\.question, answer, state\.cashBuilderEnabled, state\.question\.customerBillRequest\)/);
+  assert.match(app, /requestFlagged: state\.customerRequestFlagged/);
+  assert.match(app, /flag-bill-request/);
+  assert.match(css, /\.customer-bill-request\s*\{/);
+});
+
 test('uses the saved memory preset as the only range and timing configuration', async () => {
   const [html, app, css] = await Promise.all([
     readFile(new URL('../index.html', import.meta.url), 'utf8'),
@@ -748,4 +842,26 @@ test('exports history as escaped CSV with a header row', () => {
   const csv = toCsv([{ timestamp: '2026-08-27T12:00:00.000Z', outcome: 'Correct', note: 'Quarter, then "dime"' }]);
   assert.match(csv, /^timestamp,outcome,note\r?\n/);
   assert.match(csv, /"Quarter, then ""dime"""/);
+});
+
+test('offers gated, off-by-default distraction noises in every browser practice mode', async () => {
+  const [html, app, css] = await Promise.all([
+    readFile(new URL('../index.html', import.meta.url), 'utf8'),
+    readFile(new URL('../app.js', import.meta.url), 'utf8'),
+    readFile(new URL('../style.css', import.meta.url), 'utf8'),
+  ]);
+
+  assert.match(html, /id="distraction-noise-toggle"[^>]*type="checkbox"/);
+  assert.match(html, /id="distraction-audio-safety-check"[^>]*type="checkbox"/);
+  assert.match(html, /cannot verify (?:whether )?Windows (?:11 )?system mute/i);
+  assert.match(app, /distractionNoisesEnabled: false/);
+  assert.match(app, /function prepareDistractionAudio\(\)/);
+  assert.match(app, /function playDistractionBurst\(\)/);
+  assert.match(app, /window\.AudioContext \|\| window\.webkitAudioContext/);
+  assert.match(app, /createGain\(\)/);
+  assert.match(app, /showNextQuestion\(\)[\s\S]*playDistractionBurst\(\)/);
+  assert.match(app, /showNextMemoryQuestion\(\)[\s\S]*playDistractionBurst\(\)/);
+  assert.match(app, /startTaskRecall\(\)[\s\S]*playDistractionBurst\(\)/);
+  assert.match(app, /startErrorDetectionPuzzle\(\)[\s\S]*playDistractionBurst\(\)/);
+  assert.match(css, /\.distraction-audio-warning\s*\{/);
 });

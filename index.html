@@ -7,7 +7,7 @@
     <meta name="theme-color" content="#12343b">
     <title>Cash, Memory &amp; Detail Trainer</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="style.css?v=20260830-puzzle-lab">
+    <link rel="stylesheet" href="style.css?v=20260903-practice-sounds">
   </head>
   <body>
     <main class="app-shell">
@@ -55,6 +55,21 @@
             <input id="auto-continue-toggle" name="autoContinueOnTimeout" type="checkbox">
             <span><strong>Auto-continue after timeout</strong><small>Immediately advance to the next round when its timer expires. In Error Detection, this opens the next rule briefing; the final timeout still shows your session results.</small></span>
           </label>
+
+          <fieldset class="distraction-audio-settings">
+            <legend>Optional distraction sounds</legend>
+            <label class="toggle-row" for="distraction-noise-toggle">
+              <input id="distraction-noise-toggle" name="distractionNoises" type="checkbox">
+              <span><strong>Use harsh distraction noises</strong><small>Play short synthetic bursts when a timed Cash Handling, Number Memory, Task Simulation, or Error Detection practice phase begins.</small></span>
+            </label>
+            <div class="distraction-audio-warning" id="distraction-audio-warning" hidden>
+              <label class="toggle-row" for="distraction-audio-safety-check">
+                <input id="distraction-audio-safety-check" name="distractionAudioSafety" type="checkbox" disabled>
+                <span><strong>I muted or lowered my device volume</strong><small>This site cannot verify whether Windows 11 system mute is on. Mute or lower your device volume before confirming; without this confirmation, distraction sounds stay off.</small></span>
+              </label>
+              <p id="distraction-audio-status" role="status" aria-live="polite"></p>
+            </div>
+          </fieldset>
 
           <details class="preset-editor" id="preset-editor">
             <summary>Customize the selected Easy, Medium, or Hard preset</summary>
@@ -162,6 +177,11 @@
               <input id="cash-builder-toggle" name="cashBuilder" type="checkbox">
               <span><strong>Use cash builder</strong><small>After choosing Exact, Change, or Short, build the amount with bills and coins.</small></span>
             </label>
+
+            <label class="toggle-row" for="customer-bill-request-toggle">
+              <input id="customer-bill-request-toggle" name="customerBillRequests" type="checkbox">
+              <span><strong>Include customer bill requests</strong><small>On change rounds, customers may request specific, mixed, low, or high bills. Automatically turns on cash builder.</small></span>
+            </label>
           </div>
 
           <div id="memory-setup-options" hidden>
@@ -203,6 +223,18 @@
           <p class="breakdown" id="tender-breakdown"></p>
           <p class="tender-instruction">Add these bills and coins yourself to find the customer total.</p>
         </div>
+
+        <section class="customer-bill-request" id="customer-bill-request" hidden aria-labelledby="customer-bill-request-heading">
+          <div>
+            <p class="eyebrow">Customer bill request</p>
+            <h3 id="customer-bill-request-heading">Preference for the change</h3>
+          </div>
+          <p id="customer-bill-request-text" aria-live="polite"></p>
+          <div class="customer-bill-request-actions">
+            <p id="customer-bill-request-status" aria-live="polite"></p>
+            <button class="secondary-button" id="flag-bill-request" type="button" hidden aria-pressed="false">Flag impossible request</button>
+          </div>
+        </section>
 
         <form id="answer-form" class="answer-form">
           <fieldset>
@@ -422,6 +454,6 @@
     </main>
 
     <footer>Browser edition. The original PowerShell quiz remains in this repository.</footer>
-    <script type="module" src="app.js?v=20260830-puzzle-lab"></script>
+    <script type="module" src="app.js?v=20260903-practice-sounds"></script>
   </body>
 </html>

@@ -1095,8 +1095,252 @@ export function formatBreakdown(breakdown) {
   return breakdown.map((item) => `${item.count} x ${item.count === 1 ? item.singular : item.plural}`).join(', ') || 'No cash is needed.';
 }
 
-export function createQuestion(level, rng = Math.random, presetOverrides = {}) {
+const CUSTOMER_BILL_REQUEST_KINDS = Object.freeze(['specific', 'remainder', 'mixed', 'low', 'high', 'mismatch', 'unsupported']);
+
+function billDenominations() {
+  return DENOMINATIONS.filter((denomination) => denomination.category === 'Bill');
+}
+
+function cashCounts(breakdown = []) {
+  const counts = new Map(DENOMINATIONS.map((denomination) => [denomination.cents, 0]));
+  for (const item of breakdown) {
+    if (!counts.has(item?.cents) || !Number.isSafeInteger(item.count) || item.count < 0) {
+      throw new RangeError('Cash breakdown contains an unsupported denomination or count.');
+    }
+    counts.set(item.cents, counts.get(item.cents) + item.count);
+  }
+  return counts;
+}
+
+function breakdownFromCounts(counts) {
+  return DENOMINATIONS
+    .filter((denomination) => counts.get(denomination.cents) > 0)
+    .map((denomination) => ({ ...denomination, count: counts.get(denomination.cents) }));
+}
+
+function billCountsMatch(leftBreakdown, rightBreakdown) {
+  const leftCounts = cashCounts(leftBreakdown);
+  const rightCounts = cashCounts(rightBreakdown);
+  return billDenominations().every((denomination) => (
+    leftCounts.get(denomination.cents) === rightCounts.get(denomination.cents)
+  ));
+}
+
+function distinctBillCount(breakdown) {
+  const counts = cashCounts(breakdown);
+  return billDenominations().filter((denomination) => counts.get(denomination.cents) > 0).length;
+}
+
+function formatCustomerBillList(breakdown) {
+  const parts = breakdown
+    .filter((item) => item.category === 'Bill')
+    .map((item) => `${item.count} x ${item.count === 1 ? item.singular : item.plural}`);
+  if (parts.length < 2) return parts[0] ?? 'no bills';
+  if (parts.length === 2) return `${parts[0]} and ${parts[1]}`;
+  return `${parts.slice(0, -1).join(', ')}, and ${parts.at(-1)}`;
+}
+
+function splitOneBill(counts, rng) {
+  const bills = billDenominations();
+  const sources = bills.filter((source) => (
+    counts.get(source.cents) > 0
+    && bills.some((destination) => destination.cents < source.cents && source.cents % destination.cents === 0)
+  ));
+  if (sources.length === 0) return false;
+
+  const source = sources[randomIndex(sources.length, rng)];
+  const destinations = bills.filter((destination) => (
+    destination.cents < source.cents && source.cents % destination.cents === 0
+  ));
+  const destination = destinations[randomIndex(destinations.length, rng)];
+  counts.set(source.cents, counts.get(source.cents) - 1);
+  counts.set(destination.cents, counts.get(destination.cents) + (source.cents / destination.cents));
+  return true;
+}
+
+function createSpecificBillBreakdown(amountCents, rng) {
+  const counts = cashCounts(buildBreakdown(amountCents));
+  splitOneBill(counts, rng);
+  return breakdownFromCounts(counts);
+}
+
+function createMixedBillBreakdown(amountCents, rng) {
+  const counts = cashCounts(buildBreakdown(amountCents));
+  for (let attempt = 0; attempt < 3 && distinctBillCount(breakdownFromCounts(counts)) < 2; attempt += 1) {
+    if (!splitOneBill(counts, rng)) break;
+  }
+  const breakdown = breakdownFromCounts(counts);
+  return distinctBillCount(breakdown) >= 2 ? breakdown : null;
+}
+
+function createRemainderBillBreakdown(amountCents, rng) {
+  const wholeDollarCents = amountCents - (amountCents % 100);
+  const candidates = [];
+  const bills = billDenominations();
+  for (const fixedBill of bills) {
+    const maximumFixedCount = Math.min(10, Math.floor(wholeDollarCents / fixedBill.cents));
+    for (let fixedCount = 1; fixedCount <= maximumFixedCount; fixedCount += 1) {
+      const remaining = wholeDollarCents - (fixedBill.cents * fixedCount);
+      for (const restBill of bills) {
+        if (restBill.cents === fixedBill.cents || remaining < restBill.cents || remaining % restBill.cents !== 0) continue;
+        candidates.push({ fixedBill, fixedCount, restBill, restCount: remaining / restBill.cents });
+      }
+    }
+  }
+  if (candidates.length === 0) return null;
+
+  const candidate = candidates[randomIndex(candidates.length, rng)];
+  const counts = cashCounts(buildBreakdown(amountCents));
+  for (const bill of bills) counts.set(bill.cents, 0);
+  counts.set(candidate.fixedBill.cents, candidate.fixedCount);
+  counts.set(candidate.restBill.cents, candidate.restCount);
+  return { ...candidate, breakdown: breakdownFromCounts(counts) };
+}
+
+function createRequestRecord({ kind, targetCents, text, expectedBreakdown, isValid = true, canFlag = false, requestedCents = targetCents }) {
+  return Object.freeze({
+    kind,
+    targetCents,
+    requestedCents,
+    text,
+    expectedBreakdown: Object.freeze(expectedBreakdown.map((item) => Object.freeze({ ...item }))),
+    isValid,
+    canFlag,
+  });
+}
+
+export function createCustomerBillRequest(amountCents, rng = Math.random, requestedKind = '') {
+  assertCents(amountCents, 'Customer request amount');
+  if (typeof rng !== 'function') throw new TypeError('Customer request randomizer must be a function.');
+  if (requestedKind !== '' && !CUSTOMER_BILL_REQUEST_KINDS.includes(requestedKind)) {
+    throw new RangeError(`Unknown customer bill request: ${requestedKind}`);
+  }
+
+  const kind = requestedKind || CUSTOMER_BILL_REQUEST_KINDS[randomIndex(CUSTOMER_BILL_REQUEST_KINDS.length, rng)];
+  const exactBreakdown = buildBreakdown(amountCents);
+
+  if (kind === 'specific') {
+    const expectedBreakdown = createSpecificBillBreakdown(amountCents, rng);
+    return createRequestRecord({
+      kind,
+      targetCents: amountCents,
+      expectedBreakdown,
+      text: `Customer asks for ${formatCustomerBillList(expectedBreakdown)}. Give the exact change in those bills, plus coins if needed.`,
+    });
+  }
+
+  if (kind === 'remainder') {
+    const request = createRemainderBillBreakdown(amountCents, rng);
+    if (!request) return createCustomerBillRequest(amountCents, rng, 'specific');
+    const coinNote = amountCents % 100 === 0 ? '' : ' Add the cents in coins.';
+    return createRequestRecord({
+      kind,
+      targetCents: amountCents,
+      expectedBreakdown: request.breakdown,
+      text: `Customer asks for ${request.fixedCount} x ${request.fixedCount === 1 ? request.fixedBill.singular : request.fixedBill.plural} and the rest in ${request.restBill.plural}.${coinNote}`,
+    });
+  }
+
+  if (kind === 'mixed') {
+    const expectedBreakdown = createMixedBillBreakdown(amountCents, rng);
+    if (!expectedBreakdown) return createCustomerBillRequest(amountCents, rng, 'low');
+    return createRequestRecord({
+      kind,
+      targetCents: amountCents,
+      expectedBreakdown,
+      text: 'Customer asks for a mix of bills. Give the exact change using at least two bill denominations.',
+    });
+  }
+
+  if (kind === 'low') {
+    const lowDenominations = DENOMINATIONS.filter((denomination) => denomination.category !== 'Bill' || denomination.cents <= 2000);
+    const expectedBreakdown = buildBreakdown(amountCents, lowDenominations);
+    return createRequestRecord({
+      kind,
+      targetCents: amountCents,
+      expectedBreakdown,
+      text: 'Customer asks for low bills. Give the exact change without $50 or $100 bills.',
+    });
+  }
+
+  if (kind === 'high') {
+    return createRequestRecord({
+      kind,
+      targetCents: amountCents,
+      expectedBreakdown: exactBreakdown,
+      text: 'Customer asks for high bills. Use the largest practical bills, then coins if needed.',
+    });
+  }
+
+  if (kind === 'mismatch') {
+    const requestedCounts = cashCounts(exactBreakdown);
+    if (amountCents === 32000) {
+      for (const bill of billDenominations()) requestedCounts.set(bill.cents, 0);
+      requestedCounts.set(2000, 10);
+      requestedCounts.set(5000, 1);
+      requestedCounts.set(10000, 1);
+    } else {
+      const bill = billDenominations().find((denomination) => denomination.cents <= Math.max(100, amountCents)) ?? billDenominations().at(-1);
+      requestedCounts.set(bill.cents, requestedCounts.get(bill.cents) + 1);
+    }
+    const requestedBreakdown = breakdownFromCounts(requestedCounts);
+    const requestedCents = countTotalCents(requestedBreakdown);
+    return createRequestRecord({
+      kind,
+      targetCents: amountCents,
+      requestedCents,
+      expectedBreakdown: exactBreakdown,
+      isValid: false,
+      canFlag: true,
+      text: `Customer asks for ${formatCustomerBillList([...requestedBreakdown].reverse())}. That totals ${formatMoney(requestedCents)}, which does not equal the ${formatMoney(amountCents)} change due. Flag the request or give exactly ${formatMoney(amountCents)}.`,
+    });
+  }
+
+  return createRequestRecord({
+    kind: 'unsupported',
+    targetCents: amountCents,
+    requestedCents: null,
+    expectedBreakdown: exactBreakdown,
+    isValid: false,
+    canFlag: true,
+    text: `Customer asks for a $30 bill. A $30 bill is not available, so flag the request or give exactly ${formatMoney(amountCents)} with available denominations.`,
+  });
+}
+
+export function evaluateCustomerBillRequest(request, breakdown = []) {
+  if (!request) return { applies: false, matches: true, canFlag: false };
+  if (!Array.isArray(breakdown)) return { applies: true, matches: false, canFlag: Boolean(request.canFlag) };
+  if (!request.isValid) return { applies: true, matches: false, canFlag: Boolean(request.canFlag) };
+
+  let matches = false;
+  if (request.kind === 'mixed') {
+    matches = distinctBillCount(breakdown) >= 2;
+  } else if (request.kind === 'low') {
+    const counts = cashCounts(breakdown);
+    matches = billDenominations().every((bill) => bill.cents <= 2000 || counts.get(bill.cents) === 0);
+  } else {
+    matches = billCountsMatch(request.expectedBreakdown, breakdown);
+  }
+  return { applies: true, matches, canFlag: false };
+}
+
+function resolveCashQuestionOptions(options = {}) {
+  if (options === null || typeof options !== 'object' || Array.isArray(options)) {
+    throw new TypeError('Cash question options must be an object.');
+  }
+  const customerRequestKind = options.customerRequestKind ?? '';
+  if (typeof customerRequestKind !== 'string' || (customerRequestKind !== '' && !CUSTOMER_BILL_REQUEST_KINDS.includes(customerRequestKind))) {
+    throw new RangeError('Customer request kind is not supported.');
+  }
+  return {
+    customerBillRequests: options.customerBillRequests === true,
+    customerRequestKind,
+  };
+}
+
+export function createQuestion(level, rng = Math.random, presetOverrides = {}, options = {}) {
   const config = resolveCashDifficultyPreset(level, presetOverrides);
+  const questionOptions = resolveCashQuestionOptions(options);
   const denominations = DENOMINATIONS.filter((item) => config.allowed.includes(item.cents));
 
   for (let attempt = 0; attempt < 200; attempt += 1) {
@@ -1121,6 +1365,9 @@ export function createQuestion(level, rng = Math.random, presetOverrides = {}) {
 
     if (tenderedCents >= 100 && tenderedCents % 100 !== 0) {
       const breakdown = buildBreakdown(tenderedCents, denominations, config.splitCount, rng);
+      const customerBillRequest = questionOptions.customerBillRequests && expectedType === 'Change'
+        ? createCustomerBillRequest(expectedAmountCents, rng, questionOptions.customerRequestKind)
+        : null;
       return {
         dueCents,
         tenderedCents,
@@ -1128,6 +1375,7 @@ export function createQuestion(level, rng = Math.random, presetOverrides = {}) {
         expectedAmountCents,
         breakdown,
         breakdownText: formatBreakdown(breakdown),
+        customerBillRequest,
       };
     }
   }
@@ -1146,21 +1394,32 @@ export function parseAmountToCents(value) {
   return Number.isSafeInteger(result) ? result : null;
 }
 
-export function scoreAnswer(question, answer, cashBuilderEnabled) {
+export function scoreAnswer(question, answer, cashBuilderEnabled, customerBillRequest = null) {
   const validTypes = new Set(['Exact', 'Change', 'Short']);
   const amountCents = answer.type === 'Exact' ? 0 : answer.amountCents;
   const validAnswer = validTypes.has(answer.type) && Number.isSafeInteger(amountCents) && amountCents >= 0;
   const cashTotalCents = countTotalCents(answer.breakdown ?? []);
   const typeMatches = validAnswer && answer.type === question.expectedType;
   const amountMatches = validAnswer && amountCents === question.expectedAmountCents;
-  const breakdownMatches = !cashBuilderEnabled || cashTotalCents === question.expectedAmountCents;
+  const customerRequest = cashBuilderEnabled ? customerBillRequest : null;
+  const customerRequestResult = evaluateCustomerBillRequest(customerRequest, answer.breakdown ?? []);
+  const customerRequestFlagged = Boolean(customerRequest?.canFlag && answer.requestFlagged);
+  const breakdownMatches = !cashBuilderEnabled || customerRequestFlagged || cashTotalCents === question.expectedAmountCents;
+  const customerRequestMatches = !customerRequest
+    || customerRequestFlagged
+    || (customerRequest.isValid
+      ? customerRequestResult.matches
+      : cashTotalCents === question.expectedAmountCents);
   return {
-    correct: Boolean(typeMatches && amountMatches && breakdownMatches),
+    correct: Boolean(typeMatches && amountMatches && breakdownMatches && customerRequestMatches),
     validAnswer,
     typeMatches,
     amountMatches,
     breakdownMatches,
     cashTotalCents,
+    customerRequestMatches,
+    customerRequestFlagged,
+    customerRequestCanFlag: customerRequestResult.canFlag,
   };
 }
 

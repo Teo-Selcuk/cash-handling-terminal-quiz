@@ -29,7 +29,7 @@ const isCorrect = answer.type === expectedType && answer.amountCents === expecte
 
 ## Testing Strategy
 
-Unit tests cover denomination totals, money formatting, generated question invariants, cash/number/task/puzzle scoring, task preset bounds, stable task targets, and CSV creation. Puzzle tests prove every generated anomaly is selectable, every family has a worked-rule example, and Easy/Medium/Hard add reasoning complexity rather than only reducing time. Browser checks verify each Error Detection briefing, example, timed puzzle, review, and summary transition without console errors. The GitHub Pages workflow runs the Node tests before deployment.
+Unit tests cover denomination totals, money formatting, generated question invariants, cash/number/task/puzzle scoring, task preset bounds, stable task targets, CSV creation, and the off-by-default sound safety contract. Puzzle tests prove every generated anomaly is selectable, every family has a worked-rule example, and Easy/Medium/Hard add reasoning complexity rather than only reducing time. Browser checks verify each Error Detection briefing, example, timed puzzle, review, and summary transition without console errors. The GitHub Pages workflow runs the Node tests before deployment.
 
 ## Boundaries
 
@@ -42,6 +42,9 @@ Unit tests cover denomination totals, money formatting, generated question invar
 - The user can select Easy, Medium, or Hard; a question count; a time limit; and normal or cash-builder mode.
 - Questions use the same ten denominations and Easy/Medium/Hard limits as the PowerShell quiz.
 - Exact, change, and short answers are scored correctly; cash-builder totals are required only when selected.
+- Customer bill requests are an off-by-default cash-builder addition on change rounds. Requests rotate through exact named bills, named bills plus a remaining denomination, mixed bills, low bills, and high bills.
+- A valid request is honored only when the selected bills meet its stated preference and the selected cash totals the required change. A mismatched or unsupported request can be flagged, or the learner can give the exact amount instead. The trainer never presents a $30 bill as an available denomination.
+- Browser and PowerShell editions use the same request types, preserve the normal Exact/Change/Short behavior when the option is disabled, and record the request plus the learner's handling in history.
 - Results, session statistics, browser-local history, CSV export, and clear-history confirmation work without a server.
 - A Task Simulation session generates synthetic records, case-management, and invoice-review workspaces from local data at every difficulty. It can use native dialogs, an opened secondary workspace tab, verification-and-retyping fields, dropdowns, checkboxes, and addition, multiplication, or division before an answer is entered. It presents a briefing, demonstrates the same declarative steps with a browser-native cursor animation, resets the workspace, and grades the recalled semantic action sequence only after Save or timeout.
 - Task presets are locally editable and resettable for steps, rows, tabs, briefing time, recall time (including untimed practice), and demo speed. The Task Simulation setup contains only Rounds.
@@ -52,15 +55,19 @@ Unit tests cover denomination totals, money formatting, generated question invar
 - Error Detection presets are saved and resettable per Easy, Medium, and Hard level. They control the number of selectable clues, maximum possible anomalies, and seconds per round. Easy uses a single rule and transparent changes; Medium combines rules and plausible near-misses; Hard combines dependent transformations, positional constraints, and near-match distractors rather than merely reducing the timer.
 - Error Detection records the puzzle family, missed anomalies, false flags, and corrections in local history/CSV, provides post-round feedback, and honors the shared optional auto-continue-on-timeout setting.
 - The page is keyboard accessible and responsive from 320px wide upward.
+- An off-by-default browser-only distraction-sound option is available for all four practice modes. The learner must confirm that they muted or lowered device volume for that session; the site clearly states it cannot inspect Windows 11 system-mute state and leaves sounds off without confirmation.
 - The deployment workflow tests the application, uploads the static artifact, and deploys it to GitHub Pages from `main`.
 
 ## Implementation Plan
 
 1. Add and test pure quiz rules, including cents-only question generation and CSV export.
-2. Add the responsive browser UI, timer, cash builder, feedback, history screens, and Task Simulation workflow.
-3. Keep the task generator, demonstration, and scorer on one shared step contract; test its preset bounds, generated targets, timing, and end-only scoring.
-4. Keep the Error Detection puzzle generator and scorer on one shared anomaly contract; test five puzzle families, rule walkthrough examples, zero/one/many anomaly cases, exact-set scoring, timing, responsive visual rendering, and browser controls.
-5. Verify the committed site locally and after push.
+2. Add and test customer-request generation, request validation, and an explicit invalid-request flag path before wiring either user interface.
+3. Add the responsive browser UI, timer, cash builder, feedback, history screens, and Task Simulation workflow.
+4. Mirror cash-builder customer-request behavior in the PowerShell edition, including safe persisted defaults and history fields.
+5. Keep the task generator, demonstration, and scorer on one shared step contract; test its preset bounds, generated targets, timing, and end-only scoring.
+6. Keep the Error Detection puzzle generator and scorer on one shared anomaly contract; test five puzzle families, rule walkthrough examples, zero/one/many anomaly cases, exact-set scoring, timing, responsive visual rendering, and browser controls.
+7. Verify the committed site locally and after push.
+8. Keep optional distraction noises behind a per-session acknowledgement, use a capped Web Audio gain, and begin audio setup only from Start quiz.
 
 ## Deployment Reference
 

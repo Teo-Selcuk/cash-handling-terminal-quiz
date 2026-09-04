@@ -108,6 +108,7 @@
             DefaultTimeLimitSeconds = 20
             DataDirectory = Get-RecommendedQuizDataDirectory
             ClickableBillCoinModeEnabled = $false
+            CustomerBillRequestsEnabled = $false
             AutoContinueOnTimeoutEnabled = $false
             CashDifficultyPresets = $cashPresets
             MemoryDifficultyPresets = $memoryPresets
@@ -258,6 +259,11 @@
             $billCoinMode = $saved.PSObject.Properties['ClickableBillCoinModeEnabled']
             if ($null -ne $billCoinMode) {
                 $settings.ClickableBillCoinModeEnabled = [bool]$billCoinMode.Value
+            }
+
+            $customerBillRequests = $saved.PSObject.Properties['CustomerBillRequestsEnabled']
+            if ($null -ne $customerBillRequests) {
+                $settings.CustomerBillRequestsEnabled = [bool]$customerBillRequests.Value
             }
 
             $autoContinue = $saved.PSObject.Properties['AutoContinueOnTimeoutEnabled']
@@ -711,10 +717,455 @@
         return ($parts -join ', ')
     }
 
+    function Get-CustomerBillDenominations {
+        return @(
+            $allDenominations |
+                Where-Object {
+                    $_.Category -eq 'Bill'
+                }
+        )
+    }
+
+    function New-CustomerCashCounts {
+        $counts = @{}
+
+        foreach ($denomination in $allDenominations) {
+            $counts[[string]$denomination.Cents] = [long]0
+        }
+
+        return $counts
+    }
+
+    function ConvertTo-CustomerCashBreakdown {
+        param([hashtable]$Counts)
+
+        return @(
+            foreach ($denomination in $allDenominations) {
+                $key = [string]$denomination.Cents
+                [long]$count = if ($Counts.ContainsKey($key)) {
+                    [long]$Counts[$key]
+                }
+                else {
+                    [long]0
+                }
+
+                if ($count -gt 0) {
+                    [pscustomobject]@{
+                        Cents = [long]$denomination.Cents
+                        Count = $count
+                        Singular = $denomination.Singular
+                        Plural = $denomination.Plural
+                    }
+                }
+            }
+        )
+    }
+
+    function Get-CustomerBillCount {
+        param(
+            [object[]]$Breakdown,
+            [long]$Cents
+        )
+
+        $item = @(
+            $Breakdown |
+                Where-Object {
+                    [long]$_.Cents -eq $Cents
+                } |
+                Select-Object -First 1
+        )
+
+        if ($item.Count -eq 0) {
+            return [long]0
+        }
+
+        return [long]$item[0].Count
+    }
+
+    function Get-CustomerBillList {
+        param(
+            [object[]]$Breakdown,
+            [switch]$Ascending
+        )
+
+        $billCents = @(
+            Get-CustomerBillDenominations |
+                ForEach-Object {
+                    [long]$_.Cents
+                }
+        )
+
+        $items = @(
+            $Breakdown |
+                Where-Object {
+                    $billCents -contains [long]$_.Cents
+                } |
+                Sort-Object Cents -Descending:$(-not $Ascending)
+        )
+
+        $parts = @(
+            foreach ($item in $items) {
+                $label = if ([long]$item.Count -eq 1) {
+                    $item.Singular
+                }
+                else {
+                    $item.Plural
+                }
+
+                "$($item.Count) x $label"
+            }
+        )
+
+        if ($parts.Count -eq 0) {
+            return 'no bills'
+        }
+        if ($parts.Count -eq 1) {
+            return $parts[0]
+        }
+        if ($parts.Count -eq 2) {
+            return $parts[0] + ' and ' + $parts[1]
+        }
+
+        return ($parts[0..($parts.Count - 2)] -join ', ') + ', and ' + $parts[-1]
+    }
+
+    function Split-OneCustomerBill {
+        param([hashtable]$Counts)
+
+        $bills = Get-CustomerBillDenominations
+
+        foreach ($source in $bills) {
+            $sourceKey = [string]$source.Cents
+            if ([long]$Counts[$sourceKey] -lt 1) {
+                continue
+            }
+
+            $destination = @(
+                $bills |
+                    Where-Object {
+                        $_.Cents -lt $source.Cents -and
+                        ($source.Cents % $_.Cents) -eq 0
+                    } |
+                    Select-Object -First 1
+            )
+
+            if ($destination.Count -eq 0) {
+                continue
+            }
+
+            $destinationKey = [string]$destination[0].Cents
+            $Counts[$sourceKey] = [long]$Counts[$sourceKey] - 1
+            $Counts[$destinationKey] = [long]$Counts[$destinationKey] + [long](
+                $source.Cents / $destination[0].Cents
+            )
+            return $true
+        }
+
+        return $false
+    }
+
+    function New-CustomerBillRequest {
+        param(
+            [long]$AmountCents,
+            [ValidateSet('', 'Specific', 'Remainder', 'Mixed', 'Low', 'High', 'Mismatch', 'Unsupported')]
+            [string]$Kind = ''
+        )
+
+        if ($AmountCents -lt 0) {
+            throw 'Customer request amount cannot be negative.'
+        }
+
+        if ([string]::IsNullOrWhiteSpace($Kind)) {
+            $Kind = @('Specific', 'Remainder', 'Mixed', 'Low', 'High', 'Mismatch', 'Unsupported') | Get-Random
+        }
+
+        $exactBreakdown = Get-CashBreakdown `
+            -AmountCents $AmountCents `
+            -Denominations $allDenominations `
+            -SplitCount 0
+
+        $newRecord = {
+            param(
+                [string]$RequestKind,
+                [object[]]$ExpectedBreakdown,
+                [string]$Text,
+                [bool]$IsValid = $true,
+                [bool]$CanFlag = $false,
+                [long]$RequestedCents = $AmountCents
+            )
+
+            return [pscustomobject]@{
+                Kind = $RequestKind
+                TargetCents = [long]$AmountCents
+                RequestedCents = $RequestedCents
+                Text = $Text
+                ExpectedBreakdown = @($ExpectedBreakdown)
+                IsValid = $IsValid
+                CanFlag = $CanFlag
+            }
+        }.GetNewClosure()
+
+        switch ($Kind) {
+            'Specific' {
+                $specificBreakdown = Get-CashBreakdown `
+                    -AmountCents $AmountCents `
+                    -Denominations $allDenominations `
+                    -SplitCount 1
+
+                return & $newRecord `
+                    'Specific' `
+                    $specificBreakdown `
+                    ('Customer asks for ' + (Get-CustomerBillList -Breakdown $specificBreakdown) + '. Give the exact change in those bills, plus coins if needed.')
+            }
+
+            'Remainder' {
+                [long]$wholeDollarCents = $AmountCents - ($AmountCents % 100)
+                $candidates = @()
+                $bills = Get-CustomerBillDenominations
+
+                foreach ($fixedBill in $bills) {
+                    $maximumFixedCount = [int][Math]::Min(
+                        10,
+                        [Math]::Floor(([double]$wholeDollarCents) / ([double]$fixedBill.Cents))
+                    )
+
+                    for ($fixedCount = 1; $fixedCount -le $maximumFixedCount; $fixedCount++) {
+                        [long]$remaining = $wholeDollarCents - ([long]$fixedBill.Cents * $fixedCount)
+
+                        foreach ($restBill in $bills) {
+                            if (
+                                $restBill.Cents -eq $fixedBill.Cents -or
+                                $remaining -lt $restBill.Cents -or
+                                ($remaining % $restBill.Cents) -ne 0
+                            ) {
+                                continue
+                            }
+
+                            $candidates += [pscustomobject]@{
+                                FixedBill = $fixedBill
+                                FixedCount = [long]$fixedCount
+                                RestBill = $restBill
+                                RestCount = [long]($remaining / $restBill.Cents)
+                            }
+                        }
+                    }
+                }
+
+                if ($candidates.Count -eq 0) {
+                    return New-CustomerBillRequest -AmountCents $AmountCents -Kind Specific
+                }
+
+                $candidate = $candidates | Select-Object -First 1
+                $remainderCounts = New-CustomerCashCounts
+
+                foreach ($item in $exactBreakdown) {
+                    $denomination = @(
+                        $allDenominations |
+                            Where-Object {
+                                $_.Cents -eq $item.Cents
+                            } |
+                            Select-Object -First 1
+                    )
+                    if ($denomination.Count -gt 0 -and $denomination[0].Category -eq 'Coin') {
+                        $remainderCounts[[string]$item.Cents] = [long]$item.Count
+                    }
+                }
+
+                $remainderCounts[[string]$candidate.FixedBill.Cents] = [long]$candidate.FixedCount
+                $remainderCounts[[string]$candidate.RestBill.Cents] = [long]$candidate.RestCount
+                $remainderBreakdown = ConvertTo-CustomerCashBreakdown -Counts $remainderCounts
+                $fixedLabel = if ($candidate.FixedCount -eq 1) { $candidate.FixedBill.Singular } else { $candidate.FixedBill.Plural }
+                $coinNote = if (($AmountCents % 100) -eq 0) { '' } else { ' Add the cents in coins.' }
+
+                return & $newRecord `
+                    'Remainder' `
+                    $remainderBreakdown `
+                    ('Customer asks for ' + $candidate.FixedCount + ' x ' + $fixedLabel + ' and the rest in ' + $candidate.RestBill.Plural + '.' + $coinNote)
+            }
+
+            'Mixed' {
+                $mixedCounts = New-CustomerCashCounts
+                foreach ($item in $exactBreakdown) {
+                    $mixedCounts[[string]$item.Cents] = [long]$item.Count
+                }
+
+                for ($attempt = 0; $attempt -lt 3; $attempt++) {
+                    $mixedBreakdown = ConvertTo-CustomerCashBreakdown -Counts $mixedCounts
+                    $billTypes = @(
+                        $mixedBreakdown |
+                            Where-Object {
+                                (Get-CustomerBillDenominations | ForEach-Object Cents) -contains $_.Cents
+                            }
+                    ).Count
+                    if ($billTypes -ge 2 -or -not (Split-OneCustomerBill -Counts $mixedCounts)) {
+                        break
+                    }
+                }
+
+                $mixedBreakdown = ConvertTo-CustomerCashBreakdown -Counts $mixedCounts
+                return & $newRecord `
+                    'Mixed' `
+                    $mixedBreakdown `
+                    'Customer asks for a mix of bills. Give the exact change using at least two bill denominations.'
+            }
+
+            'Low' {
+                $lowDenominations = @(
+                    $allDenominations |
+                        Where-Object {
+                            $_.Category -ne 'Bill' -or $_.Cents -le 2000
+                        }
+                )
+                $lowBreakdown = Get-CashBreakdown `
+                    -AmountCents $AmountCents `
+                    -Denominations $lowDenominations `
+                    -SplitCount 0
+
+                return & $newRecord `
+                    'Low' `
+                    $lowBreakdown `
+                    'Customer asks for low bills. Give the exact change without $50 or $100 bills.'
+            }
+
+            'High' {
+                return & $newRecord `
+                    'High' `
+                    $exactBreakdown `
+                    'Customer asks for high bills. Use the largest practical bills, then coins if needed.'
+            }
+
+            'Mismatch' {
+                $requestedCounts = New-CustomerCashCounts
+                foreach ($item in $exactBreakdown) {
+                    $requestedCounts[[string]$item.Cents] = [long]$item.Count
+                }
+
+                if ($AmountCents -eq 32000) {
+                    foreach ($bill in (Get-CustomerBillDenominations)) {
+                        $requestedCounts[[string]$bill.Cents] = [long]0
+                    }
+                    $requestedCounts['2000'] = [long]10
+                    $requestedCounts['5000'] = [long]1
+                    $requestedCounts['10000'] = [long]1
+                }
+                else {
+                    $extraBill = @(
+                        Get-CustomerBillDenominations |
+                            Where-Object {
+                                $_.Cents -le [Math]::Max(100, $AmountCents)
+                            } |
+                            Select-Object -First 1
+                    )
+                    if ($extraBill.Count -eq 0) {
+                        $extraBill = @(Get-CustomerBillDenominations | Select-Object -Last 1)
+                    }
+                    $extraKey = [string]$extraBill[0].Cents
+                    $requestedCounts[$extraKey] = [long]$requestedCounts[$extraKey] + 1
+                }
+
+                $requestedBreakdown = ConvertTo-CustomerCashBreakdown -Counts $requestedCounts
+                [long]$requestedCents = 0
+                foreach ($item in $requestedBreakdown) {
+                    $requestedCents += [long]$item.Cents * [long]$item.Count
+                }
+
+                return & $newRecord `
+                    'Mismatch' `
+                    $exactBreakdown `
+                    ('Customer asks for ' + (Get-CustomerBillList -Breakdown $requestedBreakdown -Ascending) + '. That totals ' + (Format-Money $requestedCents) + ', which does not equal the ' + (Format-Money $AmountCents) + ' change due. Flag the request or give exactly ' + (Format-Money $AmountCents) + '.') `
+                    $false `
+                    $true `
+                    $requestedCents
+            }
+
+            'Unsupported' {
+                return & $newRecord `
+                    'Unsupported' `
+                    $exactBreakdown `
+                    ('Customer asks for a $30 bill. A $30 bill is not available, so flag the request or give exactly ' + (Format-Money $AmountCents) + ' with available denominations.') `
+                    $false `
+                    $true `
+                    ([long]0)
+            }
+        }
+    }
+
+    function Test-CustomerBillRequest {
+        param(
+            [object]$Request,
+            [hashtable]$Counts
+        )
+
+        if ($null -eq $Request) {
+            return [pscustomobject]@{
+                Applies = $false
+                Matches = $true
+                CanFlag = $false
+            }
+        }
+
+        if (-not [bool]$Request.IsValid) {
+            return [pscustomobject]@{
+                Applies = $true
+                Matches = $false
+                CanFlag = [bool]$Request.CanFlag
+            }
+        }
+
+        $bills = Get-CustomerBillDenominations
+        $matches = $false
+
+        switch ($Request.Kind) {
+            'Mixed' {
+                $billTypeCount = @(
+                    foreach ($bill in $bills) {
+                        $key = [string]$bill.Cents
+                        if ($Counts.ContainsKey($key) -and [long]$Counts[$key] -gt 0) {
+                            $bill
+                        }
+                    }
+                ).Count
+                $matches = $billTypeCount -ge 2
+            }
+
+            'Low' {
+                $matches = @(
+                    foreach ($bill in $bills) {
+                        $key = [string]$bill.Cents
+                        if ($bill.Cents -gt 2000 -and $Counts.ContainsKey($key) -and [long]$Counts[$key] -gt 0) {
+                            $bill
+                        }
+                    }
+                ).Count -eq 0
+            }
+
+            default {
+                $matches = $true
+                foreach ($bill in $bills) {
+                    $key = [string]$bill.Cents
+                    [long]$actual = if ($Counts.ContainsKey($key)) { [long]$Counts[$key] } else { [long]0 }
+                    [long]$expected = Get-CustomerBillCount -Breakdown $Request.ExpectedBreakdown -Cents $bill.Cents
+
+                    if ($actual -ne $expected) {
+                        $matches = $false
+                        break
+                    }
+                }
+            }
+        }
+
+        return [pscustomobject]@{
+            Applies = $true
+            Matches = $matches
+            CanFlag = $false
+        }
+    }
+
     function New-CashQuestion {
         param(
             [ValidateSet('Easy', 'Medium', 'Hard')]
-            [string]$Level
+            [string]$Level,
+            [switch]$IncludeCustomerBillRequests
         )
 
         $config = Get-LevelConfig -Level $Level
@@ -789,6 +1240,16 @@
             -Denominations $denominations `
             -SplitCount $config.SplitCount
 
+        $customerBillRequest = if (
+            $IncludeCustomerBillRequests -and
+            $scenario -eq 'Change'
+        ) {
+            New-CustomerBillRequest -AmountCents $difference
+        }
+        else {
+            $null
+        }
+
         return [pscustomobject]@{
             DueCents = [long]$due
             TenderedCents = [long]$tendered
@@ -797,6 +1258,7 @@
             Breakdown = $breakdown
             BreakdownText = Format-CashBreakdown `
                 -Breakdown $breakdown
+            CustomerBillRequest = $customerBillRequest
         }
     }
 
@@ -1284,6 +1746,41 @@
         }
     }
 
+    function Read-CustomerBillRequestsSetting {
+        param([bool]$Default = $false)
+
+        while ($true) {
+            $prompt = if ($Default) {
+                'Include customer bill requests? [Y/N] [Y]'
+            }
+            else {
+                'Include customer bill requests? [Y/N] [N]'
+            }
+
+            $raw = (Read-Host $prompt).Trim().ToLowerInvariant()
+
+            if (
+                ([string]::IsNullOrWhiteSpace($raw) -and -not $Default) -or
+                $raw -eq 'n' -or
+                $raw -eq 'no' -or
+                $raw -eq 'off'
+            ) {
+                return $false
+            }
+
+            if (
+                ([string]::IsNullOrWhiteSpace($raw) -and $Default) -or
+                $raw -eq 'y' -or
+                $raw -eq 'yes' -or
+                $raw -eq 'on'
+            ) {
+                return $true
+            }
+
+            Write-Host 'Enter Y to include customer bill requests or N to leave them off.' -ForegroundColor Yellow
+        }
+    }
+
     function Read-AutoContinueOnTimeoutSetting {
         param([bool]$Default = $false)
 
@@ -1457,8 +1954,45 @@
     function Get-RecommendedAnswerGuidance {
         param([object]$Question)
 
+        $customerBillRequestProperty = $Question.PSObject.Properties['CustomerBillRequest']
+        $customerBillRequest = if ($null -eq $customerBillRequestProperty) {
+            $null
+        }
+        else {
+            $customerBillRequestProperty.Value
+        }
+
         switch ($Question.ExpectedType) {
             'Change' {
+                if ($null -ne $customerBillRequest -and -not [bool]$customerBillRequest.IsValid) {
+                    return (
+                        'The customer request cannot be fulfilled. Flag it, or give exactly ' +
+                        (Format-Money $Question.ExpectedAmountCents) +
+                        ' in change: ' +
+                        (Get-RecommendedBreakdownText $Question.ExpectedAmountCents)
+                    )
+                }
+
+                $requestedBreakdownProperty = if ($null -eq $customerBillRequest) {
+                    $null
+                }
+                else {
+                    $customerBillRequest.PSObject.Properties['ExpectedBreakdown']
+                }
+
+                if (
+                    $null -ne $customerBillRequest -and
+                    [bool]$customerBillRequest.IsValid -and
+                    $null -ne $requestedBreakdownProperty
+                ) {
+                    return (
+                        'To honor the customer bill request, give ' +
+                        (Format-Money $Question.ExpectedAmountCents) +
+                        ' in change: ' +
+                        (Format-CashBreakdown -Breakdown $requestedBreakdownProperty.Value)
+                    )
+                }
+
                 return (
                     'One way to give the customer ' +
                     (Format-Money $Question.ExpectedAmountCents) +
@@ -1520,6 +2054,7 @@
             [int]$Seconds,
             [object]$Question,
             [object]$DeclaredAnswer = $null,
+            [object]$CustomerBillRequest = $null,
             [double]$ElapsedSecondsBefore = 0,
             [string]$PreviewScreenshotPath = '',
             [switch]$PreviewOnly
@@ -1545,6 +2080,8 @@
             CashTotalCents = [long]0
             CashBreakdown = '<NONE>'
             BreakdownMatchesAmount = $false
+            RequestFlagged = $false
+            CustomerRequestMatches = $true
             Text = ''
             ValidationMessage = ''
         }
@@ -1668,7 +2205,7 @@
         $form = New-Object System.Windows.Forms.Form
         $form.Text = 'Cash Handling Quiz - Clickable Bill/Coin Mode'
         $form.StartPosition = 'CenterScreen'
-        $form.ClientSize = New-Object System.Drawing.Size(1040, 840)
+        $form.ClientSize = New-Object System.Drawing.Size(1040, 878)
         $form.AutoScaleMode = 'Dpi'
         $form.Font = New-Object System.Drawing.Font('Segoe UI', 10)
         $form.BackColor = $uiBackground
@@ -1714,7 +2251,7 @@
 
         $answerPanel = New-Object System.Windows.Forms.Panel
         $answerPanel.Location = New-Object System.Drawing.Point(20, 138)
-        $answerPanel.Size = New-Object System.Drawing.Size(1000, 196)
+        $answerPanel.Size = New-Object System.Drawing.Size(1000, 230)
         $answerPanel.BackColor = $uiSurface
         $answerPanel.BorderStyle = 'FixedSingle'
         $form.Controls.Add($answerPanel)
@@ -1773,15 +2310,25 @@
         $selectedTotalLabel.Text = 'Selected: $0.00'
         $answerPanel.Controls.Add($selectedTotalLabel)
 
+        $customerRequestLabel = New-Object System.Windows.Forms.Label
+        $customerRequestLabel.Location = New-Object System.Drawing.Point(20, 94)
+        $customerRequestLabel.Size = New-Object System.Drawing.Size(960, 34)
+        $customerRequestLabel.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 9.5)
+        $customerRequestLabel.ForeColor = if ($null -ne $CustomerBillRequest -and -not $CustomerBillRequest.IsValid) { $uiDanger } else { $uiAccent }
+        $customerRequestLabel.Text = if ($null -ne $CustomerBillRequest) { 'CUSTOMER REQUEST: ' + $CustomerBillRequest.Text } else { '' }
+        $customerRequestLabel.Visible = $null -ne $CustomerBillRequest
+        $customerRequestLabel.AccessibleName = 'Customer bill request'
+        $answerPanel.Controls.Add($customerRequestLabel)
+
         $purposeLabel = New-Object System.Windows.Forms.Label
-        $purposeLabel.Location = New-Object System.Drawing.Point(20, 100)
+        $purposeLabel.Location = New-Object System.Drawing.Point(20, 136)
         $purposeLabel.Size = New-Object System.Drawing.Size(475, 28)
         $purposeLabel.ForeColor = $uiMutedText
         $purposeLabel.Text = 'C: select what you give back. S: select what the customer still needs to give. E: select no cash.'
         $answerPanel.Controls.Add($purposeLabel)
 
         $selectionStatusLabel = New-Object System.Windows.Forms.Label
-        $selectionStatusLabel.Location = New-Object System.Drawing.Point(505, 96)
+        $selectionStatusLabel.Location = New-Object System.Drawing.Point(505, 132)
         $selectionStatusLabel.Size = New-Object System.Drawing.Size(475, 32)
         $selectionStatusLabel.TextAlign = 'MiddleRight'
         $selectionStatusLabel.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 10)
@@ -1790,14 +2337,14 @@
         $answerPanel.Controls.Add($selectionStatusLabel)
 
         $fastEntryLabel = New-Object System.Windows.Forms.Label
-        $fastEntryLabel.Location = New-Object System.Drawing.Point(20, 140)
+        $fastEntryLabel.Location = New-Object System.Drawing.Point(20, 176)
         $fastEntryLabel.Size = New-Object System.Drawing.Size(185, 30)
         $fastEntryLabel.ForeColor = $uiMutedText
         $fastEntryLabel.Text = 'Fast cash entry:'
         $answerPanel.Controls.Add($fastEntryLabel)
 
         $fastEntryTextBox = New-Object System.Windows.Forms.TextBox
-        $fastEntryTextBox.Location = New-Object System.Drawing.Point(170, 136)
+        $fastEntryTextBox.Location = New-Object System.Drawing.Point(170, 172)
         $fastEntryTextBox.Size = New-Object System.Drawing.Size(525, 32)
         $fastEntryTextBox.Font = New-Object System.Drawing.Font('Consolas', 10.5)
         $fastEntryTextBox.BackColor = $uiSurfaceRaised
@@ -1808,7 +2355,7 @@
         $answerPanel.Controls.Add($fastEntryTextBox)
 
         $applyFastEntryButton = New-Object System.Windows.Forms.Button
-        $applyFastEntryButton.Location = New-Object System.Drawing.Point(710, 132)
+        $applyFastEntryButton.Location = New-Object System.Drawing.Point(710, 168)
         $applyFastEntryButton.Size = New-Object System.Drawing.Size(170, 40)
         $applyFastEntryButton.Text = 'Apply fast entry'
         $applyFastEntryButton.AccessibleName = 'Apply fast cash entry'
@@ -1822,7 +2369,7 @@
         $answerPanel.Controls.Add($applyFastEntryButton)
 
         $fastEntryHintLabel = New-Object System.Windows.Forms.Label
-        $fastEntryHintLabel.Location = New-Object System.Drawing.Point(20, 170)
+        $fastEntryHintLabel.Location = New-Object System.Drawing.Point(20, 206)
         $fastEntryHintLabel.Size = New-Object System.Drawing.Size(960, 20)
         $fastEntryHintLabel.ForeColor = $uiMutedText
         $fastEntryHintLabel.Font = New-Object System.Drawing.Font('Segoe UI', 9)
@@ -1884,6 +2431,16 @@
                 return
             }
 
+            if (
+                $null -ne $CustomerBillRequest -and
+                $CustomerBillRequest.CanFlag -and
+                $state.RequestFlagged
+            ) {
+                $selectionStatusLabel.Text = 'Customer request is flagged. Submit after confirming the correct change.'
+                $selectionStatusLabel.ForeColor = $uiSuccess
+                return
+            }
+
             [long]$targetCents = [long]$DeclaredAnswer.AmountCents
             [long]$differenceCents = $SelectedCents - $targetCents
 
@@ -1928,7 +2485,7 @@
 
         $billsGroup = New-Object System.Windows.Forms.GroupBox
         $billsGroup.Text = 'BILLS'
-        $billsGroup.Location = New-Object System.Drawing.Point(20, 350)
+        $billsGroup.Location = New-Object System.Drawing.Point(20, 386)
         $billsGroup.Size = New-Object System.Drawing.Size(620, 345)
         $billsGroup.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 11)
         $billsGroup.BackColor = $uiSurface
@@ -1937,7 +2494,7 @@
 
         $coinsGroup = New-Object System.Windows.Forms.GroupBox
         $coinsGroup.Text = 'COINS'
-        $coinsGroup.Location = New-Object System.Drawing.Point(655, 350)
+        $coinsGroup.Location = New-Object System.Drawing.Point(655, 386)
         $coinsGroup.Size = New-Object System.Drawing.Size(365, 345)
         $coinsGroup.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 11)
         $coinsGroup.BackColor = $uiSurface
@@ -2059,7 +2616,7 @@
         }.GetNewClosure()
 
         $errorLabel = New-Object System.Windows.Forms.Label
-        $errorLabel.Location = New-Object System.Drawing.Point(28, 708)
+        $errorLabel.Location = New-Object System.Drawing.Point(28, 744)
         $errorLabel.Size = New-Object System.Drawing.Size(992, 42)
         $errorLabel.TextAlign = 'MiddleLeft'
         $errorLabel.BackColor = $uiSurface
@@ -2102,7 +2659,7 @@
         }.GetNewClosure())
 
         $actionPanel = New-Object System.Windows.Forms.Panel
-        $actionPanel.Location = New-Object System.Drawing.Point(20, 762)
+        $actionPanel.Location = New-Object System.Drawing.Point(20, 798)
         $actionPanel.Size = New-Object System.Drawing.Size(1000, 64)
         $actionPanel.BackColor = $uiBackground
         $form.Controls.Add($actionPanel)
@@ -2127,19 +2684,35 @@
         & $styleFlatButton $clearButton $uiSurfaceRaised $uiText
         $actionPanel.Controls.Add($clearButton)
 
+        $flagRequestButton = New-Object System.Windows.Forms.Button
+        $flagRequestButton.Location = New-Object System.Drawing.Point(522, 4)
+        $flagRequestButton.Size = New-Object System.Drawing.Size(280, 56)
+        $flagRequestButton.Text = 'Flag impossible request'
+        $flagRequestButton.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 10.5)
+        $flagRequestButton.AccessibleName = 'Flag impossible customer bill request'
+        $flagRequestButton.TabIndex = 42
+        $flagRequestButton.Visible = $null -ne $CustomerBillRequest -and [bool]$CustomerBillRequest.CanFlag
+        & $styleFlatButton $flagRequestButton $uiSurfaceRaised $uiText
+        $actionPanel.Controls.Add($flagRequestButton)
+
         $cancelButton = New-Object System.Windows.Forms.Button
         $cancelButton.Location = New-Object System.Drawing.Point(820, 4)
         $cancelButton.Size = New-Object System.Drawing.Size(180, 56)
         $cancelButton.Text = 'Stop quiz'
         $cancelButton.Font = New-Object System.Drawing.Font('Segoe UI Semibold', 10.5)
         $cancelButton.AccessibleName = 'Stop the quiz'
-        $cancelButton.TabIndex = 42
+        $cancelButton.TabIndex = 43
         & $styleFlatButton $cancelButton $uiSurfaceRaised $uiText
         $actionPanel.Controls.Add($cancelButton)
 
         if ($null -ne $DeclaredAnswer) {
             $submitButton.Text = 'Submit cash construction'
             $clearButton.Text = 'Clear cash selections'
+        }
+
+        if ($flagRequestButton.Visible) {
+            $keyboardHintText = 'Tip: Press Enter to submit | Press Esc to stop. Flag an impossible bill request, or give the exact change instead.'
+            $errorLabel.Text = $keyboardHintText
         }
 
         $form.AcceptButton = $submitButton
@@ -2167,6 +2740,23 @@
                 $itemKey = [string]$item.Cents
                 $countLabels[$itemKey].Text = '0'
             }
+        }.GetNewClosure())
+
+        $flagRequestButton.Add_Click({
+            if ($null -eq $CustomerBillRequest -or -not $CustomerBillRequest.CanFlag) {
+                return
+            }
+
+            $state.RequestFlagged = -not [bool]$state.RequestFlagged
+            $flagRequestButton.Text = if ($state.RequestFlagged) { 'Unflag request' } else { 'Flag impossible request' }
+            $errorLabel.ForeColor = $uiMutedText
+            $errorLabel.Text = if ($state.RequestFlagged) {
+                'Request flagged. Submit after confirming the correct change; cash selection is not required for this invalid request.'
+            }
+            else {
+                $keyboardHintText
+            }
+            & $refreshCashSelection
         }.GetNewClosure())
 
         $cancelButton.Add_Click({
@@ -2205,6 +2795,8 @@
                 $state.CashTotalCents = $exactCashTotal
                 $state.CashBreakdown = & $formatLocalBreakdown $state.Counts
                 $state.BreakdownMatchesAmount = ($exactCashTotal -eq 0)
+                $state.RequestFlagged = $false
+                $state.CustomerRequestMatches = $true
                 $state.Text = 'E'
                 $state.ValidationMessage = ''
                 $state.Submitted = $true
@@ -2221,12 +2813,32 @@
             }
 
             [long]$cashTotal = & $getLocalCashTotal $state.Counts
+            $requestEvaluation = Test-CustomerBillRequest `
+                -Request $CustomerBillRequest `
+                -Counts $state.Counts
+            $flaggedImpossibleRequest = (
+                $null -ne $CustomerBillRequest -and
+                $CustomerBillRequest.CanFlag -and
+                $state.RequestFlagged
+            )
 
             $state.Type = $selectedType
             $state.AmountCents = [long]$parsedAmount.Cents
             $state.CashTotalCents = $cashTotal
             $state.CashBreakdown = & $formatLocalBreakdown $state.Counts
             $state.BreakdownMatchesAmount = ($cashTotal -eq $parsedAmount.Cents)
+            $state.CustomerRequestMatches = if ($null -eq $CustomerBillRequest) {
+                $true
+            }
+            elseif ($flaggedImpossibleRequest) {
+                $true
+            }
+            elseif (-not $CustomerBillRequest.IsValid) {
+                $cashTotal -eq $parsedAmount.Cents
+            }
+            else {
+                [bool]$requestEvaluation.Matches
+            }
             $state.Text = if ($selectedType -eq 'Change') {
                 'C ' + (([decimal]$parsedAmount.Cents / 100).ToString('0.00', [CultureInfo]::InvariantCulture))
             }
@@ -2342,6 +2954,8 @@
                 CashTotalCents = [long]$state.CashTotalCents
                 CashBreakdown = [string]$state.CashBreakdown
                 BreakdownMatchesAmount = [bool]$state.BreakdownMatchesAmount
+                RequestFlagged = [bool]$state.RequestFlagged
+                CustomerRequestMatches = [bool]$state.CustomerRequestMatches
                 ValidationMessage = [string]$state.ValidationMessage
             }
         }
@@ -2359,6 +2973,8 @@
             CashTotalCents = [long]0
             CashBreakdown = '<NONE>'
             BreakdownMatchesAmount = $false
+            RequestFlagged = $false
+            CustomerRequestMatches = $false
             ValidationMessage = [string]$state.ValidationMessage
         }
     }
@@ -2415,6 +3031,38 @@
             '<NOT REQUIRED>'
         }
 
+        $customerBillRequest = Get-OptionalPropertyValue `
+            -InputObject $Question `
+            -Name 'CustomerBillRequest' `
+            -Default $null
+        $customerBillRequestText = if ($null -eq $customerBillRequest) {
+            ''
+        }
+        else {
+            [string]$customerBillRequest.Text
+        }
+        $customerBillRequestKind = if ($null -eq $customerBillRequest) {
+            ''
+        }
+        else {
+            [string]$customerBillRequest.Kind
+        }
+        $customerBillRequestHandling = if ($null -eq $customerBillRequest) {
+            ''
+        }
+        elseif ([bool](Get-OptionalPropertyValue -InputObject $AnswerResult -Name 'RequestFlagged' -Default $false)) {
+            'Flagged as impossible'
+        }
+        elseif (-not [bool]$customerBillRequest.IsValid) {
+            if ($AnswerResult.BreakdownMatchesAmount) { 'Exact amount provided instead' } else { 'Not resolved' }
+        }
+        elseif ([bool](Get-OptionalPropertyValue -InputObject $AnswerResult -Name 'CustomerRequestMatches' -Default $false)) {
+            'Honored'
+        }
+        else {
+            'Not honored'
+        }
+
         $row = [pscustomobject]@{
             Timestamp = (
                 Get-Date
@@ -2458,6 +3106,9 @@
             UserCashTotalCents = $AnswerResult.CashTotalCents
             UserCashBreakdown = $AnswerResult.CashBreakdown
             BreakdownMatchesDeclaredAmount = $AnswerResult.BreakdownMatchesAmount
+            CustomerBillRequest = $customerBillRequestText
+            CustomerBillRequestKind = $customerBillRequestKind
+            CustomerBillRequestHandling = $customerBillRequestHandling
             ValidationMessage = $AnswerResult.ValidationMessage
             Outcome = $outcome
         }
@@ -2485,6 +3136,34 @@
         Write-Host ('Required amount: ' + (Format-Money $requiredCents))
         Write-Host ('Selected amount: ' + (Format-Money $selectedCents))
         Write-Host ('Selected bills/coins: ' + $AnswerResult.CashBreakdown)
+
+        $customerBillRequestProperty = $Question.PSObject.Properties['CustomerBillRequest']
+        $customerBillRequest = if ($null -eq $customerBillRequestProperty) {
+            $null
+        }
+        else {
+            $customerBillRequestProperty.Value
+        }
+        if ($null -ne $customerBillRequest) {
+            Write-Host ('Customer request: ' + $customerBillRequest.Text) -ForegroundColor Cyan
+            $requestFlaggedProperty = $AnswerResult.PSObject.Properties['RequestFlagged']
+            $customerRequestMatchesProperty = $AnswerResult.PSObject.Properties['CustomerRequestMatches']
+            $requestFlagged = $null -ne $requestFlaggedProperty -and [bool]$requestFlaggedProperty.Value
+            $customerRequestMatches = $null -ne $customerRequestMatchesProperty -and [bool]$customerRequestMatchesProperty.Value
+            $requestHandling = if ($requestFlagged) {
+                'Flagged as impossible.'
+            }
+            elseif (-not [bool]$customerBillRequest.IsValid -and $AnswerResult.BreakdownMatchesAmount) {
+                'Exact amount provided instead.'
+            }
+            elseif ($customerRequestMatches) {
+                'Customer bill preference honored.'
+            }
+            else {
+                'Customer bill preference was not honored.'
+            }
+            Write-Host ('Request handling: ' + $requestHandling) -ForegroundColor Yellow
+        }
 
         if (-not $Correct) {
             [long]$differenceCents = $selectedCents - $requiredCents
@@ -2545,6 +3224,9 @@
             'AnswerMode',
             'RecommendedBreakdown',
             'UserCashBreakdown',
+            'CustomerBillRequest',
+            'CustomerBillRequestKind',
+            'CustomerBillRequestHandling',
             'ValidationMessage'
         )
 
@@ -2607,6 +3289,9 @@
                     UserCashTotalCents = Get-OptionalPropertyValue $legacyRow 'UserCashTotalCents' '0'
                     UserCashBreakdown = Get-OptionalPropertyValue $legacyRow 'UserCashBreakdown' '<NOT RECORDED>'
                     BreakdownMatchesDeclaredAmount = Get-OptionalPropertyValue $legacyRow 'BreakdownMatchesDeclaredAmount' '<NOT RECORDED>'
+                    CustomerBillRequest = Get-OptionalPropertyValue $legacyRow 'CustomerBillRequest' ''
+                    CustomerBillRequestKind = Get-OptionalPropertyValue $legacyRow 'CustomerBillRequestKind' ''
+                    CustomerBillRequestHandling = Get-OptionalPropertyValue $legacyRow 'CustomerBillRequestHandling' ''
                     ValidationMessage = Get-OptionalPropertyValue $legacyRow 'ValidationMessage' ''
                     Outcome = Get-OptionalPropertyValue $legacyRow 'Outcome'
                 }
@@ -2790,9 +3475,10 @@
             Write-Host "[3] Stats and history folder: $($appState.DataDirectory)"
             Write-Host "[4] Clickable bill/coin mode default: $(if ($appState.Settings.ClickableBillCoinModeEnabled) { 'ON' } else { 'OFF' })"
             Write-Host "[5] Auto-continue after timeout default: $(if ($appState.Settings.AutoContinueOnTimeoutEnabled) { 'ON' } else { 'OFF' })"
-            Write-Host '[6] Customize a Cash Handling Easy, Medium, or Hard preset'
-            Write-Host '[7] Customize a Number Memory Easy, Medium, or Hard preset'
-            Write-Host '[8] Restore all difficulty presets to normal values'
+            Write-Host "[6] Customer bill requests default: $(if ($appState.Settings.CustomerBillRequestsEnabled) { 'ON' } else { 'OFF' })"
+            Write-Host '[7] Customize a Cash Handling Easy, Medium, or Hard preset'
+            Write-Host '[8] Customize a Number Memory Easy, Medium, or Hard preset'
+            Write-Host '[9] Restore all difficulty presets to normal values'
             Write-Host '[B] Back to main menu'
 
             $choice = (Read-Host 'Choose a setting').Trim().ToLowerInvariant()
@@ -2838,12 +3524,16 @@
                     $changed = $true
                 }
                 '6' {
-                    $changed = Set-CashDifficultyPreset
+                    $appState.Settings.CustomerBillRequestsEnabled = -not [bool]$appState.Settings.CustomerBillRequestsEnabled
+                    $changed = $true
                 }
                 '7' {
-                    $changed = Set-MemoryDifficultyPreset
+                    $changed = Set-CashDifficultyPreset
                 }
                 '8' {
+                    $changed = Set-MemoryDifficultyPreset
+                }
+                '9' {
                     Restore-DifficultyPresets
                     $changed = $true
                 }
@@ -2854,7 +3544,7 @@
                     return
                 }
                 default {
-                    Write-Host 'Choose 1 through 8, or B.' -ForegroundColor Yellow
+                    Write-Host 'Choose 1 through 9, or B.' -ForegroundColor Yellow
                 }
             }
 
@@ -3385,6 +4075,14 @@
             $cashConstructionForQuiz = $false
         }
 
+        $customerBillRequestsForQuiz = if ($cashConstructionForQuiz) {
+            Read-CustomerBillRequestsSetting `
+                -Default $appState.Settings.CustomerBillRequestsEnabled
+        }
+        else {
+            $false
+        }
+
         $questionCount = Read-IntegerSetting `
             -Prompt 'Number of questions' `
             -Default $appState.Settings.DefaultQuestionCount `
@@ -3428,6 +4126,7 @@
         ) -ForegroundColor Cyan
 
         Write-Host "Answer mode: $answerMode" -ForegroundColor Cyan
+        Write-Host "Customer bill requests: $(if ($customerBillRequestsForQuiz) { 'ON' } else { 'OFF' })" -ForegroundColor Cyan
         Write-Host "Preset: $(Format-Money -Cents $cashPreset.MinDue) to $(Format-Money -Cents $cashPreset.MaxDue), $($cashPreset.Step)-cent increments, up to $(Format-Money -Cents $cashPreset.MaxDifference) difference." -ForegroundColor DarkGray
         Write-Host "Auto-continue after timeouts: $(if ($autoContinueOnTimeout) { 'ON' } else { 'OFF' })" -ForegroundColor Cyan
 
@@ -3445,7 +4144,8 @@
             $questionNumber++
         ) {
             $question = New-CashQuestion `
-                -Level $difficulty
+                -Level $difficulty `
+                -IncludeCustomerBillRequests:$customerBillRequestsForQuiz
 
             Write-Host ''
             Write-Host `
@@ -3483,6 +4183,11 @@
                     "  $($cashItem.Count) x $label"
             }
 
+            if ($null -ne $question.CustomerBillRequest) {
+                Write-Host ''
+                Write-Host ('Customer bill request: ' + $question.CustomerBillRequest.Text) -ForegroundColor Cyan
+            }
+
             Write-Host `
                 'Give change, report the shortage, or say exact.' `
                 -ForegroundColor White
@@ -3513,6 +4218,8 @@
                             $answerResult.Valid = $false
                             $answerResult.CashBreakdown = '<NOT COMPLETED>'
                             $answerResult.BreakdownMatchesAmount = $false
+                            $answerResult | Add-Member -NotePropertyName RequestFlagged -NotePropertyValue $false -Force
+                            $answerResult | Add-Member -NotePropertyName CustomerRequestMatches -NotePropertyValue $false -Force
                             $answerResult.ValidationMessage = 'Time expired before the final cash-construction step could start.'
                         }
                         else {
@@ -3520,6 +4227,7 @@
                                 -Seconds $remainingSeconds `
                                 -Question $question `
                                 -DeclaredAnswer $answerResult `
+                                -CustomerBillRequest $question.CustomerBillRequest `
                                 -ElapsedSecondsBefore $timedAnswer.ElapsedSeconds
                         }
                     }
@@ -3540,6 +4248,8 @@
                             CashTotalCents = [long]0
                             CashBreakdown = '<NOT COMPLETED>'
                             BreakdownMatchesAmount = $false
+                            RequestFlagged = $false
+                            CustomerRequestMatches = $false
                             ValidationMessage = 'Cash construction could not be completed.'
                         }
                     }
@@ -3547,6 +4257,8 @@
                         $answerResult.Valid = $false
                         $answerResult.CashBreakdown = '<NOT COMPLETED>'
                         $answerResult.BreakdownMatchesAmount = $false
+                        $answerResult | Add-Member -NotePropertyName RequestFlagged -NotePropertyValue $false -Force
+                        $answerResult | Add-Member -NotePropertyName CustomerRequestMatches -NotePropertyValue $false -Force
                         $answerResult.ValidationMessage = 'Cash construction could not be completed.'
                     }
                 }
@@ -3582,11 +4294,24 @@
                 )
 
                 if ($usedCashConstructionForQuestion) {
+                    $requestFlagged = [bool](Get-OptionalPropertyValue $answerResult 'RequestFlagged' $false)
+                    $customerRequestMatches = [bool](Get-OptionalPropertyValue $answerResult 'CustomerRequestMatches' $true)
+                    $flaggedImpossibleRequest = (
+                        $null -ne $question.CustomerBillRequest -and
+                        $question.CustomerBillRequest.CanFlag -and
+                        $requestFlagged
+                    )
                     $correct = (
                         $correct -and
-                        $answerResult.BreakdownMatchesAmount -and
-                        $answerResult.CashTotalCents -eq
-                        $question.ExpectedAmountCents
+                        (
+                            $answerResult.BreakdownMatchesAmount -or
+                            $flaggedImpossibleRequest
+                        ) -and
+                        (
+                            $flaggedImpossibleRequest -or
+                            $answerResult.CashTotalCents -eq $question.ExpectedAmountCents
+                        ) -and
+                        $customerRequestMatches
                     )
                 }
             }

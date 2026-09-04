@@ -81,27 +81,28 @@ S 4.10
 
 During the questions, `E` means **Exact**, not Easy.
 
-## Turn clickable denomination mode on or off
+## Turn clickable bill/coin mode on or off
 
 Each time you start a quiz, it asks:
 
 ```text
-Turn clickable denomination mode ON? [Y/N] [N]
+Use clickable bill/coin mode? [Y/N] [N]
 ```
 
-- Enter `Y` to turn it on.
-- Enter `N`, or press Enter, to leave it off and use typed mode.
+- The default is **off**. Enter `N`, or press Enter, to keep the existing typed-answer flow.
+- Enter `Y` to add a final cash-building step after your typed answer.
+- In **Settings**, option `4` changes the saved default used at the next quiz setup. You can still override it for an individual quiz.
 
 ### Clickable mode workflow
 
 For each question, a Windows cash-builder window opens.
 
-1. Choose `E - Exact amount`, `C - Change`, or `S - Short`.
-2. For Change or Short, type the total amount.
-3. Click **Add one** beside bills and coins to build that amount.
-4. Click **Remove** to subtract one denomination.
-5. Confirm that **Selected cash total** matches the amount you typed.
-6. Click **Submit answer**.
+The popup uses a high-contrast dark layout with separate **Bills** and **Coins** sections, large `+`/`-` controls, a prominent timer, and visible Enter/Esc keyboard hints.
+
+1. Answer the transaction as usual: `E`, `C 12.35`, or `S 4.10`.
+2. Click `+` and `-` beside individual bills and coins to build your declared amount.
+3. The window automatically updates the selected total and whether it matches your declared amount.
+4. Click **Submit cash construction** to have the quiz grade the result.
 
 For a Change answer, the selected bills and coins represent what you would give back to the customer.
 
@@ -109,7 +110,7 @@ For a Short answer, they represent the additional cash the customer still needs 
 
 For an Exact answer, no bills or coins should be selected.
 
-The quiz accepts any valid denomination combination whose total matches the correct amount. It does not require one specific combination.
+The quiz accepts any valid denomination combination whose total matches the correct amount. It does not require one specific combination. An incorrect selection is still submitted so the result, difference, and selected denominations are saved to history.
 
 ## Denominations in clickable mode
 
@@ -155,11 +156,14 @@ All ten denominations are available in the clickable answer window, including du
 
 After you submit, the quiz shows:
 
-- Whether the answer was correct
+- Required amount
+- Selected amount and bill/coin breakdown
+- Difference from the required amount when incorrect
+- Correct or Incorrect
+- An example correct breakdown
 - The correct Change, Short, or Exact result
 - How much cash the customer actually handed over
 - How long you used
-- One recommended bill-and-coin combination
 
 Example:
 
