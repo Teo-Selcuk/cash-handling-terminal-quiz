@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import { createPatternGame, PATTERN_GAME_NAMES } from '../pattern-games.mjs';
+import { createDistractionSamples } from '../distraction-sounds.mjs';
 
 import {
   DENOMINATIONS,
   DIFFICULTY_CONFIG,
   ERROR_DETECTION_MODE_CONFIG,
+  ERROR_DETECTION_PUZZLE_FAMILIES,
   MEMORY_MODE_CONFIG,
   TASK_MODE_CONFIG,
   buildBreakdown,
@@ -279,8 +282,8 @@ test('generates Error Detection puzzles with zero, one, and multiple pinpointabl
 });
 
 test('varies Error Detection across visual and analytical puzzle families with a learn-before-timed walkthrough', () => {
-  const challenges = [0.01, 0.21, 0.41, 0.61, 0.81]
-    .map((value) => createErrorDetectionChallenge('Hard', { details: 6, maximumErrors: 0 }, () => value));
+  const challenges = ERROR_DETECTION_PUZZLE_FAMILIES.slice(0, 5)
+    .map((puzzleFamily) => createErrorDetectionChallenge('Hard', { puzzleFamily, details: 6, maximumErrors: 0 }, () => 0.4));
 
   assert.deepEqual(challenges.map((challenge) => challenge.family), [
     'symbol-matrix',
@@ -333,6 +336,71 @@ test('makes Error Detection difficulty increase rule depth instead of only short
   assert.equal(hard.ruleLayers, 3);
   assert.ok(easy.briefing.ruleSteps.length < medium.briefing.ruleSteps.length);
   assert.ok(medium.briefing.ruleSteps.length < hard.briefing.ruleSteps.length);
+});
+
+test('ten new pattern games give independently calculated answers at all three difficulties', () => {
+  const cases = {
+    'sequence-ladder': [1, ['2', '2', '3']],
+    'interleaved-streams': [1, ['3 · 31 · 5 · 34 · 7 · 37', '3 · 31 · 5 · 28 · 7 · 25', '3 · 31 · 5 · 28 · 9 · 22']],
+    'mirror-code': [1, ['PKGD', 'KGDP', 'LHEQ']],
+    'rotation-compass': [1, ['→', '↓', '↓']],
+    'binary-overlay': [1, ['0000', '0000', '1111']],
+    'balance-scales': [1, ['28', '24', '24']],
+    'coordinate-fold': [1, ['(-2, -1)', '(1, -2)', '(1, 2)']],
+    'clock-jumps': [1, ['22:50', '22:50', '20:50']],
+    'letter-grid': [5, ['E', 'F', 'G']],
+    'sorting-network': [1, ['2, 2, 3, 3, 3', '3, 3, 3, 2, 2', '3, 2']],
+  };
+  assert.equal(Object.keys(PATTERN_GAME_NAMES).length, 10);
+  for (const [family, [clue, answers]] of Object.entries(cases)) {
+    for (const [index, level] of ['Easy', 'Medium', 'Hard'].entries()) {
+      const game = createPatternGame(family, level, () => 0);
+      assert.equal(game.details[clue - 1].expectedValue.split(' ⇒ ')[1], answers[index], `${family} ${level}`);
+    }
+  }
+});
+
+test('all 15 puzzle families preserve exact anomaly scoring, worked examples, and difficulty layers', () => {
+  assert.equal(ERROR_DETECTION_PUZZLE_FAMILIES.length, 15);
+  for (const family of ERROR_DETECTION_PUZZLE_FAMILIES) {
+    for (const [index, level] of ['Easy', 'Medium', 'Hard'].entries()) {
+      for (let seed = 0; seed < 20; seed += 1) {
+        let randomState = seed + 1;
+        const rng = () => ((randomState = (1664525 * randomState + 1013904223) >>> 0) / 4294967296);
+        const challenge = createErrorDetectionChallenge(level, { puzzleFamily: family, details: 6, maximumErrors: 3 }, rng);
+        assert.equal(challenge.family, family);
+        assert.equal(challenge.briefing.ruleSteps.length, index + 2);
+        assert.equal(new Set(challenge.details.map((detail) => detail.id)).size, 6);
+        assert.notEqual(challenge.briefing.example.valid.value, challenge.briefing.example.anomaly.value);
+        const actualErrors = challenge.details.filter((detail) => detail.value !== detail.expectedValue).map((detail) => detail.id);
+        assert.deepEqual(challenge.errorIds, actualErrors);
+        assert.equal(scoreErrorDetectionAttempt(challenge, actualErrors).correct, true);
+        const toggled = new Set(actualErrors);
+        const id = challenge.details[0].id;
+        if (toggled.has(id)) toggled.delete(id); else toggled.add(id);
+        assert.equal(scoreErrorDetectionAttempt(challenge, [...toggled]).correct, false);
+        assert.equal(scoreErrorDetectionAttempt(challenge, actualErrors, true).correct, false);
+      }
+    }
+  }
+});
+
+test('distraction soundtrack contains bounded, sustained, varied tonal phrases', () => {
+  const rate = 8000;
+  const a = createDistractionSamples(rate, () => 0.2);
+  const b = createDistractionSamples(rate, () => 0.8);
+  assert.equal(a.length, rate * 16);
+  assert.ok(a.every((value) => Number.isFinite(value) && Math.abs(value) <= 0.8));
+  assert.notDeepEqual(a, b);
+  const signatures = new Set();
+  for (let second = 0; second < 16; second += 1) {
+    const phrase = a.slice(second * rate, (second + 1) * rate);
+    const rms = Math.sqrt(phrase.reduce((sum, value) => sum + value * value, 0) / rate);
+    assert.ok(rms > 0.05, `audible energy in phrase ${second}`);
+    assert.ok(Math.abs(phrase[0]) < 0.001);
+    signatures.add(phrase.slice(100, 110).join(','));
+  }
+  assert.ok(signatures.size >= 6);
 });
 
 test('scores Error Detection selections as an exact set, including no-error cards', () => {

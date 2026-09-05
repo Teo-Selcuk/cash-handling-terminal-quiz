@@ -41,7 +41,7 @@ jobs:
       - name: Assemble the static site
         run: |
           mkdir -p _site
-          cp index.html style.css app.js quiz-core.mjs _site/
+          cp index.html style.css app.js quiz-core.mjs pattern-games.mjs distraction-sounds.mjs _site/
       - name: Upload the static site
         uses: actions/upload-pages-artifact@v4
         with:

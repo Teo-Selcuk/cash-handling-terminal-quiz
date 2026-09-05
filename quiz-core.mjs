@@ -1,3 +1,5 @@
+import { createPatternGame, PATTERN_GAME_NAMES } from './pattern-games.mjs';
+
 export const DENOMINATIONS = Object.freeze([
   { cents: 10000, singular: '$100 bill', plural: '$100 bills', category: 'Bill' },
   { cents: 5000, singular: '$50 bill', plural: '$50 bills', category: 'Bill' },
@@ -350,6 +352,7 @@ export const ERROR_DETECTION_PUZZLE_FAMILIES = Object.freeze([
   'cipher-check',
   'logic-schedule',
   'route-network',
+  ...Object.keys(PATTERN_GAME_NAMES),
 ]);
 
 const ERROR_DETECTION_RULE_LAYERS = Object.freeze({ Easy: 1, Medium: 2, Hard: 3 });
@@ -695,6 +698,7 @@ export function createErrorDetectionChallenge(level, options = {}, rng = Math.ra
     createCipherCheckPuzzle,
     createLogicSchedulePuzzle,
     createRouteNetworkPuzzle,
+    ...Object.keys(PATTERN_GAME_NAMES).map((family) => (difficulty, random) => createPatternGame(family, difficulty, random)),
   ];
   const forcedFamilyIndex = puzzleFamily === undefined ? -1 : ERROR_DETECTION_PUZZLE_FAMILIES.indexOf(puzzleFamily);
   if (puzzleFamily !== undefined && forcedFamilyIndex < 0) {

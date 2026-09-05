@@ -19,7 +19,7 @@ The GitHub Pages trainer is dependency-free HTML, CSS, and JavaScript. Test with
 - `style.css` keeps the controls responsive and consistent with existing setup toggles.
 - `tests/web-quiz-core.test.mjs` records the opt-in, safety, and mode-coverage contract.
 
-Use named functions, a native input, and a looping Web Audio noise buffer. The audio graph must route through a capped `GainNode`, vary only within its fixed capped range, and stop at quiz completion or an explicit exit; no external samples, accounts, or runtime packages are added.
+Use named functions, a native input, and a looping 16-second Web Audio tonal collage from `distraction-sounds.mjs`. Alternate rhythmic and irregular phrases using chirps, warbles, two-tone alarms, buzzes, descending squeaks, and clangs; no static hiss. Randomly vary playback rate from 0.7 to 1.6 and gain among 0.009, 0.016, 0.027, and 0.04 while playing. The loop maintains playback even if browser timers are delayed. Each new quiz generates a fresh collage. Stop at the final answer or an explicit exit; no external samples, accounts, or runtime packages are added.
 
 ## Testing strategy
 
@@ -36,7 +36,7 @@ First add a failing deterministic test for the single-control contract, continuo
 - The setup screen has one accessible, off-by-default sound option; no acknowledgement checkbox appears.
 - The user is told that the website cannot verify Windows system mute.
 - An enabled session starts one bounded, level-changing synthetic noise bed in each of the four practice modes and keeps it running through feedback, auto-advance, and question transitions.
-- The noise stops at session results or when the learner leaves the session.
+- The sound stops immediately after the final answer (including timeout), at session results, or when the learner leaves the session. Cleanup disables pending audio starts as well as disconnecting active nodes.
 - Audio setup begins from the Start Game click so it follows browser autoplay rules.
 - The static test suite and real-browser smoke pass, and the GitHub Pages deployment receives the committed source.
 

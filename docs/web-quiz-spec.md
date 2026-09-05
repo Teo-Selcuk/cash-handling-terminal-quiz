@@ -50,7 +50,7 @@ Unit tests cover denomination totals, money formatting, generated question invar
 - Task presets are locally editable and resettable for steps, rows, tabs, briefing time, recall time (including untimed practice), and demo speed. The Task Simulation setup contains only Rounds.
 - Task controls use native tables and form elements, keyboard-operable tabs, end-only feedback, reduced-motion cursor fallback, and compact browser-local history fields.
 - Error Detection is the fourth browser-only mode. It is a varied anomaly-puzzle game, not a terminal-audit card. Every round starts with an untimed briefing that names the puzzle, explains its rule, and shows a worked valid/invalid example. The learner explicitly starts the timed hunt with Next.
-- Puzzles rotate across at least five rule families: visual symbol matrices, number-transform machines, code/cipher checks, schedule/logic boards, and route networks. Visual families use inline accessible SVG/CSS patterns with text alternatives; no remote image assets or accounts are required.
+- Puzzles rotate through a shuffled deck of 15 rule families before repeating: visual symbol matrices, number-transform machines, cipher checks, logic schedules, route networks, sequence ladders, interleaved streams, mirror codes, rotation compass, binary overlays, balance scales, coordinate folds, clock jumps, letter grids, and sorting networks. Every family supports Easy, Medium, and Hard with one, two, and three active rule layers. New clues carry independent inputs and a worked example; higher difficulty adds transformations rather than only shortening time.
 - A learner must flag every anomalous clue, tile, connection, or row, or explicitly select that there are no anomalies. Generated puzzles can contain zero, one, or multiple anomalies, and scoring compares the exact selected set.
 - Error Detection presets are saved and resettable per Easy, Medium, and Hard level. They control the number of selectable clues, maximum possible anomalies, and seconds per round. Easy uses a single rule and transparent changes; Medium combines rules and plausible near-misses; Hard combines dependent transformations, positional constraints, and near-match distractors rather than merely reducing the timer.
 - Error Detection records the puzzle family, missed anomalies, false flags, and corrections in local history/CSV, provides post-round feedback, and honors the shared optional auto-continue-on-timeout setting.
@@ -65,9 +65,13 @@ Unit tests cover denomination totals, money formatting, generated question invar
 3. Add the responsive browser UI, timer, cash builder, feedback, history screens, and Task Simulation workflow.
 4. Mirror cash-builder customer-request behavior in the PowerShell edition, including safe persisted defaults and history fields.
 5. Keep the task generator, demonstration, and scorer on one shared step contract; test its preset bounds, generated targets, timing, and end-only scoring.
-6. Keep the Error Detection puzzle generator and scorer on one shared anomaly contract; test five puzzle families, rule walkthrough examples, zero/one/many anomaly cases, exact-set scoring, timing, responsive visual rendering, and browser controls.
+6. Keep the Error Detection puzzle generator and scorer on one shared anomaly contract; test all 15 puzzle families, independently calculated answers, rule walkthrough examples, zero/one/many anomaly cases, exact-set scoring, timing, responsive visual rendering, and browser controls. `pattern-games.mjs` supplies the ten additional generators.
 7. Verify the committed site locally and after push.
-8. Keep optional continuous distraction noise behind one off-by-default toggle, use a capped Web Audio gain with bounded level variation, begin audio setup only from Start quiz, and stop it at quiz results or exit.
+8. Keep optional continuous distraction sounds behind one off-by-default toggle. `distraction-sounds.mjs` generates a tonal collage with patterned and irregular chirps, warbles, alarms, buzzes, squeaks, and clangs; randomly vary speed and capped gain during playback. Begin audio setup only from Start quiz, and stop at the final answer, results, or exit.
+
+## Browser verification
+
+With Playwright installed or available on `NODE_PATH`, run `node tests/browser-smoke.mjs`. It hosts the six static assets locally, launches an isolated muted Chromium profile, exercises every family at all three difficulties, measures generated Web Audio samples, verifies continuous audio and cleanup across all four modes, and checks responsive layout and page errors. Set `QUIZ_LIVE_URL` to the Pages URL to run the same checks against deployment. Screenshots are written to the system temporary directory.
 
 ## Deployment Reference
 

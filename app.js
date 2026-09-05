@@ -1,3 +1,5 @@
+import { PATTERN_GAME_NAMES } from './pattern-games.mjs';
+import { createDistractionSamples } from './distraction-sounds.mjs';
 import {
   DENOMINATIONS,
   DIFFICULTY_CONFIG,
@@ -152,6 +154,7 @@ function varyContinuousDistractionNoise() {
   gain.gain.cancelScheduledValues(now);
   gain.gain.setValueAtTime(Math.max(gain.gain.value, 0.0001), now);
   gain.gain.linearRampToValueAtTime(nextLevel, now + 0.1);
+  state.distractionAudioSource?.playbackRate.setTargetAtTime(0.7 + Math.random() * 0.9, now, 0.12);
 }
 
 function startContinuousDistractionNoise() {
@@ -165,11 +168,9 @@ function startContinuousDistractionNoise() {
   }
   if (audioContext.state !== 'running' || state.distractionAudioSource) return;
 
-  const buffer = audioContext.createBuffer(1, audioContext.sampleRate, audioContext.sampleRate);
-  const samples = buffer.getChannelData(0);
-  for (let index = 0; index < samples.length; index += 1) {
-    samples[index] = (Math.random() * 2 - 1) * (index % 257 < 18 ? 1 : 0.62);
-  }
+  const samples = createDistractionSamples(audioContext.sampleRate);
+  const buffer = audioContext.createBuffer(1, samples.length, audioContext.sampleRate);
+  buffer.copyToChannel(samples, 0);
   const source = audioContext.createBufferSource();
   const gain = audioContext.createGain();
   source.buffer = buffer;
@@ -190,6 +191,7 @@ function startContinuousDistractionNoise() {
 }
 
 function stopContinuousDistractionNoise() {
+  state.distractionNoisesEnabled = false;
   if (state.distractionAudioLevelTimer !== null) window.clearInterval(state.distractionAudioLevelTimer);
   state.distractionAudioLevelTimer = null;
   const source = state.distractionAudioSource;
@@ -304,7 +306,7 @@ function errorDetectionFamilyLabel(family) {
     'logic-schedule': 'Logic schedule board',
     'route-network': 'Visual route network',
   };
-  return labels[family] ?? 'Anomaly puzzle';
+  return labels[family] ?? PATTERN_GAME_NAMES[family] ?? 'Anomaly puzzle';
 }
 
 function nextErrorDetectionPuzzleFamily() {
@@ -931,6 +933,7 @@ function submitCurrentAnswer(timedOut = false) {
   const record = recordAnswer(answer, score, timedOut, elapsedSeconds);
   state.results.push(record);
   persistRecord(record);
+  if (state.results.length === state.questionCount) stopContinuousDistractionNoise();
   if (timedOut && state.autoContinueOnTimeout) {
     showNextQuestion();
     return;
@@ -1061,6 +1064,7 @@ function submitMemoryAnswer(timedOut = false) {
   const record = recordMemoryAnswer(answer, score, timedOut, elapsedSeconds);
   state.results.push(record);
   persistRecord(record);
+  if (state.results.length === state.questionCount) stopContinuousDistractionNoise();
   if (timedOut && state.autoContinueOnTimeout) {
     showNextMemoryQuestion();
     return;
@@ -1336,6 +1340,7 @@ function submitErrorDetectionAttempt(timedOut = false) {
   const record = recordErrorDetectionAttempt(score, timedOut, elapsedSeconds);
   state.results.push(record);
   persistRecord(record);
+  if (state.results.length === state.questionCount) stopContinuousDistractionNoise();
   if (timedOut && state.autoContinueOnTimeout) {
     showNextErrorDetectionQuestion();
     return;
@@ -2010,6 +2015,7 @@ function submitTaskAttempt(timedOut = false) {
   const record = recordTaskAttempt(score, timedOut, elapsedSeconds);
   state.results.push(record);
   persistRecord(record);
+  if (state.results.length === state.questionCount) stopContinuousDistractionNoise();
   if (timedOut && state.autoContinueOnTimeout) {
     showNextTaskQuestion();
     return;

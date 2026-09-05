@@ -4,6 +4,8 @@ A Windows 11 PowerShell practice quiz for teller-style cash handling. It generat
 
 ## Main features
 
+The [browser edition](https://teo-selcuk.github.io/cash-handling-terminal-quiz/) also includes Number Memory, Task Simulation, and 15 rotating Error Detection games. Ten pattern games cover sequences, interleaving, mirrors, rotations, binary overlays, scales, coordinates, clocks, letter grids, and sorting, each at Easy, Medium, and Hard. One optional continuous-sounds checkbox enables a varying mix of rhythmic and random tonal effects through the quiz.
+
 - Easy, Medium, and Hard difficulty levels
 - Random customer totals and random cash combinations
 - Bills: $100, $50, $20, $10, $5, and $1
