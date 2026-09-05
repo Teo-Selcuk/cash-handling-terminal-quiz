@@ -573,21 +573,17 @@ test('documents compact cash-builder entries without dollar signs', async () => 
   assert.match(app, /2x10, 2x100, 2D, 3Q, 4N, 5P/);
 });
 
-test('can auto-continue to the next timeout-free screen in all web games', async () => {
+test('offers one optional auto-continue setting for answers and timeouts', async () => {
   const [html, app] = await Promise.all([
     readFile(new URL('../index.html', import.meta.url), 'utf8'),
     readFile(new URL('../app.js', import.meta.url), 'utf8'),
   ]);
 
   assert.match(html, /id="auto-continue-toggle"/);
-  assert.match(html, /Immediately advance to the next round when its timer expires/);
-  assert.match(html, /In Error Detection, this opens the next rule briefing/);
-  assert.match(app, /autoContinueOnTimeout: false,/);
-  assert.match(app, /state\.autoContinueOnTimeout = refs\['auto-continue-toggle'\]\.checked;/);
-  assert.match(app, /if \(timedOut && state\.autoContinueOnTimeout\) \{\s*showNextQuestion\(\);\s*return;\s*\}/s);
-  assert.match(app, /if \(timedOut && state\.autoContinueOnTimeout\) \{\s*showNextMemoryQuestion\(\);\s*return;\s*\}/s);
-  assert.match(app, /if \(timedOut && state\.autoContinueOnTimeout\) \{\s*showNextTaskQuestion\(\);\s*return;\s*\}/s);
-  assert.match(app, /if \(timedOut && state\.autoContinueOnTimeout\) \{\s*showNextErrorDetectionQuestion\(\);\s*return;\s*\}/s);
+  assert.match(html, /Auto-continue after answering or timeout/);
+  assert.match(html, /all four modes/);
+  assert.match(app, /autoContinue: false,/);
+  assert.match(app, /state\.autoContinue = refs\['auto-continue-toggle'\]\.checked;/);
 });
 
 test('provides a fourth Error Detection puzzle game with a rule walkthrough, visual clues, and saved presets', async () => {

@@ -28,7 +28,7 @@ import {
   scoreErrorDetectionAttempt,
   summarizeHistory,
   toCsv,
-} from './quiz-core.mjs';
+} from './quiz-core.mjs?v=20260904-history-continue';
 
 const HISTORY_KEY = 'cash-handling-terminal-quiz-history-v1';
 const THEME_KEY = 'cash-handling-terminal-quiz-theme-v1';
@@ -73,7 +73,7 @@ const state = {
   cashBuilderEnabled: false,
   customerBillRequestsEnabled: false,
   customerRequestFlagged: false,
-  autoContinueOnTimeout: false,
+  autoContinue: false,
   distractionNoisesEnabled: false,
   distractionAudioContext: null,
   distractionAudioSource: null,
@@ -942,7 +942,7 @@ function submitCurrentAnswer(timedOut = false) {
   state.results.push(record);
   persistRecord(record);
   if (state.results.length === state.questionCount) stopContinuousDistractionNoise();
-  if (timedOut && state.autoContinueOnTimeout) {
+  if (state.autoContinue) {
     showNextQuestion();
     return;
   }
@@ -1074,7 +1074,7 @@ function submitMemoryAnswer(timedOut = false) {
   state.results.push(record);
   persistRecord(record);
   if (state.results.length === state.questionCount) stopContinuousDistractionNoise();
-  if (timedOut && state.autoContinueOnTimeout) {
+  if (state.autoContinue) {
     showNextMemoryQuestion();
     return;
   }
@@ -1351,7 +1351,7 @@ function submitErrorDetectionAttempt(timedOut = false) {
   state.results.push(record);
   persistRecord(record);
   if (state.results.length === state.questionCount) stopContinuousDistractionNoise();
-  if (timedOut && state.autoContinueOnTimeout) {
+  if (state.autoContinue) {
     showNextErrorDetectionQuestion();
     return;
   }
@@ -2027,7 +2027,7 @@ function submitTaskAttempt(timedOut = false) {
   state.results.push(record);
   persistRecord(record);
   if (state.results.length === state.questionCount) stopContinuousDistractionNoise();
-  if (timedOut && state.autoContinueOnTimeout) {
+  if (state.autoContinue) {
     showNextTaskQuestion();
     return;
   }
@@ -2235,7 +2235,7 @@ refs['setup-form'].addEventListener('submit', (event) => {
   state.results = [];
   state.errorDetectionFamilyDeck = [];
   state.errorDetectionStartedAt = 0;
-  state.autoContinueOnTimeout = refs['auto-continue-toggle'].checked;
+  state.autoContinue = refs['auto-continue-toggle'].checked;
 
   if (game === 'error-detection') {
     const questionCount = Number(refs['error-detection-question-count'].value);

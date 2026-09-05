@@ -5,6 +5,7 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { resolve, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { checkHistory, checkAutoContinue, checkTimeouts } from './browser-history-checks.mjs';
 const { chromium } = createRequire(import.meta.url)('playwright');
 const root = fileURLToPath(new URL('../', import.meta.url));
 const server = createServer(async (request, response) => {
@@ -47,6 +48,9 @@ try {
     };
   });
   const base = process.env.QUIZ_LIVE_URL || `http://127.0.0.1:${server.address().port}/`;
+  await checkHistory(browser, base);
+  await checkAutoContinue(browser, base);
+  await checkTimeouts(browser, base);
   const audioState = () => page.evaluate(() => ({
     total: audioProbe.sources.length,
     active: audioProbe.sources.filter((record) => !record.stopped).length,

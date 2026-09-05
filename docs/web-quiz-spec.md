@@ -55,7 +55,7 @@ Unit tests cover denomination totals, money formatting, generated question invar
 - Puzzles rotate through a shuffled deck of 15 rule families before repeating: visual symbol matrices, number-transform machines, cipher checks, logic schedules, route networks, sequence ladders, interleaved streams, mirror codes, rotation compass, binary overlays, balance scales, coordinate folds, clock jumps, letter grids, and sorting networks. Every family supports Easy, Medium, and Hard with one, two, and three active rule layers. New clues carry independent inputs and a worked example; higher difficulty adds transformations rather than only shortening time.
 - A learner must flag every anomalous clue, tile, connection, or row, or explicitly select that there are no anomalies. Generated puzzles can contain zero, one, or multiple anomalies, and scoring compares the exact selected set.
 - Error Detection presets are saved and resettable per Easy, Medium, and Hard level. They control the number of selectable clues, maximum possible anomalies, and seconds per round. Easy uses a single rule and transparent changes; Medium combines rules and plausible near-misses; Hard combines dependent transformations, positional constraints, and near-match distractors rather than merely reducing the timer.
-- Error Detection records the puzzle family, missed anomalies, false flags, and corrections in local history/CSV, provides post-round feedback, and honors the shared optional auto-continue-on-timeout setting.
+- Error Detection records the puzzle family, missed anomalies, false flags, and corrections in local history/CSV, provides post-round feedback, and honors the shared optional auto-continue-after-answer-or-timeout setting.
 - The page is keyboard accessible and responsive from 320px wide upward.
 - One off-by-default browser-only distraction-sound option is available for all four practice modes. When enabled, its capped, level-changing synthetic noise begins at the first timed practice phase, continues through feedback and question transitions, and stops at results or an explicit exit. The site clearly states it cannot inspect Windows 11 system-mute state.
 - The deployment workflow tests the application, uploads the static artifact, and deploys it to GitHub Pages from `main`.
@@ -74,6 +74,10 @@ Unit tests cover denomination totals, money formatting, generated question invar
 ## Browser verification
 
 With Playwright installed or available on `NODE_PATH`, run `node tests/browser-smoke.mjs`. It hosts the six static assets locally, launches an isolated muted Chromium profile, exercises every family at all three difficulties, measures generated Web Audio samples, verifies continuous audio and cleanup across all four modes, and checks responsive layout and page errors. Set `QUIZ_LIVE_URL` to the Pages URL to run the same checks against deployment. Screenshots are written to the system temporary directory.
+
+`tests/browser-history-checks.mjs` covers refresh during study/briefing, active questions, feedback, and the next reached round; repeated refresh without duplicates; correct-answer preservation; unanswered accuracy; and auto-advance through both submitted answers and timeouts to final results in all four modes. These checks use isolated browser contexts and a controlled browser clock for timeout cases.
+
+Rollback: revert the feature commits and redeploy through the existing Pages workflow if live checks fail. The browser history key and record format remain compatible; no user data is deleted or migrated.
 
 ## Deployment Reference
 

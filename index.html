@@ -7,7 +7,7 @@
     <meta name="theme-color" content="#12343b">
     <title>Cash, Memory &amp; Detail Trainer</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="style.css?v=20260904-pattern-games">
+    <link rel="stylesheet" href="style.css?v=20260904-history-continue">
   </head>
   <body>
     <main class="app-shell">
@@ -52,8 +52,8 @@
           </fieldset>
 
           <label class="toggle-row" for="auto-continue-toggle">
-            <input id="auto-continue-toggle" name="autoContinueOnTimeout" type="checkbox">
-            <span><strong>Auto-continue after timeout</strong><small>Immediately advance to the next round when its timer expires. In Error Detection, this opens the next rule briefing; the final timeout still shows your session results.</small></span>
+            <input id="auto-continue-toggle" name="autoContinue" type="checkbox">
+            <span><strong>Auto-continue after answering or timeout</strong><small>In all four modes, immediately advance after submitting an answer or when its timer expires. The next round starts with its usual question, study screen, or briefing; the final round shows your results. Leave unchecked to review feedback before clicking Next.</small></span>
           </label>
 
           <fieldset class="distraction-audio-settings">
@@ -410,6 +410,7 @@
           <button class="text-button" id="back-to-setup" type="button">Back to setup</button>
         </div>
         <div class="metric-grid" id="history-metrics"></div>
+        <p class="chart-note">Not answered counts as wrong for accuracy. Refresh keeps completed answers and the current round (including study or briefing), but never counts future rounds you have not reached.</p>
         <section class="history-visuals" aria-label="History visualizations">
           <article class="visual-card" aria-labelledby="outcome-diagram-heading">
             <div class="visual-heading">
@@ -447,6 +448,6 @@
     </main>
 
     <footer>Browser edition. The original PowerShell quiz remains in this repository.</footer>
-    <script type="module" src="app.js?v=20260904-pattern-games"></script>
+    <script type="module" src="app.js?v=20260904-history-continue"></script>
   </body>
 </html>
