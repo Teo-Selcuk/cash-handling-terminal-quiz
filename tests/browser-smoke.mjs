@@ -6,6 +6,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkHistory, checkAutoContinue, checkTimeouts } from './browser-history-checks.mjs';
+import { checkResponsive } from './browser-responsive-checks.mjs';
 const { chromium } = createRequire(import.meta.url)('playwright');
 const root = fileURLToPath(new URL('../', import.meta.url));
 const server = createServer(async (request, response) => {
@@ -48,6 +49,7 @@ try {
     };
   });
   const base = process.env.QUIZ_LIVE_URL || `http://127.0.0.1:${server.address().port}/`;
+  await checkResponsive(browser, base);
   await checkHistory(browser, base);
   await checkAutoContinue(browser, base);
   await checkTimeouts(browser, base);

@@ -322,7 +322,7 @@ function nextErrorDetectionPuzzleFamily() {
 }
 
 function isCompactViewport() {
-  return window.matchMedia?.('(max-width: 63.9375rem)').matches ?? false;
+  return window.matchMedia?.('(max-width: 64rem)').matches ?? false;
 }
 
 function showScreen(name) {
@@ -1608,6 +1608,17 @@ function openTaskVerificationTab(record = false) {
   if (record) recordTaskAction({ type: 'open-workspace-tab', targetId: openableTab.openerId, value: openableTab.label });
 }
 
+function createTaskCaseNoteButton(disabled) {
+  const button = document.createElement('button');
+  button.id = 'task-open-case-dialog';
+  button.className = 'secondary-button';
+  button.type = 'button';
+  button.textContent = 'Add case note';
+  button.disabled = disabled;
+  button.addEventListener('click', () => openTaskDialog(true));
+  return button;
+}
+
 function renderCaseworkWorkspace(disabled) {
   const caseData = state.taskChallenge.workspace.case;
   if (state.taskActiveTabId === caseData.openableTab.id) {
@@ -1619,6 +1630,10 @@ function renderCaseworkWorkspace(disabled) {
     appendTaskTextField(verification, {
       id: 'task-case-verification', label: 'Verification code', value: '', disabled, inputMode: 'numeric', className: 'task-wide-field',
     });
+    const actions = document.createElement('div');
+    actions.className = 'task-inline-actions';
+    actions.append(createTaskCaseNoteButton(disabled));
+    verification.append(actions);
     refs['task-workspace-content'].replaceChildren(verification);
     return;
   }
@@ -1645,13 +1660,7 @@ function renderCaseworkWorkspace(disabled) {
   details.append(fields);
   const actions = document.createElement('div');
   actions.className = 'task-inline-actions';
-  const noteButton = document.createElement('button');
-  noteButton.id = 'task-open-case-dialog';
-  noteButton.className = 'secondary-button';
-  noteButton.type = 'button';
-  noteButton.textContent = 'Add case note';
-  noteButton.disabled = disabled;
-  noteButton.addEventListener('click', () => openTaskDialog(true));
+  const noteButton = createTaskCaseNoteButton(disabled);
   const tabButton = document.createElement('button');
   tabButton.id = caseData.openableTab.openerId;
   tabButton.className = 'text-button';

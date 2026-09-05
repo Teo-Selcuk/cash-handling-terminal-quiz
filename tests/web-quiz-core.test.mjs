@@ -673,9 +673,9 @@ test('keeps every compact task simulation phase visible and its controls usable'
   assert.match(app, /function isCompactViewport\(\)/);
   assert.match(app, /scrollIntoView\(\{ block: 'start', inline: 'nearest' \}\)/);
   assert.match(app, /target\.scrollIntoView\(\{ behavior: taskReducedMotion\(\) \? 'auto' : 'smooth', block: 'center', inline: 'nearest' \}\)/);
-  assert.match(css, /@media \(max-width: 63\.9375rem\)\s*\{[\s\S]*\.task-workspace-screen[\s\S]*min-width:\s*0/s);
-  assert.match(css, /@media \(max-width: 63\.9375rem\)\s*\{[\s\S]*\.task-table\s*\{[\s\S]*display:\s*block/s);
-  assert.match(css, /@media \(max-width: 63\.9375rem\)\s*\{[\s\S]*\.task-table-wrap\s*\{[\s\S]*overflow:\s*visible/s);
+  assert.match(css, /@media \(max-width: 64rem\)\s*\{[\s\S]*\.task-workspace-screen[\s\S]*min-width:\s*0/s);
+  assert.match(css, /@media \(max-width: 64rem\)\s*\{[\s\S]*\.task-table\s*\{[\s\S]*display:\s*block/s);
+  assert.match(css, /@media \(max-width: 64rem\)\s*\{[\s\S]*\.task-table-wrap\s*\{[\s\S]*overflow:\s*visible/s);
   assert.match(css, /@media \(max-width: 36rem\)\s*\{[\s\S]*\.task-table tr\s*\{[\s\S]*grid-template-columns:\s*1fr/s);
 });
 
@@ -693,7 +693,7 @@ test('guides compact task-demo scrolling before moving the animation marker', as
   assert.match(app, /await waitForTaskDemoScroll\(token\)/);
   assert.match(app, /updateTaskDemoGuide\(transition, direction, 'moving'\)/);
   assert.match(app, /updateTaskDemoGuide\(transition, 'arrived', 'arrived'\)/);
-  assert.match(css, /@media \(max-width: 63\.9375rem\)\s*\{[\s\S]*\.task-demo-guide\s*\{/s);
+  assert.match(css, /@media \(max-width: 64rem\)\s*\{[\s\S]*\.task-demo-guide\s*\{/s);
 });
 
 test('creates ordered decimal memory challenges from configurable value and digit ranges', () => {

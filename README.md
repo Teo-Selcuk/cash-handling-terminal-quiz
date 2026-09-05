@@ -202,3 +202,11 @@ Choose **Clear history** to delete the current CSV. The script requires you to t
 - Completed questions remain in history if the quiz is stopped.
 - The script stores data locally and does not need an online account.
 - Clickable mode is intended for Windows 11 and uses the Windows Forms interface included with Windows PowerShell/.NET.
+
+## Browser verification
+
+Run `node --test tests/web-quiz-core.test.mjs` for the core rules. With Playwright and its Chromium browser installed (and available through `NODE_PATH` if installed outside this repository), run `node tests/browser-smoke.mjs` for isolated, muted browser checks. Set `QUIZ_LIVE_URL` to the Pages URL to run the same checks against the published site.
+
+The browser suite covers all four games and three difficulty presets at 320, 390, 768, 1024, and 1440 pixels, answer/timeout continuation, continuous audio cleanup, cash builder controls, customer bill requests, saved 100-digit memory values, and complete custom 10-step records/casework/invoice workflows. It checks overflow, compact touch targets, and readable task inputs. Each scenario uses fresh browser storage; screenshots go to the temporary directory.
+
+The compact task layout includes 1024-pixel landscape tablets. Case notes remain accessible from the Verification tab so longer casework sequences can be completed without an extra, unrequested tab switch. These checks emulate viewport and touch behavior in Chromium; they do not replace physical iOS/Android device testing.
