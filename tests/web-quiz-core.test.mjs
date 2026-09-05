@@ -799,12 +799,28 @@ test('summarizes saved answers for outcome diagrams and the accuracy chart', () 
     { key: 'correct', label: 'Correct', count: 2, percent: 50 },
     { key: 'incorrect', label: 'Incorrect', count: 1, percent: 25 },
     { key: 'timedOut', label: 'Timed out', count: 1, percent: 25 },
+    { key: 'notAnswered', label: 'Not answered', count: 0, percent: 0 },
   ]);
   assert.deepEqual(summary.byDifficulty, [
     { level: 'Easy', answered: 2, correct: 1, accuracyPercent: 50 },
     { level: 'Medium', answered: 1, correct: 0, accuracyPercent: 0 },
     { level: 'Hard', answered: 1, correct: 1, accuracyPercent: 100 },
   ]);
+});
+
+test('unanswered reached rounds have their own category and count against accuracy', () => {
+  const summary = summarizeHistory([
+    { difficulty: 'Easy', outcome: 'Correct' },
+    { difficulty: 'Easy', outcome: 'Not answered' },
+  ]);
+  assert.equal(summary.answered, 2);
+  assert.equal(summary.correct, 1);
+  assert.equal(summary.notAnswered, 1);
+  assert.equal(summary.incorrect, 0);
+  assert.equal(summary.accuracyPercent, 50);
+  assert.equal(summary.byDifficulty[0].accuracyPercent, 50);
+  assert.deepEqual(summary.outcomes.at(-1), { key: 'notAnswered', label: 'Not answered', count: 1, percent: 50 });
+  assert.match(toCsv([{ outcome: 'Not answered' }]), /Not answered/);
 });
 
 test('cash-builder styling honors the hidden attribute when the mode is off', async () => {

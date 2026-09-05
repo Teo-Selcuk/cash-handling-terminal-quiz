@@ -363,15 +363,23 @@ function saveHistory(history) {
     localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
     return true;
   } catch {
-    setMessage('Your answer was scored, but this browser could not save history locally.');
+    setMessage('This browser could not save quiz history locally. Progress may be lost on refresh.');
     return false;
   }
 }
 
 function persistRecord(record) {
   const history = getHistory();
-  history.push(record);
+  const index = history.findIndex((saved) => saved?.sessionId === record.sessionId && saved?.questionNumber === record.questionNumber);
+  if (index === -1) history.push(record);
+  else history[index] = record;
   saveHistory(history);
+}
+
+function persistUnansweredRound(record) {
+  // Checkpoint before interaction, so refresh/crash needs no unload handler.
+  // Submission replaces this record; future rounds are never pre-created.
+  persistRecord({ ...record, outcome: 'Not answered', userAnswer: '' });
 }
 
 function formatSeconds(seconds) {
@@ -950,6 +958,7 @@ function showNextQuestion() {
     return;
   }
   state.question = createQuestion(state.difficulty, Math.random, state.cashPresets[state.difficulty], { customerBillRequests: state.customerBillRequestsEnabled });
+  persistUnansweredRound(recordAnswer(null, { correct: false, breakdownMatches: false, cashTotalCents: 0 }, false, 0));
   state.answerSubmitted = false;
   renderQuestion();
   showScreen('quiz');
@@ -1081,6 +1090,7 @@ function showNextMemoryQuestion() {
     return;
   }
   state.memoryChallenge = createMemoryChallenge(state.difficulty, state.memoryPresets[state.difficulty]);
+  persistUnansweredRound(recordMemoryAnswer([], { correct: false }, false, 0));
   state.answerSubmitted = false;
   refs['memory-read-progress'].textContent = `Round ${state.questionNumber} of ${state.questionCount}`;
   renderMemoryReadValues(state.memoryChallenge);
@@ -1362,6 +1372,7 @@ function showNextErrorDetectionQuestion() {
   });
   state.answerSubmitted = false;
   state.errorDetectionStartedAt = 0;
+  persistUnansweredRound(recordErrorDetectionAttempt(scoreErrorDetectionAttempt(state.errorDetectionChallenge, [], true), false, 0));
   showErrorDetectionBriefing();
 }
 
@@ -2032,6 +2043,7 @@ function showNextTaskQuestion() {
     return;
   }
   state.taskChallenge = createTaskChallenge(state.difficulty, state.taskPresets[state.difficulty]);
+  persistUnansweredRound(recordTaskAttempt(scoreTaskAttempt(state.taskChallenge, [], true), false, 0));
   state.answerSubmitted = false;
   showTaskBriefing();
 }
