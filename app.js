@@ -1,5 +1,6 @@
 import { PATTERN_GAME_NAMES } from './pattern-games.mjs';
 import { createDistractionSamples } from './distraction-sounds.mjs';
+import { PRACTICE_GAMES, recommendPractice, practiceSettings } from './adaptive-practice.mjs';
 import {
   DENOMINATIONS,
   DIFFICULTY_CONFIG,
@@ -13,6 +14,7 @@ import {
   createMemoryChallenge,
   createTaskChallenge,
   createQuestion,
+  createCashGuidance,
   evaluateCustomerBillRequest,
   formatBreakdown,
   formatMoney,
@@ -28,7 +30,7 @@ import {
   scoreErrorDetectionAttempt,
   summarizeHistory,
   toCsv,
-} from './quiz-core.mjs?v=20260904-history-continue';
+} from './quiz-core.mjs?v=20260908-practice';
 
 const HISTORY_KEY = 'cash-handling-terminal-quiz-history-v1';
 const THEME_KEY = 'cash-handling-terminal-quiz-theme-v1';
@@ -83,6 +85,7 @@ const state = {
   memoryPresets: savedPresetState.memory,
   taskPresets: savedPresetState.task,
   errorDetectionPresets: savedPresetState.errorDetection,
+  practicePlan: null,
   questionNumber: 0,
   question: null,
   results: [],
@@ -148,6 +151,8 @@ function prepareDistractionAudio() {
 function varyContinuousDistractionNoise() {
   const audioContext = state.distractionAudioContext;
   const gain = state.distractionAudioGain;
+  if (state.sessionEvidence?.continuousNoise && !state.sessionEvidence.sessionCompletedAt
+      && (!state.distractionAudioSource || audioContext?.state !== 'running')) state.sessionEvidence.noiseMaintained = false;
   if (!state.distractionNoisesEnabled || !audioContext || !gain || audioContext.state !== 'running') return;
   const nextLevel = [0.009, 0.016, 0.027, 0.04][Math.floor(Math.random() * 4)];
   const now = audioContext.currentTime;
@@ -185,6 +190,11 @@ function startContinuousDistractionNoise() {
     }
   });
   state.distractionAudioSource = source;
+  state.sessionNoiseStarted = true;
+  audioContext.onstatechange = () => {
+    if (state.sessionEvidence?.continuousNoise && !state.sessionEvidence.sessionCompletedAt
+        && audioContext.state !== 'running') state.sessionEvidence.noiseMaintained = false;
+  };
   state.distractionAudioGain = gain;
   varyContinuousDistractionNoise();
   state.distractionAudioLevelTimer = window.setInterval(varyContinuousDistractionNoise, 650);
@@ -349,11 +359,13 @@ function showScreen(name) {
   if (heading) window.setTimeout(() => heading.focus({ preventScroll: true }), 0);
 }
 
-function getHistory() {
+function getHistory(strict = false) {
   try {
     const history = JSON.parse(localStorage.getItem(HISTORY_KEY) ?? '[]');
-    return Array.isArray(history) ? history : [];
-  } catch {
+    if (!Array.isArray(history)) throw new Error('Saved history is not a list.');
+    return history;
+  } catch (error) {
+    if (strict) throw error;
     return [];
   }
 }
@@ -369,10 +381,41 @@ function saveHistory(history) {
 }
 
 function persistRecord(record) {
+  if (!state.sessionEvidence || state.sessionEvidence.sessionId !== state.sessionId) {
+    state.sessionEvidence = {
+      sessionId: state.sessionId, evidenceVersion: 2, game: state.game,
+      difficulty: state.difficulty, plannedQuestions: state.questionCount,
+      sessionStartedAt: new Date().toISOString(), sessionCompletedAt: null,
+      sessionElapsedSeconds: 0, autoContinue: state.autoContinue,
+      continuousNoise: refs['distraction-noise-toggle'].checked,
+      noiseMaintained: refs['distraction-noise-toggle'].checked && state.distractionNoisesEnabled,
+      cashBuilder: state.game === 'cash' && state.cashBuilderEnabled,
+      customerRequests: state.game === 'cash' && state.customerBillRequestsEnabled,
+    };
+    state.sessionEvidenceStarted = performance.now();
+    state.sessionNoiseStarted = false;
+  }
+  const evidence = state.sessionEvidence;
+  if (record.outcome !== 'Not answered' && state.results.length === state.questionCount) {
+    evidence.sessionCompletedAt = new Date().toISOString();
+    evidence.sessionElapsedSeconds = (performance.now() - state.sessionEvidenceStarted) / 1000;
+    evidence.noiseMaintained = evidence.noiseMaintained && state.sessionNoiseStarted
+      && state.distractionAudioContext?.state === 'running';
+  }
   const history = getHistory();
+  const savedRecord = { ...record, ...evidence,
+    settingsJson: JSON.stringify(sessionPreset()),
+    ...(state.practicePlan ? { practicePlanJson: JSON.stringify({ ...state.practicePlan, evidence: [] }) } : {}),
+  };
   const index = history.findIndex((saved) => saved?.sessionId === record.sessionId && saved?.questionNumber === record.questionNumber);
-  if (index === -1) history.push(record);
-  else history[index] = record;
+  if (index === -1) history.push(savedRecord);
+  else history[index] = savedRecord;
+  // Completion and captured settings belong to the session, including its earlier answers.
+  if (evidence.sessionCompletedAt) {
+    for (let i = 0; i < history.length; i += 1) {
+      if (history[i]?.sessionId === record.sessionId) history[i] = { ...history[i], ...evidence };
+    }
+  }
   saveHistory(history);
 }
 
@@ -534,6 +577,106 @@ function updateGameSetup() {
   refs['medium-description'].textContent = descriptions.Medium;
   refs['hard-description'].textContent = descriptions.Hard;
   renderPresetEditor();
+  renderPracticeRecommendations(document.getElementById('setup-recommendations'), game, selectedDifficulty());
+  renderActivePractice();
+}
+
+function presetFor(game, difficulty) {
+  const presets = { cash: state.cashPresets, memory: state.memoryPresets, task: state.taskPresets, 'error-detection': state.errorDetectionPresets };
+  return presets[game][difficulty];
+}
+
+function sessionPreset() {
+  return state.practicePlan?.preset ?? presetFor(state.game, state.difficulty);
+}
+
+function appendPracticeSettings(target, plan) {
+  const list = document.createElement('dl');
+  list.className = 'practice-settings';
+  for (const [label, value] of practiceSettings(plan)) {
+    const term = document.createElement('dt');
+    const detail = document.createElement('dd');
+    term.textContent = label;
+    detail.textContent = value;
+    list.append(term, detail);
+  }
+  target.append(list);
+}
+
+function renderPracticeRecommendations(target, game, difficulty, history = getHistory()) {
+  const result = recommendPractice(history, game, difficulty, presetFor(game, difficulty));
+  target.replaceChildren();
+  const summary = document.createElement('p');
+  summary.className = 'practice-note';
+  summary.textContent = `${result.message}${result.unanswered ? ` ${result.unanswered} unanswered rounds excluded from these recommendations.` : ''}`;
+  target.append(summary);
+  for (const plan of result.plans) {
+    const item = document.createElement('article');
+    item.className = 'practice-recommendation';
+    const title = document.createElement('h4');
+    title.textContent = plan.title;
+    const reason = document.createElement('p');
+    reason.textContent = plan.reason;
+    const progress = document.createElement('p');
+    progress.className = 'practice-note';
+    progress.textContent = plan.progressionRule;
+    const review = document.createElement('details');
+    const label = document.createElement('summary');
+    label.textContent = 'Proposed settings and evidence';
+    review.append(label);
+    appendPracticeSettings(review, plan);
+    const evidence = document.createElement('ul');
+    evidence.className = 'practice-evidence';
+    for (const row of plan.evidence) {
+      const entry = document.createElement('li');
+      const date = new Date(row.timestamp);
+      entry.textContent = `${Number.isNaN(date.getTime()) ? 'Date unavailable' : date.toLocaleString()} - round ${row.questionNumber ?? '?'} - ${row.outcome}`;
+      evidence.append(entry);
+    }
+    review.append(evidence);
+    const apply = document.createElement('button');
+    apply.type = 'button';
+    apply.className = 'secondary-button';
+    apply.textContent = 'Use practice plan';
+    apply.addEventListener('click', () => applyPracticePlan(plan));
+    item.append(title, reason, review, progress, apply);
+    target.append(item);
+  }
+}
+
+function renderActivePractice() {
+  const panel = document.getElementById('active-practice');
+  panel.hidden = !state.practicePlan;
+  const content = document.getElementById('active-practice-settings');
+  content.replaceChildren();
+  if (!state.practicePlan) return;
+  document.getElementById('active-practice-title').textContent = state.practicePlan.title;
+  document.getElementById('active-practice-reason').textContent = state.practicePlan.reason;
+  appendPracticeSettings(content, state.practicePlan);
+}
+
+function applyPracticePlan(plan) {
+  resetDistractionAudioSetup();
+  document.querySelector(`input[name="game"][value="${plan.game}"]`).checked = true;
+  document.querySelector(`input[name="difficulty"][value="${plan.difficulty}"]`).checked = true;
+  refs[plan.game === 'cash' ? 'question-count' : `${plan.game}-question-count`].value = String(plan.questionCount);
+  refs['distraction-noise-toggle'].checked = plan.options.distraction;
+  if (plan.game === 'cash') {
+    refs['cash-builder-toggle'].checked = plan.options.cashBuilder;
+    refs['customer-bill-request-toggle'].checked = plan.options.customerRequests;
+    refs['time-limit'].value = String(plan.options.timeLimitSeconds);
+    document.querySelector(`input[name="cashSessionMode"][value="${plan.options.cashSessionMode}"]`).checked = true;
+  }
+  state.practicePlan = plan;
+  updateGameSetup();
+  showScreen('setup');
+  document.getElementById('active-practice').scrollIntoView({ block: 'nearest' });
+  setMessage('Practice plan ready. Review the settings and start the quiz. Your saved presets are unchanged.');
+}
+
+function clearPracticePlan() {
+  state.practicePlan = null;
+  renderActivePractice();
 }
 
 function readPresetCents(ref, label) {
@@ -555,6 +698,7 @@ function readPresetDemoMilliseconds(ref) {
 }
 
 function saveSelectedPreset() {
+  clearPracticePlan();
   const level = selectedDifficulty();
   const game = selectedGame();
   try {
@@ -603,6 +747,7 @@ function saveSelectedPreset() {
 }
 
 function resetSelectedPreset() {
+  clearPracticePlan();
   const level = selectedDifficulty();
   const game = selectedGame();
   if (game === 'cash') state.cashPresets[level] = resolveCashDifficultyPreset(level);
@@ -620,6 +765,7 @@ function resetSelectedPreset() {
 }
 
 function resetAllPresets() {
+  clearPracticePlan();
   state.cashPresets = builtInCashPresets();
   state.memoryPresets = builtInMemoryPresets();
   state.taskPresets = builtInTaskPresets();
@@ -792,6 +938,19 @@ function renderQuestion() {
   refs['cash-builder-section'].hidden = !state.cashBuilderEnabled;
   resetBuilder();
   renderCustomerBillRequest();
+  const panel = document.getElementById('cash-guidance');
+  panel.replaceChildren();
+  panel.hidden = state.cashSessionMode !== 'guided';
+  if (!panel.hidden) {
+    const guide = createCashGuidance(question);
+    for (const [title, text] of [['Customer says', guide.customer], ['1. Count and compare', guide.calculation], ['2. Say to the customer', guide.say], ['3. Enter your answer', guide.answer], ['4. Handle the cash', [guide.request, guide.cash].filter(Boolean).join(' ')]]) {
+      const heading = document.createElement('h3');
+      heading.textContent = title;
+      const paragraph = document.createElement('p');
+      paragraph.textContent = text;
+      panel.append(heading, paragraph);
+    }
+  }
 }
 
 function startTimer(seconds, target, expiryAction) {
@@ -870,6 +1029,7 @@ function recordAnswer(answer, score, timedOut, elapsedSeconds) {
     timestamp: new Date().toISOString(),
     sessionId: state.sessionId,
     gameType: 'Cash handling',
+    sessionMode: state.cashSessionMode === 'guided' ? 'Guided practice' : 'Testing',
     difficulty: state.difficulty,
     questionNumber: state.questionNumber,
     answerMode: state.customerBillRequestsEnabled ? 'Cash builder + customer requests' : state.cashBuilderEnabled ? 'Cash builder' : 'Normal',
@@ -934,7 +1094,7 @@ function submitCurrentAnswer(timedOut = false) {
 
   state.answerSubmitted = true;
   stopTimer();
-  const elapsedSeconds = Math.min(state.timeLimitSeconds, Math.max(0, (Date.now() - (state.deadline - state.timeLimitSeconds * 1000)) / 1000));
+  const elapsedSeconds = Math.max(0, (Date.now() - state.cashQuestionStartedAt) / 1000);
   const score = timedOut
     ? { correct: false, breakdownMatches: false, cashTotalCents: 0 }
     : scoreAnswer(state.question, answer, state.cashBuilderEnabled, state.question.customerBillRequest);
@@ -957,12 +1117,13 @@ function showNextQuestion() {
     showScreen('summary');
     return;
   }
-  state.question = createQuestion(state.difficulty, Math.random, state.cashPresets[state.difficulty], { customerBillRequests: state.customerBillRequestsEnabled });
+  state.question = createQuestion(state.difficulty, Math.random, sessionPreset(), { customerBillRequests: state.customerBillRequestsEnabled, ...state.practicePlan?.focus });
   persistUnansweredRound(recordAnswer(null, { correct: false, breakdownMatches: false, cashTotalCents: 0 }, false, 0));
   state.answerSubmitted = false;
   renderQuestion();
   showScreen('quiz');
-  startTimer(state.timeLimitSeconds, refs.timer, () => submitCurrentAnswer(true));
+  state.cashQuestionStartedAt = Date.now();
+  startOptionalTimer(state.timeLimitSeconds, refs.timer, () => submitCurrentAnswer(true));
   startContinuousDistractionNoise();
 }
 
@@ -1024,6 +1185,9 @@ function recordMemoryAnswer(answer, score, timedOut, elapsedSeconds) {
     difficulty: state.difficulty,
     questionNumber: state.questionNumber,
     valueCount: challenge.valueCount,
+    expectedValues: [...challenge.values],
+    answeredValues: [...answer],
+    digitsByValue: [...challenge.digitsByValue],
     digitsPerValue: `${challenge.minimumDigits}–${challenge.maximumDigits}`,
     readTimeSeconds: challenge.readSeconds,
     writeTimeSeconds: challenge.writeSeconds,
@@ -1089,7 +1253,7 @@ function showNextMemoryQuestion() {
     showScreen('summary');
     return;
   }
-  state.memoryChallenge = createMemoryChallenge(state.difficulty, state.memoryPresets[state.difficulty]);
+  state.memoryChallenge = createMemoryChallenge(state.difficulty, sessionPreset());
   persistUnansweredRound(recordMemoryAnswer([], { correct: false }, false, 0));
   state.answerSubmitted = false;
   refs['memory-read-progress'].textContent = `Round ${state.questionNumber} of ${state.questionCount}`;
@@ -1284,6 +1448,7 @@ function recordErrorDetectionAttempt(score, timedOut, elapsedSeconds) {
     questionNumber: state.questionNumber,
     scenario: challenge.title,
     puzzleFamily: errorDetectionFamilyLabel(challenge.family),
+    puzzleFamilyId: challenge.family,
     ruleLayers: challenge.ruleLayers,
     rule: challenge.rule,
     detailCount: challenge.detailsCount,
@@ -1367,8 +1532,8 @@ function showNextErrorDetectionQuestion() {
     return;
   }
   state.errorDetectionChallenge = createErrorDetectionChallenge(state.difficulty, {
-    ...state.errorDetectionPresets[state.difficulty],
-    puzzleFamily: nextErrorDetectionPuzzleFamily(),
+    ...sessionPreset(),
+    puzzleFamily: state.practicePlan?.focus.puzzleFamily ?? nextErrorDetectionPuzzleFamily(),
   });
   state.answerSubmitted = false;
   state.errorDetectionStartedAt = 0;
@@ -1983,6 +2148,7 @@ function recordTaskAttempt(score, timedOut, elapsedSeconds) {
     sessionId: state.sessionId,
     gameType: 'Task simulation',
     taskTitle: challenge.title,
+    workspaceKind: challenge.workspace.kind,
     difficulty: state.difficulty,
     questionNumber: state.questionNumber,
     stepsExpected: score.expectedSteps,
@@ -2051,7 +2217,7 @@ function showNextTaskQuestion() {
     showScreen('summary');
     return;
   }
-  state.taskChallenge = createTaskChallenge(state.difficulty, state.taskPresets[state.difficulty]);
+  state.taskChallenge = createTaskChallenge(state.difficulty, { ...sessionPreset(), ...state.practicePlan?.focus });
   persistUnansweredRound(recordTaskAttempt(scoreTaskAttempt(state.taskChallenge, [], true), false, 0));
   state.answerSubmitted = false;
   showTaskBriefing();
@@ -2114,6 +2280,7 @@ function renderSummary() {
         ? 'Your error detection results'
         : 'Your cash results';
   renderMetrics(refs['session-metrics'], makeMetrics(state.results));
+  renderPracticeRecommendations(document.getElementById('summary-recommendations'), state.game, state.difficulty);
 }
 
 function renderHistoryVisuals(summary) {
@@ -2171,6 +2338,7 @@ function renderHistoryVisuals(summary) {
 
 function renderHistory() {
   const history = getHistory();
+  renderHistoryRecommendations(history);
   const summary = summarizeHistory(history);
   const levelMetrics = summary.byDifficulty.map((level) => [`${level.accuracyPercent}%`, `${level.level} accuracy`]);
   renderMetrics(refs['history-metrics'], [...makeMetrics(history), ...levelMetrics]);
@@ -2190,7 +2358,7 @@ function renderHistory() {
     const row = document.createElement('tr');
     const cells = [
       new Date(record.timestamp).toLocaleString(),
-      record.gameType ?? 'Cash handling',
+      `${record.gameType ?? 'Cash handling'}${record.sessionMode ? ` · ${record.sessionMode}` : ''}`,
       record.difficulty,
       record.outcome,
       `${Number(record.timeUsedSeconds || 0).toFixed(1)}s`,
@@ -2205,12 +2373,28 @@ function renderHistory() {
   }
 }
 
+function renderHistoryRecommendations(history = getHistory()) {
+  const level = document.getElementById('recommendation-level').value;
+  const target = document.getElementById('history-recommendations');
+  target.replaceChildren();
+  for (const [game, name] of Object.entries(PRACTICE_GAMES)) {
+    const section = document.createElement('section');
+    const heading = document.createElement('h3');
+    heading.textContent = name;
+    const content = document.createElement('div');
+    renderPracticeRecommendations(content, game, level, history);
+    section.append(heading, content);
+    target.append(section);
+  }
+}
+
 function openHistory() {
   if (['quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'error-detection'].includes(state.activeScreen)) {
     setMessage('Finish the current round before opening history.');
     return;
   }
   stopContinuousDistractionNoise();
+  document.getElementById('recommendation-level').value = selectedDifficulty();
   renderHistory();
   showScreen('history');
 }
@@ -2237,6 +2421,7 @@ refs['setup-form'].addEventListener('submit', (event) => {
   prepareDistractionAudio();
   const game = selectedGame();
   const difficulty = selectedDifficulty();
+  if (state.practicePlan && (state.practicePlan.game !== game || state.practicePlan.difficulty !== difficulty)) clearPracticePlan();
   state.sessionId = makeSessionId();
   state.game = game;
   state.difficulty = difficulty;
@@ -2295,7 +2480,8 @@ refs['setup-form'].addEventListener('submit', (event) => {
     return;
   }
   state.questionCount = questionCount;
-  state.timeLimitSeconds = timeLimitSeconds;
+  state.cashSessionMode = new FormData(refs['setup-form']).get('cashSessionMode') === 'guided' ? 'guided' : 'testing';
+  state.timeLimitSeconds = state.cashSessionMode === 'guided' ? 0 : timeLimitSeconds;
   state.customerBillRequestsEnabled = refs['customer-bill-request-toggle'].checked;
   state.cashBuilderEnabled = refs['cash-builder-toggle'].checked || state.customerBillRequestsEnabled;
   refs['cash-builder-toggle'].checked = state.cashBuilderEnabled;
@@ -2380,13 +2566,17 @@ refs['save-preset'].addEventListener('click', saveSelectedPreset);
 refs['reset-selected-preset'].addEventListener('click', resetSelectedPreset);
 refs['reset-all-presets'].addEventListener('click', resetAllPresets);
 refs['start-another'].addEventListener('click', () => {
+  clearPracticePlan();
   resetDistractionAudioSetup();
+  updateGameSetup();
   showScreen('setup');
 });
 refs['open-history'].addEventListener('click', openHistory);
 refs['summary-history'].addEventListener('click', openHistory);
 refs['back-to-setup'].addEventListener('click', () => {
+  clearPracticePlan();
   resetDistractionAudioSetup();
+  updateGameSetup();
   showScreen('setup');
 });
 refs['theme-toggle'].addEventListener('click', () => {
@@ -2397,7 +2587,114 @@ refs['download-csv'].addEventListener('click', downloadHistory);
 refs['clear-history'].addEventListener('click', () => {
   if (window.confirm('Clear all saved quiz history from this browser? This cannot be undone.')) {
     localStorage.removeItem(HISTORY_KEY);
+    clearPracticePlan();
     renderHistory();
     setMessage('Saved quiz history was cleared from this browser.');
   }
 });
+
+document.getElementById('clear-practice-plan').addEventListener('click', clearPracticePlan);
+document.getElementById('recommendation-level').addEventListener('change', () => renderHistoryRecommendations());
+refs['setup-form'].addEventListener('input', (event) => {
+  if (event.target.id === 'auto-continue-toggle') return;
+  if (['question-count', 'memory-question-count', 'task-question-count', 'error-detection-question-count'].includes(event.target.id)) {
+    if (state.practicePlan) state.practicePlan.questionCount = Number(event.target.value);
+    renderActivePractice();
+    return;
+  }
+  if (state.practicePlan) {
+    clearPracticePlan();
+    setMessage('Setup changed. The practice plan was cleared; your selected preset is active.');
+  }
+});
+window.addEventListener('storage', (event) => {
+  if (event.key !== HISTORY_KEY && event.key !== null) return;
+  if (state.activeScreen === 'history') renderHistory();
+  if (state.activeScreen === 'setup') {
+    clearPracticePlan();
+    updateGameSetup();
+  }
+});
+
+
+// Explicit pairing; connection secrets stay in memory and are removed from the URL.
+function setupQRAlarmConnection() {
+  const status = document.querySelector('#qralarm-status');
+  const input = document.querySelector('#qralarm-link');
+  let connection = null;
+  let pollTimer = null;
+  const fields = ['sessionId', 'questionNumber', 'outcome', 'timeUsedSeconds',
+    'evidenceVersion', 'game', 'difficulty', 'plannedQuestions', 'sessionStartedAt',
+    'sessionCompletedAt', 'sessionElapsedSeconds', 'autoContinue', 'continuousNoise',
+    'noiseMaintained', 'cashBuilder', 'customerRequests'];
+  async function exchange(endpoint, body) {
+    const response = await fetch(connection.bridge + endpoint, {
+      method: 'POST', credentials: 'omit', cache: 'no-store',
+      headers: { 'Content-Type': 'application/json', 'X-QR-Token': connection.token, 'X-QR-Source': connection.source },
+      body: JSON.stringify({ version: 2, ...body }), signal: AbortSignal.timeout(4000),
+    });
+    if (!response.ok) throw new Error('Connection rejected.');
+    return response.json();
+  }
+  async function poll() {
+    try {
+      const request = await exchange('/poll', {});
+      if (request.request_id) {
+        let body;
+        try {
+          const records = getHistory(true).map((record) => {
+            if (!record || typeof record !== 'object' || Array.isArray(record)) throw new Error('Invalid saved history.');
+            return Object.fromEntries(fields.filter((key) => Object.hasOwn(record, key)).map((key) => [key, record[key]]));
+          });
+          body = { records };
+        } catch {
+          body = { error: 'Unable to read saved browser history' };
+        }
+        await exchange('/history', { request_id: request.request_id, captured_at: Date.now() / 1000, ...body });
+        status.textContent = body.error ? 'Unavailable — saved history could not be read.' : 'Connected';
+      }
+      pollTimer = window.setTimeout(poll, 500);
+    } catch {
+      status.textContent = 'Reconnect required — use info <QR ID> --connect in QRAlarm.';
+      connection = null;
+    }
+  }
+  async function connect(link) {
+    window.clearTimeout(pollTimer);
+    try {
+      const params = new URL(link).hash.slice(1);
+      const values = Object.fromEntries(new URLSearchParams(params));
+      const endpoint = new URL(values.bridge);
+      if (endpoint.protocol !== 'http:' || endpoint.hostname !== '127.0.0.1'
+          || !endpoint.port || endpoint.pathname !== '/' || endpoint.search || endpoint.hash
+          || endpoint.username || endpoint.password
+          || !/^[A-Za-z0-9_-]{32,128}$/.test(values.token ?? '')
+          || !/^[A-Za-z0-9_-]{1,128}$/.test(values.source ?? '')) throw new Error('Invalid pairing link.');
+      connection = { ...values, bridge: endpoint.origin };
+      let browserId = localStorage.getItem('qralarm-browser-history-id');
+      if (!browserId) {
+        browserId = crypto.randomUUID();
+        localStorage.setItem('qralarm-browser-history-id', browserId);
+      }
+      await exchange('/pair', { browser_id: browserId });
+      input.value = '';
+      status.textContent = 'Connected';
+      poll();
+    } catch {
+      connection = null;
+      status.textContent = 'Unavailable — use a fresh pairing link for this browser history.';
+    }
+  }
+  document.querySelector('#qralarm-connect').addEventListener('click', () => connect(input.value));
+  function connectFromFragment() {
+    if (!new URLSearchParams(location.hash.slice(1)).has('bridge')) return;
+    const link = location.href;
+    history.replaceState(null, '', location.pathname + location.search);
+    document.querySelector('#qralarm-connection').open = true;
+    connect(link);
+  }
+  window.addEventListener('hashchange', connectFromFragment);
+  connectFromFragment();
+  window.addEventListener('pagehide', () => { window.clearTimeout(pollTimer); connection = null; });
+}
+setupQRAlarmConnection();

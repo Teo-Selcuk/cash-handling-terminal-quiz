@@ -1020,9 +1020,11 @@ function createInvoiceTaskChallenge(level, preset, stepCount, rng) {
 }
 
 export function createTaskChallenge(level, options = {}, rng = Math.random) {
-  const preset = resolveTaskDifficultyPreset(level, options);
+  const { workspaceKind, ...presetOptions } = options;
+  if (workspaceKind !== undefined && !TASK_WORKSPACE_KINDS.includes(workspaceKind)) throw new RangeError('Unknown task workflow.');
+  const preset = resolveTaskDifficultyPreset(level, presetOptions);
   const stepCount = memoryRandomInteger(preset.minimumSteps, preset.maximumSteps, rng);
-  const kind = TASK_WORKSPACE_KINDS[randomIndex(TASK_WORKSPACE_KINDS.length, rng)];
+  const kind = workspaceKind ?? TASK_WORKSPACE_KINDS[randomIndex(TASK_WORKSPACE_KINDS.length, rng)];
   if (kind === 'casework') return createCaseworkTaskChallenge(level, preset, stepCount, rng);
   if (kind === 'invoice') return createInvoiceTaskChallenge(level, preset, stepCount, rng);
   return createRecordsTaskChallenge(level, preset, stepCount, rng);
@@ -1333,12 +1335,16 @@ function resolveCashQuestionOptions(options = {}) {
     throw new TypeError('Cash question options must be an object.');
   }
   const customerRequestKind = options.customerRequestKind ?? '';
+  if (options.expectedType !== undefined && !['Change', 'Short', 'Exact'].includes(options.expectedType)) {
+    throw new RangeError('Unknown cash transaction type.');
+  }
   if (typeof customerRequestKind !== 'string' || (customerRequestKind !== '' && !CUSTOMER_BILL_REQUEST_KINDS.includes(customerRequestKind))) {
     throw new RangeError('Customer request kind is not supported.');
   }
   return {
     customerBillRequests: options.customerBillRequests === true,
     customerRequestKind,
+    expectedType: options.expectedType,
   };
 }
 
@@ -1350,7 +1356,7 @@ export function createQuestion(level, rng = Math.random, presetOverrides = {}, o
   for (let attempt = 0; attempt < 200; attempt += 1) {
     const dueCents = randomSteppedNumber(config.minDue, config.maxDue, config.step, rng);
     const roll = randomIndex(100, rng) + 1;
-    let expectedType = roll <= 45 ? 'Change' : roll <= 90 ? 'Short' : 'Exact';
+    let expectedType = questionOptions.expectedType ?? (roll <= 45 ? 'Change' : roll <= 90 ? 'Short' : 'Exact');
     let expectedAmountCents = 0;
     let tenderedCents = dueCents;
 
@@ -1424,6 +1430,23 @@ export function scoreAnswer(question, answer, cashBuilderEnabled, customerBillRe
     customerRequestMatches,
     customerRequestFlagged,
     customerRequestCanFlag: customerRequestResult.canFlag,
+  };
+}
+
+export function createCashGuidance(question) {
+  const due = formatMoney(question.dueCents);
+  const tender = formatMoney(question.tenderedCents);
+  const amount = formatMoney(question.expectedAmountCents);
+  const exact = question.expectedType === 'Exact';
+  const change = question.expectedType === 'Change';
+  const request = question.customerBillRequest;
+  return {
+    customer: `I'd like to pay ${due}. Here is my cash.${request ? ` ${request.text}` : ''}`,
+    calculation: exact ? `${tender} received = ${due} due. No change or shortfall.` : change ? `${tender} received − ${due} due = ${amount} change.` : `${due} due − ${tender} received = ${amount} still owed.`,
+    say: (exact ? 'Thank you, that is the exact amount.' : change ? `Thank you. Your change is ${amount}.` : `I received ${tender}. I still need ${amount} to complete the payment.`) + (request?.canFlag ? ' I cannot fulfill that bill request as stated; I can use available bills and coins.' : ''),
+    answer: exact ? 'Choose Exact.' : `Choose ${question.expectedType} and enter ${amount}.`,
+    cash: exact ? 'No bills or coins needed.' : formatBreakdown(request?.expectedBreakdown ?? buildBreakdown(question.expectedAmountCents)),
+    request: request?.canFlag ? 'Flag the impossible request, or build the exact amount with available cash.' : request ? 'Follow the customer’s bill preference using the breakdown below.' : '',
   };
 }
 

@@ -98,6 +98,25 @@ h2 { margin-bottom: 0.5rem; font-size: clamp(1.5rem, 4vw, 2rem); letter-spacing:
 .setup-form, .answer-form, #cash-setup-options, #memory-setup-options, #task-setup-options, #error-detection-setup-options { display: grid; gap: 1.5rem; }
 #cash-setup-options[hidden], #memory-setup-options[hidden], #task-setup-options[hidden], #error-detection-setup-options[hidden] { display: none !important; }
 fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+.practice-section { min-width: 0; margin: 1rem 0; }
+.practice-section h3, .active-practice h3 { font-size: 1.125rem; letter-spacing: 0; margin: 0 0 0.75rem; }
+.practice-recommendation { border-top: 1px solid var(--line); padding: 1rem 0; min-width: 0; }
+.practice-recommendation h4 { margin: 0 0 0.5rem; font-size: 1rem; letter-spacing: 0; }
+.practice-recommendation p, .active-practice p { overflow-wrap: anywhere; margin-bottom: 0.75rem; }
+.practice-recommendation details { margin: 0.75rem 0; }
+.practice-recommendation summary { cursor: pointer; padding: 0.5rem 0; min-height: 44px; font-weight: 600; }
+.practice-note { color: var(--muted); font-size: 0.875rem; }
+.practice-settings { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0.5rem 1rem; margin: 1rem 0; }
+.practice-settings dt { color: var(--muted); }
+.practice-settings dd { margin: 0; font-weight: 600; }
+.practice-settings dt, .practice-settings dd { overflow-wrap: anywhere; }
+.practice-evidence { max-height: 12rem; overflow-y: auto; padding-left: 1.25rem; font-size: 0.875rem; }
+.practice-heading-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; }
+.practice-heading-row label { display: flex; align-items: center; gap: 0.5rem; }
+.practice-heading-row select { min-height: 44px; max-width: 100%; }
+.active-practice { border-left: 3px solid var(--accent); padding-left: 1rem; min-width: 0; }
+.active-practice[hidden] { display: none; }
+#history-recommendations > section { margin: 1.5rem 0; }
 legend { margin-bottom: 0.75rem; font-weight: 750; }
 
 .choice-grid { display: grid; gap: 0.75rem; grid-template-columns: 1fr; }

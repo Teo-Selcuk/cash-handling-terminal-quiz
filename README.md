@@ -4,6 +4,12 @@ A Windows 11 PowerShell practice quiz for teller-style cash handling. It generat
 
 ## Main features
 
+Cash handling offers **Guided practice** (customer dialogue, calculations, what to
+say, and cash guidance) and **Test my knowledge** (timed answers with feedback).
+Select the mode in browser setup, or choose G/T in PowerShell cash setup. Browser
+guided practice is untimed; PowerShell provides an untimed walkthrough before the
+configured answer timer. History labels the mode. See [mode details](docs/cash-session-modes.md).
+
 The [browser edition](https://teo-selcuk.github.io/cash-handling-terminal-quiz/) also includes Number Memory, Task Simulation, and 15 rotating Error Detection games. Ten pattern games cover sequences, interleaving, mirrors, rotations, binary overlays, scales, coordinates, clocks, letter grids, and sorting, each at Easy, Medium, and Hard. One optional continuous-sounds checkbox enables a varying mix of rhythmic and random tonal effects through the quiz.
 
 - Easy, Medium, and Hard difficulty levels
@@ -20,9 +26,9 @@ The [browser edition](https://teo-selcuk.github.io/cash-handling-terminal-quiz/)
 
 ## Files
 
-- `Cash-Handling-Terminal-Quiz-v2.ps1` — runnable PowerShell quiz
-- `Cash-Handling-Terminal-Quiz-v2-copy-paste.txt` — identical copy for opening and copying into PowerShell or another file
-- `README-Cash-Handling-Terminal-Quiz-v2.md` — this guide
+- `Cash-Handling-Terminal-Quiz.ps1` — runnable PowerShell quiz
+- `index.html`, `app.js`, `quiz-core.mjs`, and `style.css` — browser edition
+- `README.md` — this guide
 
 ## Run the quiz
 
@@ -205,8 +211,62 @@ Choose **Clear history** to delete the current CSV. The script requires you to t
 
 ## Browser verification
 
+The website offers **Practice recommendations** on setup, results, and history.
+It uses local history to identify repeated trouble with cash amount bands and
+transaction types, memory digit lengths, task workflows and step counts, and
+error-detection puzzle families. Each plan shows the evidence, proposed settings,
+and why the workload is reduced. Choose **Use practice plan**, review it, and
+start a session. Saved difficulty presets are preserved; **Clear practice plan**
+returns to the selected preset.
+
+Recommendations require at least five comparable observations and two errors.
+Unanswered rounds count against ordinary history accuracy but are excluded from
+skill diagnosis. After sustained success across two completed practice sessions,
+the next plan suggests one small increase. Older history supports only the details
+it actually recorded. All analysis runs on this device without a GPT service or
+API key. See [adaptive practice rules](docs/adaptive-practice.md).
+
+Run `node --test tests/*.test.mjs` for all unit tests and
+`node tests/browser-practice-checks.mjs` for focused practice acceptance, including
+two complete ten-round sessions, progression after refresh, and responsive layouts.
+The latter uses isolated fixture history and writes screenshots to `.artifacts/`.
+Set `QUIZ_LIVE_URL` to the Pages URL to verify the deployed practice recommendations.
+
 Run `node --test tests/web-quiz-core.test.mjs` for the core rules. With Playwright and its Chromium browser installed (and available through `NODE_PATH` if installed outside this repository), run `node tests/browser-smoke.mjs` for isolated, muted browser checks. Set `QUIZ_LIVE_URL` to the Pages URL to run the same checks against the published site.
 
 The browser suite covers all four games and three difficulty presets at 320, 390, 768, 1024, and 1440 pixels, answer/timeout continuation, continuous audio cleanup, cash builder controls, customer bill requests, saved 100-digit memory values, and complete custom 10-step records/casework/invoice workflows. It checks overflow, compact touch targets, and readable task inputs. Each scenario uses fresh browser storage; screenshots go to the temporary directory.
 
 The compact task layout includes 1024-pixel landscape tablets. Case notes remain accessible from the Verification tab so longer casework sequences can be completed without an extra, unrequested tab switch. These checks emulate viewport and touch behavior in Chromium; they do not replace physical iOS/Android device testing.
+
+## QRAlarm performance connection
+
+The browser quiz can provide saved performance evidence to QRAlarm while this
+tab is open. Start the QRAlarm interactive CLI, configure a Cash Handling QR,
+and run `info <QR ID> --connect`. Open its pairing link in this tab or paste it
+into the QRAlarm connection panel. Approve the browser local-network permission
+when prompted. The panel displays Connected, Reconnect required or Unavailable.
+After a tab or QRAlarm restart, obtain a fresh link explicitly. The browser's
+history identifier persists; pairing credentials remain only in memory and are
+removed from the URL fragment.
+
+The connection reads persisted local history, including reached-but-unanswered
+questions and submitted replacements. Completed sessions save evidence version
+2: stable game, difficulty, planned question count, start/completion timestamps,
+elapsed session time and the settings captured at session start. Those settings
+include Auto Continue, continuous-noise preference and maintained playback,
+Cash Builder and customer build requests. Changing setup controls during a quiz
+does not rewrite that snapshot. Older history is preserved but cannot prove
+fields it did not save. Playback evidence describes application audio state,
+not physical speaker volume.
+
+QRAlarm requests measurement fields only; the bridge does not receive answer
+text or serve files/commands. A storage failure is reported explicitly rather
+than returned as an empty successful history. Each fresh unlock needs a matching
+current response; previous successful responses do not authorize it.
+
+The companion acceptance harness in QRAlarm's
+`tests/integration/test_cash_browser.py` exercises this real writer and local
+connection in a disposable Playwright context, including same-tab fragment
+pairing, storage failure and reconnect. Enable `QRALARM_RUN_CASH_BROWSER=1` there.
+The existing Node and browser suites remain the gameplay regression checks.
+Local testing does not publish these companion files to GitHub Pages.

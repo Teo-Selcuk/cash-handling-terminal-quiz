@@ -7,7 +7,7 @@
     <meta name="theme-color" content="#12343b">
     <title>Cash, Memory &amp; Detail Trainer</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="style.css?v=20260905-responsive">
+    <link rel="stylesheet" href="style.css?v=20260908-practice">
   </head>
   <body>
     <main class="app-shell">
@@ -24,6 +24,15 @@
       </header>
 
       <p class="screen-reader-only" id="message" role="status" aria-live="polite"></p>
+
+      <details id="qralarm-connection" class="preset-editor">
+        <summary>QRAlarm connection</summary>
+        <p id="qralarm-status" role="status">Reconnect required — use info &lt;QR ID&gt; --connect in QRAlarm.</p>
+        <label for="qralarm-link">Pairing link from QRAlarm</label>
+        <input id="qralarm-link" type="url" autocomplete="off" spellcheck="false">
+        <button id="qralarm-connect" type="button" class="secondary-button">Connect</button>
+        <p>Keep this tab open. QRAlarm reads saved quiz statistics when checking your requirements.</p>
+      </details>
 
       <section class="screen" id="setup-screen" aria-labelledby="setup-heading">
         <div class="section-heading">
@@ -50,6 +59,17 @@
               <label class="choice-card"><input type="radio" name="difficulty" value="Hard"><span><strong>Hard</strong><small id="hard-description">Up to $5,000, larger differences</small></span></label>
             </div>
           </fieldset>
+
+          <section class="practice-section" aria-labelledby="setup-practice-heading">
+            <h3 id="setup-practice-heading">Practice recommendations</h3>
+            <div id="setup-recommendations"></div>
+          </section>
+          <section id="active-practice" class="active-practice" hidden aria-labelledby="active-practice-title">
+            <h3 id="active-practice-title"></h3>
+            <p id="active-practice-reason"></p>
+            <div id="active-practice-settings"></div>
+            <button id="clear-practice-plan" class="text-button" type="button">Clear practice plan</button>
+          </section>
 
           <label class="toggle-row" for="auto-continue-toggle">
             <input id="auto-continue-toggle" name="autoContinue" type="checkbox">
@@ -157,6 +177,13 @@
           </details>
 
           <div id="cash-setup-options">
+            <fieldset>
+              <legend>Cash session mode</legend>
+              <div class="choice-grid">
+                <label class="choice-card"><input type="radio" name="cashSessionMode" value="testing" checked><span><strong>Test my knowledge</strong><small>Timed questions. Work out the answer yourself, then review your result.</small></span></label>
+                <label class="choice-card"><input type="radio" name="cashSessionMode" value="guided"><span><strong>Guided practice</strong><small>Untimed customer dialogue, worked calculations, what to say, and which cash to use.</small></span></label>
+              </div>
+            </fieldset>
             <div class="form-grid">
               <label for="question-count">Questions
                 <input id="question-count" name="questionCount" type="number" value="10" min="1" max="100" inputmode="numeric" required>
@@ -229,6 +256,7 @@
           </div>
         </section>
 
+        <aside id="cash-guidance" class="setup-note" aria-label="Guided customer practice" hidden></aside>
         <form id="answer-form" class="answer-form">
           <fieldset>
             <legend id="question-heading">What should you do?</legend>
@@ -395,6 +423,10 @@
         <p class="eyebrow">Session complete</p>
         <h2 id="summary-heading" tabindex="-1">Your results</h2>
         <div class="metric-grid" id="session-metrics"></div>
+        <section class="practice-section" aria-labelledby="summary-practice-heading">
+          <h3 id="summary-practice-heading">Your next practice</h3>
+          <div id="summary-recommendations"></div>
+        </section>
         <div class="action-row">
           <button class="primary-button" id="start-another" type="button">Start another game</button>
           <button class="secondary-button" id="summary-history" type="button">View all history</button>
@@ -410,6 +442,18 @@
           <button class="text-button" id="back-to-setup" type="button">Back to setup</button>
         </div>
         <div class="metric-grid" id="history-metrics"></div>
+        <section class="practice-section" aria-labelledby="history-practice-heading">
+          <div class="practice-heading-row">
+            <h3 id="history-practice-heading">Practice recommendations</h3>
+            <label for="recommendation-level">Difficulty
+              <select id="recommendation-level">
+                <option>Easy</option><option>Medium</option><option>Hard</option>
+              </select>
+            </label>
+          </div>
+          <p class="practice-note">Practice history on this device. Recommendations update after each session.</p>
+          <div id="history-recommendations"></div>
+        </section>
         <p class="chart-note">Not answered counts as wrong for accuracy. Refresh keeps completed answers and the current round (including study or briefing), but never counts future rounds you have not reached.</p>
         <section class="history-visuals" aria-label="History visualizations">
           <article class="visual-card" aria-labelledby="outcome-diagram-heading">
@@ -448,6 +492,6 @@
     </main>
 
     <footer>Browser edition. The original PowerShell quiz remains in this repository.</footer>
-    <script type="module" src="app.js?v=20260905-responsive"></script>
+    <script type="module" src="app.js?v=20260908-practice"></script>
   </body>
 </html>

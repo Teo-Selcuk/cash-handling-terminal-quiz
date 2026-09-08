@@ -4062,6 +4062,10 @@
     }
 
     function Start-CashQuiz {
+        do {
+            $sessionMode = (Read-Host 'Cash session mode: G = Guided practice, T = Testing [T]').Trim().ToUpperInvariant()
+        } while ($sessionMode -notin @('', 'G', 'T'))
+        $guidedPractice = $sessionMode -eq 'G'
         $difficulty = Read-Difficulty
         $cashPreset = Get-LevelConfig -Level $difficulty
         $cashConstructionForQuiz = Read-ClickableModeSetting `
@@ -4115,6 +4119,7 @@
         )
 
         $sessionResults = @()
+        $answerMode = "$(if ($guidedPractice) { 'Guided practice' } else { 'Testing' }) | $answerMode"
 
         Show-AnswerSyntaxNote `
             -BillCoinModeEnabled $cashConstructionForQuiz
@@ -4193,6 +4198,23 @@
                 -ForegroundColor White
 
             $usedCashConstructionForQuestion = $cashConstructionForQuiz
+            if ($guidedPractice) {
+                Write-Host 'GUIDED PRACTICE - study this walkthrough before starting the answer timer.' -ForegroundColor Cyan
+                Write-Host "Customer: I'd like to pay $(Format-Money $question.DueCents). Here is my cash."
+                Write-Host "Count: $(Format-Money $question.TenderedCents) received; $(Format-Money $question.DueCents) due."
+                $amount = Format-Money $question.ExpectedAmountCents
+                switch ($question.ExpectedType) {
+                    'Exact' { Write-Host 'Say: Thank you, that is the exact amount. Enter E; select no cash.' }
+                    'Change' { Write-Host "Say: Thank you. Your change is $amount. Subtract the amount due from cash received. Enter C $amount." }
+                    'Short' { Write-Host "Say: I still need $amount to complete the payment. Subtract cash received from the amount due. Enter S $amount." }
+                }
+                if ($null -ne $question.CustomerBillRequest -and $question.CustomerBillRequest.CanFlag) {
+                    Write-Host 'Say: I cannot fulfill that bill request as stated. Flag it or use available bills and coins for the exact amount.'
+                }
+                Write-Host "Cash example: $(Get-RecommendedBreakdownText $question.ExpectedAmountCents)"
+                Write-Host 'If a valid customer bill preference is shown, follow that preference when building cash.'
+                [void](Read-Host 'Press Enter when ready to practise the answer with the configured timer')
+            }
             $questionAnswerMode = $answerMode
 
             if ($cashConstructionForQuiz) {

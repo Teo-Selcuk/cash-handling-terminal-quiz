@@ -4,3 +4,15 @@ Cash-Handling-Quiz-Data/
 Settings.json
 _site/
 node_modules/
+
+# Credentials, local tooling, and generated verification output
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+__pycache__/
+*.pyc
+test-results/
+playwright-report/
+.artifacts/

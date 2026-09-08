@@ -639,7 +639,7 @@ test('provides a browser-only task simulation workflow without leaking instructi
   assert.match(html, /id="task-row-template"/);
   assert.match(html, /id="task-tablist"[^>]*role="tablist"/);
   assert.match(html, /id="task-phase-status"[^>]*role="status"/);
-  assert.match(app, /createTaskChallenge\(state\.difficulty, state\.taskPresets\[state\.difficulty\]\)/);
+  assert.match(app, /createTaskChallenge\(state\.difficulty, \{ \.\.\.sessionPreset\(\), \.\.\.state\.practicePlan\?\.focus \}\)/);
   assert.match(app, /state\.taskPhase = 'briefing'/);
   assert.match(app, /state\.taskPhase = 'demo'/);
   assert.match(app, /state\.taskPhase = 'recall'/);
@@ -862,7 +862,7 @@ test('offers an opt-in customer bill-request flow with an invalid-request flag',
   assert.match(css, /\.customer-bill-request\s*\{/);
 });
 
-test('uses the saved memory preset as the only range and timing configuration', async () => {
+test('uses the session preset for memory ranges and timing, including optional practice plans', async () => {
   const [html, app, css] = await Promise.all([
     readFile(new URL('../index.html', import.meta.url), 'utf8'),
     readFile(new URL('../app.js', import.meta.url), 'utf8'),
@@ -883,7 +883,8 @@ test('uses the saved memory preset as the only range and timing configuration', 
   assert.match(html, /id="memory-answer-list"/);
   assert.doesNotMatch(html, /id="memory-digits"/);
   assert.match(app, /maximumDigits \+ \(state\.memoryChallenge\.decimals \? 1 : 0\)/);
-  assert.match(app, /createMemoryChallenge\(state\.difficulty, state\.memoryPresets\[state\.difficulty\]\)/);
+  assert.match(app, /createMemoryChallenge\(state\.difficulty, sessionPreset\(\)\)/);
+  assert.match(app, /return state\.practicePlan\?\.preset \?\? presetFor\(state\.game, state\.difficulty\)/);
   assert.doesNotMatch(app, /applyMemoryModeDefaults/);
   assert.doesNotMatch(app, /memoryMinimumDigits/);
   assert.doesNotMatch(app, /state\.memory(?:Read|Write)Seconds/);
