@@ -446,6 +446,8 @@ input:disabled { background: var(--disabled-surface); color: var(--muted); }
 .chart-legend li { display: flex; gap: 0.5rem; align-items: center; }
 .legend-marker { width: 0.75rem; height: 0.75rem; flex: 0 0 auto; border-radius: 999rem; }
 .bar-chart { display: grid; gap: 0.875rem; margin-top: 1.25rem; }
+.bar-chart-axis { display: grid; grid-template-columns: 4rem minmax(0, 1fr); gap: 0.5rem; color: var(--muted); font-size: 0.75rem; font-weight: 750; font-variant-numeric: tabular-nums; }
+.bar-chart-axis span:last-child { word-spacing: 0.45rem; }
 .bar-chart-row { display: grid; gap: 0.5rem; grid-template-columns: 4rem minmax(0, 1fr); align-items: center; }
 .bar-chart-label { font-weight: 750; }
 .bar-chart-track { height: 0.875rem; overflow: hidden; border-radius: 999rem; background: var(--surface); }

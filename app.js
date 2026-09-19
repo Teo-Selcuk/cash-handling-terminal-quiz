@@ -2430,7 +2430,14 @@ function renderHistoryVisuals(summary) {
     return item;
   }));
 
-  refs['history-accuracy-chart'].replaceChildren(...summary.byDifficulty.map((level) => {
+  const accuracyAxis = document.createElement('div');
+  accuracyAxis.className = 'bar-chart-axis';
+  const category = document.createElement('span');
+  category.textContent = 'Difficulty';
+  const scale = document.createElement('span');
+  scale.textContent = 'Accuracy (%)  0%   20%   40%   60%   80%   100%';
+  accuracyAxis.append(category, scale);
+  refs['history-accuracy-chart'].replaceChildren(accuracyAxis, ...summary.byDifficulty.map((level) => {
     const row = document.createElement('div');
     row.className = 'bar-chart-row';
     const label = document.createElement('span');
