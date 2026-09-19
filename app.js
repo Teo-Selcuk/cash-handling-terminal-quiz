@@ -2538,6 +2538,50 @@ function appendFacetFilter(target, field) {
   target.append(group);
 }
 
+function appendSessionFilter(target, field) {
+  const options = field.options ?? [];
+  const group = document.createElement('fieldset');
+  group.className = 'history-filter-group history-session-filter';
+  const picker = document.createElement('details');
+  picker.className = 'history-session-picker';
+  picker.open = historyView.openFacet === field.id;
+  picker.addEventListener('toggle', () => { historyView.openFacet = picker.open ? field.id : null; });
+  const summary = document.createElement('summary');
+  const path = fieldPath(field.id);
+  const active = readFilterPath(path) ?? [];
+  summary.textContent = `Sessions${active.length ? ` (${active.length} selected)` : ''}`;
+  picker.append(summary);
+  const panel = document.createElement('div');
+  panel.className = 'history-session-options';
+  if (!options.length) {
+    panel.textContent = 'No session identifiers were recorded yet.';
+  } else {
+    for (const option of options) {
+      const label = document.createElement('label');
+      label.className = 'history-facet';
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.checked = active.some((item) => String(item) === String(option));
+      input.addEventListener('change', () => {
+        const next = [...(readFilterPath(path) ?? [])];
+        const found = next.findIndex((item) => String(item) === String(option));
+        if (input.checked && found < 0) next.push(option);
+        if (!input.checked && found >= 0) next.splice(found, 1);
+        writeFilterPath(path, next.length ? next : undefined);
+        historyView.openFacet = field.id;
+        rerenderHistoryForFilter();
+      });
+      const text = document.createElement('span');
+      text.textContent = option;
+      label.append(input, text);
+      panel.append(label);
+    }
+  }
+  picker.append(panel);
+  group.append(picker);
+  target.append(group);
+}
+
 function appendRangeFilter(target, field) {
   const group = document.createElement('fieldset');
   group.className = 'history-filter-group history-range-filter';
@@ -2658,6 +2702,7 @@ function renderHistoryFilters(records) {
   for (const field of definition.fields) {
     const target = field.id.includes('.') ? refs['history-game-filters'] : refs['history-common-filters'];
     if (field.id === 'optionalModes') appendOptionalModesFilter(target);
+    else if (field.id === 'sessions') appendSessionFilter(target, field);
     else if (field.type === 'range') appendRangeFilter(target, field);
     else if (field.type === 'boolean') appendBooleanFilter(target, field);
     else if (field.type === 'facet') appendFacetFilter(target, field);
@@ -2685,6 +2730,33 @@ function chartValue(point, metric) {
   if (metric === 'time') return `${Number(point.value).toFixed(1)}s`;
   if (metric === 'attempts') return `${point.value}`;
   return `${point.value}%`;
+}
+
+function chartAxisLabel(metric) {
+  if (metric === 'time') return 'Response time (seconds)';
+  if (metric === 'attempts') return 'Attempts';
+  return 'Accuracy (%)';
+}
+
+function chartTickStep(max, metric) {
+  if (metric === 'accuracy') return 20;
+  const rough = Math.max(1, max) / 4;
+  const magnitude = 10 ** Math.floor(Math.log10(rough));
+  const normalized = rough / magnitude;
+  return (normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10) * magnitude;
+}
+
+function chartScale(values, metric) {
+  const maximum = Math.max(0, ...values.filter(Number.isFinite));
+  const step = chartTickStep(maximum, metric);
+  const max = metric === 'accuracy' ? 100 : Math.max(step, Math.ceil(maximum / step) * step);
+  const ticks = [];
+  for (let value = 0; value <= max + step / 100; value += step) ticks.push(Number(value.toFixed(8)));
+  return { max, ticks };
+}
+
+function chartTickValue(value, metric) {
+  return metric === 'time' ? `${value}s` : metric === 'accuracy' ? `${value}%` : String(value);
 }
 
 function openAttemptDetails(records, attemptIds, heading) {
@@ -2758,21 +2830,66 @@ function renderChartCard(spec, records) {
     card.append(empty);
     return card;
   }
-  const svg = chartSvgElement('svg', { class: 'analytics-svg', viewBox: '0 0 720 260', role: 'img', 'aria-label': `${spec.title}. Each mark can be selected to inspect exact attempts.` });
-  const values = points.map((point) => Number(point.value)).filter(Number.isFinite);
-  const max = Math.max(1, ...values);
-  const width = 660 / Math.max(points.length, 1);
+  const svg = chartSvgElement('svg', { class: 'analytics-svg', viewBox: '0 0 760 330', role: 'img', 'aria-label': `${spec.title}. Each mark can be selected to inspect exact attempts.` });
+  const plot = { left: 72, right: 24, top: 24, bottom: 254 };
+  const plotWidth = 760 - plot.left - plot.right;
+  const plotHeight = plot.bottom - plot.top;
+  const metric = series.metric;
+  const values = points.map((point) => Number(spec.kind === 'scatter' ? point.y : point.value)).filter(Number.isFinite);
+  const scale = chartScale(values, metric);
+  const yFor = (value) => plot.bottom - (Number(value) / scale.max * plotHeight);
+  const xValues = spec.kind === 'scatter' ? points.map((point) => Number(point.x)).filter(Number.isFinite) : [];
+  const xScale = spec.kind === 'scatter' ? chartScale(xValues, 'time') : null;
+  const xFor = (point, index) => spec.kind === 'scatter'
+    ? plot.left + (Number(point.x) / xScale.max * plotWidth)
+    : plot.left + ((index + 0.5) / Math.max(points.length, 1) * plotWidth);
+  const yAxis = chartSvgElement('g', { class: 'chart-axis chart-y-axis' });
+  scale.ticks.forEach((tick) => {
+    const y = yFor(tick);
+    yAxis.append(chartSvgElement('line', { class: 'chart-grid-line', x1: plot.left, y1: y, x2: plot.left + plotWidth, y2: y }));
+    const label = chartSvgElement('text', { class: 'chart-y-tick', x: plot.left - 8, y: y + 4, 'text-anchor': 'end' });
+    label.textContent = chartTickValue(tick, metric);
+    yAxis.append(label);
+  });
+  yAxis.append(chartSvgElement('line', { class: 'chart-axis-line', x1: plot.left, y1: plot.top, x2: plot.left, y2: plot.bottom }));
+  const yTitle = chartSvgElement('text', { class: 'chart-axis-title', x: 16, y: (plot.top + plot.bottom) / 2, transform: `rotate(-90 16 ${(plot.top + plot.bottom) / 2})`, 'text-anchor': 'middle' });
+  yTitle.textContent = chartAxisLabel(metric);
+  yAxis.append(yTitle);
+  const xAxis = chartSvgElement('g', { class: 'chart-axis chart-x-axis' });
+  xAxis.append(chartSvgElement('line', { class: 'chart-axis-line', x1: plot.left, y1: plot.bottom, x2: plot.left + plotWidth, y2: plot.bottom }));
+  const tickIndexes = points.length <= 6 ? points.map((_, index) => index) : [...new Set([0, Math.round((points.length - 1) / 4), Math.round((points.length - 1) / 2), Math.round((points.length - 1) * 3 / 4), points.length - 1])];
+  if (spec.kind === 'scatter') {
+    xScale.ticks.forEach((tick) => {
+      const x = plot.left + (tick / xScale.max * plotWidth);
+      xAxis.append(chartSvgElement('line', { class: 'chart-axis-line', x1: x, y1: plot.bottom, x2: x, y2: plot.bottom + 5 }));
+      const label = chartSvgElement('text', { class: 'chart-x-tick', x, y: plot.bottom + 19, 'text-anchor': 'middle' });
+      label.textContent = chartTickValue(tick, 'time');
+      xAxis.append(label);
+    });
+  } else tickIndexes.forEach((index) => {
+    const x = xFor(points[index], index);
+    xAxis.append(chartSvgElement('line', { class: 'chart-axis-line', x1: x, y1: plot.bottom, x2: x, y2: plot.bottom + 5 }));
+    const label = chartSvgElement('text', { class: 'chart-x-tick', x, y: plot.bottom + 19, 'text-anchor': 'middle' });
+    label.textContent = points[index].label.length > 12 ? `${points[index].label.slice(0, 11)}…` : points[index].label;
+    xAxis.append(label);
+  });
+  const xTitle = chartSvgElement('text', { class: 'chart-axis-title', x: plot.left + plotWidth / 2, y: 320, 'text-anchor': 'middle' });
+  xTitle.textContent = spec.kind === 'scatter' ? 'Response time (seconds)' : points.every((point) => /^\d{4}-\d{2}-\d{2}$/.test(point.label)) ? 'Date' : 'Category';
+  xAxis.append(xTitle);
+  svg.append(yAxis, xAxis);
+  const linePoints = [];
   points.forEach((point, index) => {
-    if (!Number.isFinite(Number(point.value))) return;
-    const height = Math.max(2, Number(point.value) / max * 160);
-    const x = 38 + index * width + Math.max(2, width * 0.14);
-    const y = 202 - height;
+    const value = Number(spec.kind === 'scatter' ? point.y : point.value);
+    if (!Number.isFinite(value)) return;
+    const x = xFor(point, index);
+    const y = yFor(value);
+    const width = plotWidth / Math.max(points.length, 1);
+    const height = Math.max(2, plot.bottom - y);
+    if (spec.kind === 'line') linePoints.push(`${x},${y}`);
     const mark = chartSvgElement('g', { class: 'analytics-mark', role: 'button', tabindex: '0', 'aria-label': `${point.label}: ${chartValue(point, series.metric)} from ${point.attemptIds.length} attempts` });
     const shape = chartSvgElement(spec.kind === 'line' || spec.kind === 'scatter' ? 'circle' : 'rect', spec.kind === 'line' || spec.kind === 'scatter'
-      ? { cx: x + width * 0.32, cy: y, r: Math.max(4, Math.min(9, width * 0.18)) }
-      : { x, y, width: Math.max(5, width * 0.64), height, rx: 2 });
-    const label = chartSvgElement('text', { x: x + width * 0.32, y: 224, 'text-anchor': 'middle' });
-    label.textContent = point.label.length > 12 ? `${point.label.slice(0, 11)}…` : point.label;
+      ? { cx: x, cy: y, r: Math.max(4, Math.min(8, width * 0.18)) }
+      : { x: x - Math.max(3, width * 0.32), y, width: Math.max(5, width * 0.64), height, rx: 2 });
     const activate = () => openAttemptDetails(records, point.attemptIds, `${spec.title}: ${point.label}`);
     mark.addEventListener('click', activate);
     mark.addEventListener('keydown', (event) => {
@@ -2780,9 +2897,20 @@ function renderChartCard(spec, records) {
     });
     mark.addEventListener('mouseenter', () => { status.textContent = `${point.label}: ${chartValue(point, series.metric)} from ${point.attemptIds.length} attempt${point.attemptIds.length === 1 ? '' : 's'}.`; });
     mark.addEventListener('focus', () => { status.textContent = `${point.label}: ${chartValue(point, series.metric)} from ${point.attemptIds.length} attempt${point.attemptIds.length === 1 ? '' : 's'}.`; });
-    mark.append(shape, label);
+    const tooltip = chartSvgElement('title');
+    tooltip.textContent = `${point.label}: ${chartValue(point, series.metric)}`;
+    mark.append(tooltip, shape);
+    if (spec.kind === 'bar' || points.length <= 8) {
+      const label = chartSvgElement('text', { class: 'chart-value-label', x, y: Math.max(plot.top + 11, y - 7), 'text-anchor': 'middle' });
+      label.textContent = chartValue(point, series.metric);
+      mark.append(label);
+    }
     svg.append(mark);
   });
+  if (linePoints.length > 1) {
+    const path = chartSvgElement('polyline', { class: 'chart-series-line', points: linePoints.join(' '), fill: 'none' });
+    svg.insertBefore(path, svg.querySelector('.analytics-mark'));
+  }
   card.append(svg);
   if (view.compare) {
     const compare = document.createElement('p');

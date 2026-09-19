@@ -28,6 +28,11 @@ const fixtures = [
   })),
 ];
 
+const manySessions = Array.from({ length: 300 }, (_, index) => base('cash', index + 100, {
+  sessionId: `scrollable-session-${String(index + 1).padStart(3, '0')}`,
+  timeUsedSeconds: 4 + (index % 24),
+}));
+
 const labels = {
   cash: ['Contains denominations', 'Total pieces', 'Customer request'],
   memory: ['Digits per value', 'Total digit load', 'Mismatch position'],
@@ -41,7 +46,7 @@ export async function checkProgress(browser, site) {
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
   page.on('response', (response) => { if (response.status() >= 400) errors.push(`${response.status()} ${response.url()}`); });
-  await page.addInitScript(({ key, rows }) => localStorage.setItem(key, JSON.stringify(rows)), { key: historyKey, rows: fixtures });
+  await page.addInitScript(({ key, rows }) => localStorage.setItem(key, JSON.stringify(rows)), { key: historyKey, rows: [...fixtures, ...manySessions] });
   try {
     await page.goto(site);
     await page.locator('#open-history').click();
@@ -49,6 +54,16 @@ export async function checkProgress(browser, site) {
     assert.equal(await page.locator('#qralarm-connection').evaluate((details) => details.open), false);
     await page.locator('#qralarm-connection summary').click();
     assert.equal(await page.locator('#qralarm-connection').evaluate((details) => details.open), true);
+    const sessions = page.locator('.history-session-picker');
+    assert.equal(await sessions.count(), 1);
+    assert.equal(await sessions.locator('input[type="checkbox"]').count(), 324);
+    assert.equal(await sessions.evaluate((picker) => picker.open), false);
+    await sessions.locator('summary').click();
+    assert.equal(await sessions.evaluate((picker) => picker.open), true);
+    assert.ok(await sessions.locator('.history-session-options').evaluate((panel) => panel.scrollHeight > panel.clientHeight), 'large session list scrolls inside its bounded picker');
+    assert.ok(await sessions.evaluate((picker) => picker.getBoundingClientRect().height < 100), 'opening session picker does not stretch the page');
+    await sessions.locator('label').filter({ hasText: 'scrollable-session-300' }).click();
+    assert.equal(await sessions.locator('input[type="checkbox"]:checked').count(), 1);
     for (const game of Object.keys(labels)) {
       await page.locator(`#history-game-tabs button[data-history-game="${game}"]`).click();
       const text = await page.locator('#history-game-filters').textContent();
@@ -62,6 +77,11 @@ export async function checkProgress(browser, site) {
     await page.locator('#history-quick-ranges button[data-history-range="50a"]').click();
     assert.equal(await page.locator('#history-quick-ranges button[data-history-range="50a"]').getAttribute('aria-pressed'), 'true');
     const chart = page.locator('#history-charts .interactive-chart').first();
+    assert.ok(await chart.locator('.chart-axis').count() >= 2, 'charts render visible X and Y axes');
+    assert.ok(await chart.locator('.chart-axis-title').count() >= 2, 'charts label both axes');
+    assert.ok(await chart.locator('.chart-y-tick').count() >= 3, 'charts show numeric Y-axis ticks');
+    assert.equal(await chart.locator('.chart-series-line').count(), 1, 'time-series points are connected');
+    assert.ok(await page.locator('#history-charts .interactive-chart').locator('.chart-value-label').count(), 'bar chart values are visible');
     await chart.getByRole('button', { name: 'Hide data' }).click();
     await chart.getByRole('button', { name: 'Show data' }).click();
     await chart.getByRole('button', { name: 'Zoom in' }).click();
