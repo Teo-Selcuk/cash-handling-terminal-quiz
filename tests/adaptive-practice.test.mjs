@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { recommendPractice } from '../adaptive-practice.mjs';
+import { rankPracticeCandidates, recommendPractice } from '../adaptive-practice.mjs';
 import { createQuestion, createTaskChallenge, resolveMemoryDifficultyPreset } from '../quiz-core.mjs';
 
 const history = (game, count, extra = {}) => Array.from({ length: count }, (_, i) => ({
@@ -172,4 +172,22 @@ test('unrelated old failures do not overwhelm the latest 120 reached rounds', ()
   const recent = history('memory', 120, { outcome: 'Correct', expectedValues: ['1234567'], answeredValues: ['1234567'] })
     .map((r, i) => ({ ...r, sessionId: `new-${i}`, timestamp: new Date(Date.UTC(2026, 8, 3, 0, i)).toISOString() }));
   assert.equal(recommendPractice([...old, ...recent], 'memory', 'Easy').plans.length, 0);
+});
+
+test('ranks a speed-only weak group deterministically without making unrelated settings harder', () => {
+  const slow = history('memory', 6, {
+    outcome: 'Correct', expectedValues: ['12345678'], answeredValues: ['12345678'],
+    readTimeSeconds: 5, writeTimeSeconds: 10, timeUsedSeconds: 20,
+  });
+  const fast = history('memory', 6, {
+    outcome: 'Correct', expectedValues: ['1234'], answeredValues: ['1234'],
+    readTimeSeconds: 5, writeTimeSeconds: 10, timeUsedSeconds: 5,
+  }).map((row, index) => ({ ...row, sessionId: `fast-${index}` }));
+  const plans = recommendPractice([...slow, ...fast], 'memory', 'Easy').plans;
+  assert.ok(plans.some((plan) => plan.evidenceStats?.speedSlowdownPercent >= 20));
+  const ranked = rankPracticeCandidates([...slow, ...fast]);
+  assert.equal(ranked[0].game, 'memory');
+  assert.equal(ranked[0].axis, 'digits');
+  assert.equal(ranked[0].preset.maximumDigits, 7);
+  assert.deepEqual(rankPracticeCandidates([...slow, ...fast]), ranked);
 });

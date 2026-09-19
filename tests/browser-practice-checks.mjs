@@ -13,7 +13,7 @@ const presetsKey = 'cash-handling-terminal-quiz-presets-v1';
 const server = createServer(async (request, response) => {
   const path = new URL(request.url, 'http://localhost').pathname;
   const file = path === '/' ? 'index.html' : path.slice(1);
-  if (!['index.html', 'app.js', 'style.css', 'quiz-core.mjs', 'pattern-games.mjs', 'distraction-sounds.mjs', 'adaptive-practice.mjs'].includes(file)) {
+  if (!['index.html', 'app.js', 'style.css', 'quiz-core.mjs', 'pattern-games.mjs', 'distraction-sounds.mjs', 'adaptive-practice.mjs', 'progress-analytics.mjs'].includes(file)) {
     response.writeHead(404).end(); return;
   }
   response.setHeader('Content-Type', ({ '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.mjs': 'text/javascript' })[extname(file)]);
@@ -93,8 +93,14 @@ try {
         await page.reload();
       }
       await page.locator('#open-history').click();
-      assert.equal(await page.locator('#history-recommendations > section').count(), 4);
-      await page.locator('#history-recommendations summary').first().click();
+      assert.equal(await page.locator('#history-game-tabs button').count(), 5);
+      assert.equal(await page.locator('#history-recommendations .practice-recommendation').count(), 1);
+      assert.ok(await page.locator('#history-charts .interactive-chart').count());
+      await page.locator('#history-charts .analytics-mark').first().click();
+      assert.equal(await page.locator('#attempt-detail-dialog').evaluate((dialog) => dialog.open), true);
+      await page.locator('#close-attempt-detail').click();
+      await page.locator('#history-game-tabs button').filter({ hasText: ({ cash: 'Cash Handling', memory: 'Number Memory', task: 'Task Simulation', 'error-detection': 'Error Detection' })[game] }).click();
+      assert.ok(await page.locator('#history-game-filters').textContent());
       for (const width of [320, 390, 768, 1024, 1440]) {
         await page.setViewportSize({ width, height: 900 });
         assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${game}: fits ${width}px`);
@@ -104,9 +110,6 @@ try {
         await page.setViewportSize({ width: 390, height: 844 });
         await page.screenshot({ path: resolve(root, '.artifacts/practice-history-mobile.png'), fullPage: true });
       }
-      await page.locator('#recommendation-level').selectOption('Hard');
-      assert.equal(await page.locator('#history-recommendations .practice-recommendation').count(), 0);
-      await page.locator('#recommendation-level').selectOption('Easy');
       await page.locator('#history-recommendations button').first().click();
       await page.locator('#clear-practice-plan').click();
       assert.equal(await page.locator('#active-practice').isVisible(), false);

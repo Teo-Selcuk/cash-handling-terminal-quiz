@@ -16,6 +16,7 @@ export async function checkHistory(browser, base) {
           await answer(page, game);
           await page.locator('#feedback-screen').waitFor({ state: 'visible' });
           outcome = await page.locator('#feedback-heading').textContent() === 'Correct' ? 'Correct' : 'Incorrect';
+          await assertSavedGameMechanics(page, game);
           if (game === 'memory') assert.equal(outcome, 'Correct');
           if (phase === 'next') await page.locator('#next-question').click();
         }
@@ -42,6 +43,34 @@ export async function checkHistory(browser, base) {
       } finally { await page.context().close(); }
     }
     console.log(`${game}: initial/active/feedback/next refresh retains only reached rounds without duplicates`);
+  }
+}
+
+async function assertSavedGameMechanics(page, game) {
+  const record = await page.evaluate(() => {
+    const rows = JSON.parse(localStorage.getItem('cash-handling-terminal-quiz-history-v1') || '[]');
+    return rows.at(-1);
+  });
+  if (game === 'cash') {
+    assert.ok(Array.isArray(record.tenderBreakdown));
+    assert.ok(Number.isInteger(record.tenderPieceCount));
+    assert.ok(['Exact', 'Change', 'Short'].includes(record.cashTransactionType));
+  }
+  if (game === 'memory') {
+    assert.ok(Number.isInteger(record.totalDigits));
+    assert.equal(typeof record.decimalMode, 'boolean');
+    assert.ok(Array.isArray(record.mismatchPositions));
+  }
+  if (game === 'task') {
+    assert.ok(Number.isInteger(record.workspaceRows));
+    assert.ok(Number.isInteger(record.workspaceTabs));
+    assert.ok(Array.isArray(record.expectedActionCategories));
+    assert.ok(Array.isArray(record.taskMistakeCategories));
+  }
+  if (game === 'error-detection') {
+    assert.ok(['Visual', 'Analytical'].includes(record.puzzleType));
+    assert.equal(typeof record.cleanPuzzle, 'boolean');
+    assert.ok(Number.isInteger(record.missedAnomalyCount));
   }
 }
 

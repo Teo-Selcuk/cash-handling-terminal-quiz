@@ -1,6 +1,10 @@
 import { PATTERN_GAME_NAMES } from './pattern-games.mjs';
 import { createDistractionSamples } from './distraction-sounds.mjs';
-import { PRACTICE_GAMES, recommendPractice, practiceSettings } from './adaptive-practice.mjs';
+import { PRACTICE_GAMES, rankPracticeCandidates, recommendPractice, practiceSettings } from './adaptive-practice.mjs?v=20260918-progress';
+import {
+  buildChartSpecs, buildGameFilters, buildProgressModel, comparePeriods,
+  filterHistory, recommendNextChallenge,
+} from './progress-analytics.mjs?v=20260918-progress';
 import {
   DENOMINATIONS,
   DIFFICULTY_CONFIG,
@@ -35,6 +39,7 @@ import {
 const HISTORY_KEY = 'cash-handling-terminal-quiz-history-v1';
 const THEME_KEY = 'cash-handling-terminal-quiz-theme-v1';
 const PRESET_KEY = 'cash-handling-terminal-quiz-presets-v1';
+const CURRENT_CHALLENGE_KEY = 'cash-handling-terminal-quiz-current-challenge-v1';
 const screens = ['setup', 'quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'error-detection-briefing', 'error-detection', 'feedback', 'summary', 'history'];
 const refs = Object.fromEntries([
   'setup-form', 'setup-screen', 'quiz-screen', 'feedback-screen', 'summary-screen', 'history-screen',
@@ -46,6 +51,9 @@ const refs = Object.fromEntries([
   'start-another', 'summary-history', 'open-history', 'back-to-setup', 'history-metrics',
   'history-outcome-diagram', 'history-outcome-legend', 'history-outcomes-summary', 'history-accuracy-chart',
   'history-rows', 'download-csv', 'clear-history', 'message', 'submit-answer', 'theme-toggle',
+  'history-game-tabs', 'history-quick-ranges', 'history-common-filters', 'history-game-filters', 'clear-history-filters',
+  'history-charts', 'history-comparison', 'history-recommendations', 'previous-challenges',
+  'attempt-detail-dialog', 'attempt-detail-summary', 'attempt-detail-content', 'close-attempt-detail',
   'memory-question-count', 'memory-read-progress', 'memory-read-timer', 'memory-number', 'memory-read-hint', 'memory-answer-now',
   'memory-answer-form', 'memory-answer-list', 'memory-answer-progress', 'memory-answer-timer', 'memory-answer-heading', 'summary-heading',
   'task-question-count', 'task-briefing-progress', 'task-briefing-timer', 'task-briefing-heading', 'task-briefing-title', 'task-instruction-list', 'task-start-demo',
@@ -64,6 +72,7 @@ const refs = Object.fromEntries([
 ].map((id) => [id, document.getElementById(id)]));
 
 const savedPresetState = loadPresetState();
+const historyView = { filters: { game: 'all' }, activeRange: 'all', charts: new Map() };
 
 const state = {
   activeScreen: 'setup',
@@ -86,6 +95,7 @@ const state = {
   taskPresets: savedPresetState.task,
   errorDetectionPresets: savedPresetState.errorDetection,
   practicePlan: null,
+  currentChallenge: loadCurrentChallenge(),
   questionNumber: 0,
   question: null,
   results: [],
@@ -370,6 +380,37 @@ function getHistory(strict = false) {
   }
 }
 
+function loadCurrentChallenge() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(CURRENT_CHALLENGE_KEY) ?? 'null');
+    return saved && typeof saved === 'object' && typeof saved.id === 'string' && typeof saved.game === 'string' ? saved : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveCurrentChallenge(plan) {
+  if (!plan?.id || !plan?.game || !plan?.difficulty) return;
+  const compact = {
+    id: plan.id, game: plan.game, difficulty: plan.difficulty, stage: plan.stage ?? 0,
+    title: plan.title, target: plan.target, reason: plan.reason, basis: plan.basis,
+    preset: plan.preset, focus: plan.focus, options: plan.options, axis: plan.axis,
+    questionCount: plan.questionCount, weaknessKey: plan.weaknessKey,
+  };
+  try {
+    localStorage.setItem(CURRENT_CHALLENGE_KEY, JSON.stringify(compact));
+    state.currentChallenge = compact;
+  } catch {
+    setMessage('This browser could not save the current challenge. Your history is unchanged.');
+  }
+}
+
+function clearCurrentChallenge() {
+  localStorage.removeItem(CURRENT_CHALLENGE_KEY);
+  state.currentChallenge = null;
+  if (state.activeScreen === 'history') renderHistory();
+}
+
 function saveHistory(history) {
   try {
     localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
@@ -610,7 +651,7 @@ function renderPracticeRecommendations(target, game, difficulty, history = getHi
   summary.className = 'practice-note';
   summary.textContent = `${result.message}${result.unanswered ? ` ${result.unanswered} unanswered rounds excluded from these recommendations.` : ''}`;
   target.append(summary);
-  for (const plan of result.plans) {
+  for (const plan of result.plans.slice(0, 1)) {
     const item = document.createElement('article');
     item.className = 'practice-recommendation';
     const title = document.createElement('h4');
@@ -1025,6 +1066,10 @@ function recordAnswer(answer, score, timedOut, elapsedSeconds) {
   const customerRequest = question.customerBillRequest;
   const outcome = timedOut ? 'Timed Out' : score.correct ? 'Correct' : 'Incorrect';
   const declaredAmount = answer ? formatMoney(answer.amountCents) : '';
+  const tenderBreakdown = question.breakdown.map(({ cents, category, count, singular, plural }) => ({ cents, category, count, singular, plural }));
+  const tenderBillCount = tenderBreakdown.filter((item) => item.category === 'Bill').reduce((sum, item) => sum + item.count, 0);
+  const tenderCoinCount = tenderBreakdown.filter((item) => item.category === 'Coin').reduce((sum, item) => sum + item.count, 0);
+  const transactionType = question.expectedType;
   return {
     timestamp: new Date().toISOString(),
     sessionId: state.sessionId,
@@ -1040,6 +1085,14 @@ function recordAnswer(answer, score, timedOut, elapsedSeconds) {
     cashGivenTotal: formatMoney(question.tenderedCents),
     cashGivenCents: question.tenderedCents,
     cashBreakdown: question.breakdownText,
+    tenderBreakdown,
+    tenderDenominationCounts: Object.fromEntries(tenderBreakdown.map((item) => [item.cents, item.count])),
+    tenderBillCount,
+    tenderCoinCount,
+    tenderPieceCount: tenderBillCount + tenderCoinCount,
+    tenderDenominationTypes: tenderBreakdown.length,
+    cashTransactionType: transactionType,
+    changeOrShortfallCents: question.expectedAmountCents,
     expectedAnswer: expectedAnswerText(question),
     recommendedBreakdown: formatBreakdown(customerRequest?.expectedBreakdown ?? buildBreakdown(question.expectedAmountCents)),
     userAnswer: answer?.type ?? '',
@@ -1052,6 +1105,7 @@ function recordAnswer(answer, score, timedOut, elapsedSeconds) {
     customerBillRequest: customerRequest?.text ?? '',
     customerBillRequestKind: customerRequest?.kind ?? '',
     customerBillRequestHandling: customerRequestHandlingText(customerRequest, score),
+    customerRequestResult: customerRequest ? (score.customerRequestMatches ? 'Handled' : 'Not handled') : 'Not requested',
     outcome,
   };
 }
@@ -1178,6 +1232,19 @@ function showMemoryAnswer() {
 
 function recordMemoryAnswer(answer, score, timedOut, elapsedSeconds) {
   const challenge = state.memoryChallenge;
+  const expectedValues = [...challenge.values];
+  const normalizedAnswer = answer.map((value) => String(value ?? '').replaceAll(/\s/g, ''));
+  const mismatchPositions = [];
+  let correctValueCount = 0;
+  expectedValues.forEach((expected, index) => {
+    const received = normalizedAnswer[index] ?? '';
+    if (expected === received) correctValueCount += 1;
+    const expectedDigits = expected.replace('.', '');
+    const receivedDigits = received.replace('.', '');
+    for (let position = 0; position < expectedDigits.length; position += 1) {
+      if (expectedDigits[position] !== receivedDigits[position]) mismatchPositions.push(position + 1);
+    }
+  });
   return {
     timestamp: new Date().toISOString(),
     sessionId: state.sessionId,
@@ -1185,13 +1252,18 @@ function recordMemoryAnswer(answer, score, timedOut, elapsedSeconds) {
     difficulty: state.difficulty,
     questionNumber: state.questionNumber,
     valueCount: challenge.valueCount,
-    expectedValues: [...challenge.values],
+    expectedValues,
     answeredValues: [...answer],
     digitsByValue: [...challenge.digitsByValue],
+    totalDigits: challenge.digitsByValue.reduce((sum, digits) => sum + digits, 0),
+    decimalMode: challenge.values.some((value) => value.includes('.')),
     digitsPerValue: `${challenge.minimumDigits}–${challenge.maximumDigits}`,
     readTimeSeconds: challenge.readSeconds,
     writeTimeSeconds: challenge.writeSeconds,
     timeUsedSeconds: Number(elapsedSeconds.toFixed(1)),
+    answerDurationSeconds: Number(elapsedSeconds.toFixed(1)),
+    correctValueCount,
+    mismatchPositions: [...new Set(mismatchPositions)],
     expectedAnswer: `Values: ${challenge.value}`,
     userAnswer: answer.join(' • '),
     outcome: timedOut ? 'Timed Out' : score.correct ? 'Correct' : 'Incorrect',
@@ -1449,13 +1521,16 @@ function recordErrorDetectionAttempt(score, timedOut, elapsedSeconds) {
     scenario: challenge.title,
     puzzleFamily: errorDetectionFamilyLabel(challenge.family),
     puzzleFamilyId: challenge.family,
+    puzzleType: challenge.puzzle.visual ? 'Visual' : 'Analytical',
     ruleLayers: challenge.ruleLayers,
     rule: challenge.rule,
     detailCount: challenge.detailsCount,
     expectedErrorCount: score.errorCount,
     selectedErrorCount: score.selectedDetailIds.length,
     correctlyFlagged: score.correctlyFlagged,
+    missedAnomalyCount: score.missedErrorIds.length,
     falseFlagCount: score.falseFlagIds.length,
+    cleanPuzzle: score.errorCount === 0,
     missedErrors: describeErrorDetails(score.missedErrorIds, true),
     falseFlags: describeErrorDetails(score.falseFlagIds),
     timeLimitSeconds: challenge.timeLimitSeconds,
@@ -2141,20 +2216,60 @@ function taskActionDescription(action) {
   return labels[action.type] ?? 'Used a workspace control';
 }
 
+function taskActionMatches(expected, action) {
+  if (!expected || !action || expected.type !== action.type || expected.targetId !== action.targetId) return false;
+  if (expected.value === undefined) return true;
+  return typeof expected.value === 'boolean' ? expected.value === action.value : String(expected.value) === String(action.value ?? '');
+}
+
+function taskActionAnalytics(challenge, actionLog) {
+  const expected = challenge.steps;
+  const completed = [];
+  const extra = [];
+  const outOfOrder = [];
+  let next = 0;
+  for (const action of actionLog) {
+    if (taskActionMatches(expected[next], action)) {
+      completed.push(action.type);
+      next += 1;
+    } else if (expected.slice(next + 1).some((step) => taskActionMatches(step, action))) outOfOrder.push(action.type);
+    else extra.push(action.type);
+  }
+  return {
+    expectedActionCategories: [...new Set(expected.map((step) => step.type))],
+    completedActionCategories: [...new Set(completed)],
+    taskMissingActions: [...new Set(expected.slice(next).map((step) => step.type))],
+    taskExtraActions: [...new Set(extra)],
+    taskOutOfOrderActions: [...new Set(outOfOrder)],
+    taskMistakeCategories: [...new Set([
+      ...(next < expected.length ? ['missing'] : []),
+      ...(extra.length ? ['extra'] : []),
+      ...(outOfOrder.length ? ['out-of-order'] : []),
+    ])],
+  };
+}
+
 function recordTaskAttempt(score, timedOut, elapsedSeconds) {
   const challenge = state.taskChallenge;
+  const actionAnalytics = taskActionAnalytics(challenge, state.taskActionLog);
   return {
     timestamp: new Date().toISOString(),
     sessionId: state.sessionId,
     gameType: 'Task simulation',
     taskTitle: challenge.title,
     workspaceKind: challenge.workspace.kind,
+    workspaceRows: challenge.workspace.rows?.length ?? 0,
+    workspaceTabs: challenge.workspace.tabs?.length ?? 0,
+    briefingSeconds: challenge.briefingSeconds,
+    recallSeconds: challenge.recallSeconds,
+    demoStepMilliseconds: challenge.demoStepMilliseconds,
     difficulty: state.difficulty,
     questionNumber: state.questionNumber,
     stepsExpected: score.expectedSteps,
     stepsCompleted: score.completedSteps,
     mistakes: score.mistakes,
     sequenceAccuracyPercent: score.sequenceAccuracyPercent,
+    ...actionAnalytics,
     timeLimitSeconds: challenge.recallSeconds,
     timeUsedSeconds: Number(elapsedSeconds.toFixed(1)),
     expectedAnswer: `${score.expectedSteps} ordered steps`,
@@ -2336,56 +2451,587 @@ function renderHistoryVisuals(summary) {
   }));
 }
 
-function renderHistory() {
-  const history = getHistory();
-  renderHistoryRecommendations(history);
-  const summary = summarizeHistory(history);
-  const levelMetrics = summary.byDifficulty.map((level) => [`${level.accuracyPercent}%`, `${level.level} accuracy`]);
-  renderMetrics(refs['history-metrics'], [...makeMetrics(history), ...levelMetrics]);
-  renderHistoryVisuals(summary);
-  refs['history-rows'].replaceChildren();
-  if (history.length === 0) {
-    const row = document.createElement('tr');
-    const cell = document.createElement('td');
-    cell.className = 'empty-row';
-    cell.colSpan = 6;
-    cell.textContent = 'No saved answers yet. Complete a game to see history here.';
-    row.append(cell);
-    refs['history-rows'].append(row);
+function historyPresetMap() {
+  return { cash: state.cashPresets, memory: state.memoryPresets, task: state.taskPresets, 'error-detection': state.errorDetectionPresets };
+}
+
+function localIsoDate(date) {
+  const offset = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 10);
+}
+
+function shiftDate(days) {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return localIsoDate(date);
+}
+
+function fieldPath(fieldId) {
+  if (fieldId === 'task.mistakeCategory') return ['task', 'mistakeCategories'];
+  return fieldId.split('.');
+}
+
+function filterValue(fieldId, value) {
+  if (fieldId === 'cash.denominations') return Math.round(Number(String(value).replace('$', '')) * 100);
+  return value;
+}
+
+function readFilterPath(path) {
+  return path.reduce((value, part) => value?.[part], historyView.filters);
+}
+
+function writeFilterPath(path, value) {
+  let target = historyView.filters;
+  path.slice(0, -1).forEach((part) => {
+    if (!target[part] || typeof target[part] !== 'object') target[part] = {};
+    target = target[part];
+  });
+  const key = path.at(-1);
+  if (value === undefined || value === null || (Array.isArray(value) && value.length === 0)) delete target[key];
+  else target[key] = value;
+}
+
+function rerenderHistoryForFilter() {
+  if (state.activeScreen === 'history') renderHistory();
+}
+
+function appendFacetFilter(target, field) {
+  const options = field.options ?? [];
+  const group = document.createElement('fieldset');
+  group.className = 'history-filter-group';
+  const legend = document.createElement('legend');
+  legend.textContent = `${field.label}${options.length ? '' : ' (not recorded yet)'}`;
+  group.append(legend);
+  if (!options.length) {
+    const unavailable = document.createElement('p');
+    unavailable.className = 'practice-note';
+    unavailable.textContent = 'New attempts record this game-specific field. Older attempts remain available in the rest of History.';
+    group.append(unavailable);
+    target.append(group);
     return;
   }
-  for (const record of [...history].reverse()) {
+  const values = document.createElement('div');
+  values.className = 'history-facet-list';
+  const path = fieldPath(field.id);
+  const active = readFilterPath(path) ?? [];
+  for (const option of options) {
+    const label = document.createElement('label');
+    label.className = 'history-facet';
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    const value = filterValue(field.id, option);
+    input.checked = active.some((item) => String(item) === String(value));
+    input.addEventListener('change', () => {
+      const next = [...(readFilterPath(path) ?? [])];
+      const found = next.findIndex((item) => String(item) === String(value));
+      if (input.checked && found < 0) next.push(value);
+      if (!input.checked && found >= 0) next.splice(found, 1);
+      writeFilterPath(path, next.length ? next : undefined);
+      rerenderHistoryForFilter();
+    });
+    const text = document.createElement('span');
+    text.textContent = option;
+    label.append(input, text);
+    values.append(label);
+  }
+  group.append(values);
+  target.append(group);
+}
+
+function appendRangeFilter(target, field) {
+  const group = document.createElement('fieldset');
+  group.className = 'history-filter-group history-range-filter';
+  const legend = document.createElement('legend');
+  legend.textContent = `${field.label}${field.available === 0 ? ' (not recorded yet)' : ''}`;
+  group.append(legend);
+  const path = fieldPath(field.id);
+  const bounds = readFilterPath(path) ?? {};
+  const cents = field.unit === 'cents';
+  for (const [key, labelText] of [['min', `Minimum${cents ? ' ($)' : ''}`], ['max', `Maximum${cents ? ' ($)' : ''}`]]) {
+    const label = document.createElement('label');
+    label.textContent = labelText;
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.step = cents ? '0.01' : '1';
+    input.min = '0';
+    const stored = bounds[key];
+    input.value = stored === undefined ? '' : cents ? (Number(stored) / 100).toFixed(2) : String(stored);
+    input.addEventListener('change', () => {
+      const next = { ...(readFilterPath(path) ?? {}) };
+      const parsed = input.value === '' ? undefined : Number(input.value) * (cents ? 100 : 1);
+      if (!Number.isFinite(parsed)) return;
+      if (parsed === undefined) delete next[key]; else next[key] = parsed;
+      writeFilterPath(path, Object.keys(next).length ? next : undefined);
+      historyView.activeRange = 'custom';
+      rerenderHistoryForFilter();
+    });
+    label.append(input);
+    group.append(label);
+  }
+  target.append(group);
+}
+
+function appendBooleanFilter(target, field) {
+  const group = document.createElement('label');
+  group.className = 'history-filter-group history-boolean-filter';
+  const span = document.createElement('span');
+  span.textContent = field.label;
+  const select = document.createElement('select');
+  select.append(new Option('Any', ''), new Option('Yes', 'true'), new Option('No', 'false'));
+  const path = fieldPath(field.id);
+  const value = readFilterPath(path);
+  select.value = value === undefined ? '' : String(value);
+  select.addEventListener('change', () => {
+    writeFilterPath(path, select.value === '' ? undefined : select.value === 'true');
+    rerenderHistoryForFilter();
+  });
+  group.append(span, select);
+  target.append(group);
+}
+
+function appendDateFilter(target) {
+  const group = document.createElement('fieldset');
+  group.className = 'history-filter-group history-date-filter';
+  const legend = document.createElement('legend');
+  legend.textContent = 'Custom date range';
+  group.append(legend);
+  for (const [key, labelText] of [['startDate', 'From'], ['endDate', 'To']]) {
+    const label = document.createElement('label');
+    label.textContent = labelText;
+    const input = document.createElement('input');
+    input.type = 'date';
+    input.value = historyView.filters[key] ?? '';
+    input.addEventListener('change', () => {
+      if (input.value) historyView.filters[key] = input.value; else delete historyView.filters[key];
+      delete historyView.filters.attemptLimit;
+      historyView.activeRange = 'custom';
+      rerenderHistoryForFilter();
+    });
+    label.append(input);
+    group.append(label);
+  }
+  target.append(group);
+}
+
+function appendOptionalModesFilter(target) {
+  const group = document.createElement('fieldset');
+  group.className = 'history-filter-group';
+  const legend = document.createElement('legend');
+  legend.textContent = 'Optional modes enabled';
+  group.append(legend);
+  const labels = { distraction: 'Distraction sounds', cashBuilder: 'Cash builder', customerRequests: 'Customer requests' };
+  const values = document.createElement('div');
+  values.className = 'history-facet-list';
+  for (const [key, labelText] of Object.entries(labels)) {
+    const label = document.createElement('label');
+    label.className = 'history-facet';
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.checked = historyView.filters.optionalModes?.[key] === true;
+    input.addEventListener('change', () => {
+      const next = { ...(historyView.filters.optionalModes ?? {}) };
+      if (input.checked) next[key] = true; else delete next[key];
+      if (Object.keys(next).length) historyView.filters.optionalModes = next; else delete historyView.filters.optionalModes;
+      rerenderHistoryForFilter();
+    });
+    const text = document.createElement('span');
+    text.textContent = labelText;
+    label.append(input, text);
+    values.append(label);
+  }
+  group.append(values);
+  target.append(group);
+}
+
+function renderHistoryFilters(records) {
+  refs['history-game-tabs'].querySelectorAll('button').forEach((button) => {
+    const selected = button.dataset.historyGame === historyView.filters.game;
+    button.setAttribute('aria-pressed', String(selected));
+  });
+  refs['history-quick-ranges'].querySelectorAll('button').forEach((button) => {
+    button.setAttribute('aria-pressed', String(button.dataset.historyRange === historyView.activeRange));
+  });
+  const definition = buildGameFilters(records, historyView.filters.game);
+  refs['history-common-filters'].replaceChildren();
+  refs['history-game-filters'].replaceChildren();
+  appendDateFilter(refs['history-common-filters']);
+  for (const field of definition.fields) {
+    const target = field.id.includes('.') ? refs['history-game-filters'] : refs['history-common-filters'];
+    if (field.id === 'optionalModes') appendOptionalModesFilter(target);
+    else if (field.type === 'range') appendRangeFilter(target, field);
+    else if (field.type === 'boolean') appendBooleanFilter(target, field);
+    else if (field.type === 'facet') appendFacetFilter(target, field);
+  }
+}
+
+function renderProgressMetrics(model) {
+  const time = model.averageResponseTimeSeconds === null ? 'Not recorded' : `${model.averageResponseTimeSeconds.toFixed(1)}s`;
+  renderMetrics(refs['history-metrics'], [
+    [`${model.attempts}`, 'Attempts'], [`${model.accuracyPercent ?? '—'}%`, 'Completed accuracy'], [`${time}`, 'Average response time'],
+    [`${model.attemptsToday}`, 'Attempts today'], [`${model.attemptsPerDay === null ? '—' : model.attemptsPerDay.toFixed(1)}`, 'Attempts per day'],
+    [`${model.accuracyPerDay ?? '—'}%`, 'Accuracy per day'], [`${model.speedPerDay === null ? '—' : `${model.speedPerDay.toFixed(1)}s`}`, 'Average speed per day'],
+    [`${model.longestCorrectStreak}`, 'Best correct streak'],
+  ]);
+}
+
+function chartSvgElement(name, attributes = {}) {
+  const element = document.createElementNS('http://www.w3.org/2000/svg', name);
+  Object.entries(attributes).forEach(([key, value]) => element.setAttribute(key, String(value)));
+  return element;
+}
+
+function chartValue(point, metric) {
+  if (point.value === null || point.value === undefined) return 'Not recorded';
+  if (metric === 'time') return `${Number(point.value).toFixed(1)}s`;
+  if (metric === 'attempts') return `${point.value}`;
+  return `${point.value}%`;
+}
+
+function openAttemptDetails(records, attemptIds, heading) {
+  const rows = records.filter((record) => attemptIds.includes(record.attemptId));
+  refs['attempt-detail-summary'].textContent = `${rows.length} contributing attempt${rows.length === 1 ? '' : 's'} — ${heading}`;
+  refs['attempt-detail-content'].replaceChildren();
+  if (!rows.length) refs['attempt-detail-content'].textContent = 'No saved attempts match this chart mark.';
+  else {
+    const wrap = document.createElement('div');
+    wrap.className = 'table-wrap attempt-detail-table';
+    const table = document.createElement('table');
+    table.innerHTML = '<thead><tr><th>When</th><th>Game</th><th>Result</th><th>Time</th><th>Details</th></tr></thead>';
+    const body = document.createElement('tbody');
+    for (const record of rows.slice().reverse()) {
+      const row = document.createElement('tr');
+      const details = [record.expectedAnswer, record.userAnswer].filter(Boolean).join(' → ') || 'No answer detail recorded';
+      for (const value of [new Date(record.timestamp).toLocaleString(), record.gameName, record.outcome,
+        record.responseTimeSeconds === null ? 'Not recorded' : `${record.responseTimeSeconds.toFixed(1)}s`, details]) {
+        const cell = document.createElement('td');
+        cell.textContent = value;
+        row.append(cell);
+      }
+      body.append(row);
+    }
+    table.append(body);
+    wrap.append(table);
+    refs['attempt-detail-content'].append(wrap);
+  }
+  if (typeof refs['attempt-detail-dialog'].showModal === 'function') refs['attempt-detail-dialog'].showModal();
+  else refs['attempt-detail-dialog'].open = true;
+}
+
+function renderChartCard(spec, records) {
+  const view = historyView.charts.get(spec.id) ?? { start: 0, count: 12, visible: true, compare: false };
+  historyView.charts.set(spec.id, view);
+  const card = document.createElement('article');
+  card.className = 'interactive-chart visual-card';
+  const heading = document.createElement('div');
+  heading.className = 'visual-heading';
+  const title = document.createElement('h4');
+  title.textContent = spec.title;
+  const controls = document.createElement('div');
+  controls.className = 'chart-controls';
+  const control = (label, action) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'text-button';
+    button.textContent = label;
+    button.addEventListener('click', () => { action(); renderHistory(); });
+    controls.append(button);
+  };
+  control(view.visible ? 'Hide data' : 'Show data', () => { view.visible = !view.visible; });
+  control('Zoom in', () => { view.count = Math.max(4, Math.floor(view.count / 1.5)); });
+  control('Zoom out', () => { view.count = Math.min(60, view.count + 6); });
+  control('Earlier', () => { view.start = Math.max(0, view.start - Math.max(1, Math.floor(view.count / 2))); });
+  control('Later', () => { view.start = Math.min(Math.max(0, spec.series[0].points.length - view.count), view.start + Math.max(1, Math.floor(view.count / 2))); });
+  control('Reset', () => { Object.assign(view, { start: 0, count: 12, visible: true, compare: false }); });
+  control(view.compare ? 'Hide comparison' : 'Compare periods', () => { view.compare = !view.compare; });
+  heading.append(title, controls);
+  card.append(heading);
+  const status = document.createElement('p');
+  status.className = 'chart-note chart-hover';
+  status.textContent = `${spec.attemptIds.length} eligible filtered attempt${spec.attemptIds.length === 1 ? '' : 's'}.`;
+  card.append(status);
+  const series = spec.series[0];
+  const points = series.points.slice(view.start, view.start + view.count);
+  if (!view.visible || !points.length) {
+    const empty = document.createElement('p');
+    empty.className = 'chart-empty';
+    empty.textContent = view.visible ? 'This chart has no recorded values for the current filters.' : 'Data is hidden. Choose Show data to display it.';
+    card.append(empty);
+    return card;
+  }
+  const svg = chartSvgElement('svg', { class: 'analytics-svg', viewBox: '0 0 720 260', role: 'img', 'aria-label': `${spec.title}. Each mark can be selected to inspect exact attempts.` });
+  const values = points.map((point) => Number(point.value)).filter(Number.isFinite);
+  const max = Math.max(1, ...values);
+  const width = 660 / Math.max(points.length, 1);
+  points.forEach((point, index) => {
+    if (!Number.isFinite(Number(point.value))) return;
+    const height = Math.max(2, Number(point.value) / max * 160);
+    const x = 38 + index * width + Math.max(2, width * 0.14);
+    const y = 202 - height;
+    const mark = chartSvgElement('g', { class: 'analytics-mark', role: 'button', tabindex: '0', 'aria-label': `${point.label}: ${chartValue(point, series.metric)} from ${point.attemptIds.length} attempts` });
+    const shape = chartSvgElement(spec.kind === 'line' || spec.kind === 'scatter' ? 'circle' : 'rect', spec.kind === 'line' || spec.kind === 'scatter'
+      ? { cx: x + width * 0.32, cy: y, r: Math.max(4, Math.min(9, width * 0.18)) }
+      : { x, y, width: Math.max(5, width * 0.64), height, rx: 2 });
+    const label = chartSvgElement('text', { x: x + width * 0.32, y: 224, 'text-anchor': 'middle' });
+    label.textContent = point.label.length > 12 ? `${point.label.slice(0, 11)}…` : point.label;
+    const activate = () => openAttemptDetails(records, point.attemptIds, `${spec.title}: ${point.label}`);
+    mark.addEventListener('click', activate);
+    mark.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); activate(); }
+    });
+    mark.addEventListener('mouseenter', () => { status.textContent = `${point.label}: ${chartValue(point, series.metric)} from ${point.attemptIds.length} attempt${point.attemptIds.length === 1 ? '' : 's'}.`; });
+    mark.addEventListener('focus', () => { status.textContent = `${point.label}: ${chartValue(point, series.metric)} from ${point.attemptIds.length} attempt${point.attemptIds.length === 1 ? '' : 's'}.`; });
+    mark.append(shape, label);
+    svg.append(mark);
+  });
+  card.append(svg);
+  if (view.compare) {
+    const compare = document.createElement('p');
+    compare.className = 'chart-note';
+    compare.textContent = 'The range comparison above uses the same active filters; pan and zoom keep this chart focused on the selected marks.';
+    card.append(compare);
+  }
+  const tableDetails = document.createElement('details');
+  tableDetails.className = 'chart-table-alternative';
+  const summary = document.createElement('summary');
+  summary.textContent = 'Table alternative';
+  tableDetails.append(summary);
+  const table = document.createElement('table');
+  table.innerHTML = '<thead><tr><th>Category</th><th>Value</th><th>Attempts</th></tr></thead>';
+  const body = document.createElement('tbody');
+  points.forEach((point) => {
     const row = document.createElement('tr');
-    const cells = [
-      new Date(record.timestamp).toLocaleString(),
-      `${record.gameType ?? 'Cash handling'}${record.sessionMode ? ` · ${record.sessionMode}` : ''}`,
-      record.difficulty,
-      record.outcome,
-      `${Number(record.timeUsedSeconds || 0).toFixed(1)}s`,
-      record.expectedAnswer,
-    ];
-    row.append(...cells.map((value) => {
+    [point.label, chartValue(point, series.metric), String(point.attemptIds.length)].forEach((value) => {
       const cell = document.createElement('td');
       cell.textContent = value;
-      return cell;
-    }));
+      row.append(cell);
+    });
+    body.append(row);
+  });
+  table.append(body);
+  tableDetails.append(table);
+  card.append(tableDetails);
+  return card;
+}
+
+function renderHistoryCharts(records) {
+  const specs = buildChartSpecs(records, historyView.filters.game);
+  refs['history-charts'].replaceChildren(...specs.map((spec) => renderChartCard(spec, records)));
+}
+
+function currentComparison(history, filtered) {
+  const filters = { ...historyView.filters };
+  delete filters.startDate; delete filters.endDate; delete filters.attemptLimit;
+  const comparable = filterHistory(history, filters);
+  const range = historyView.activeRange;
+  if (range === '30a' || range === '50a') {
+    const count = range === '30a' ? 30 : 50;
+    const current = buildProgressModel(filtered);
+    const previous = buildProgressModel(comparable.slice(Math.max(0, comparable.length - count * 2), Math.max(0, comparable.length - count)));
+    return { current, previous, accuracyDelta: current.accuracyPercent === null || previous.accuracyPercent === null ? null : current.accuracyPercent - previous.accuracyPercent,
+      responseTimeDelta: current.averageResponseTimeSeconds === null || previous.averageResponseTimeSeconds === null ? null : current.averageResponseTimeSeconds - previous.averageResponseTimeSeconds };
+  }
+  if (range === 'all') {
+    const current = buildProgressModel(filtered.slice(-20));
+    const previous = buildProgressModel(filtered.slice(0, 20));
+    return { current, previous, accuracyDelta: current.accuracyPercent === null || previous.accuracyPercent === null ? null : current.accuracyPercent - previous.accuracyPercent,
+      responseTimeDelta: current.averageResponseTimeSeconds === null || previous.averageResponseTimeSeconds === null ? null : current.averageResponseTimeSeconds - previous.averageResponseTimeSeconds };
+  }
+  const start = historyView.filters.startDate;
+  const end = historyView.filters.endDate;
+  if (!start || !end) return { current: buildProgressModel(filtered), previous: buildProgressModel([]), accuracyDelta: null, responseTimeDelta: null };
+  const days = Math.max(1, Math.round((Date.parse(`${end}T00:00:00`) - Date.parse(`${start}T00:00:00`)) / 86400000) + 1);
+  const priorEnd = new Date(`${start}T00:00:00`);
+  priorEnd.setDate(priorEnd.getDate() - 1);
+  const priorStart = new Date(priorEnd);
+  priorStart.setDate(priorStart.getDate() - days + 1);
+  return comparePeriods(comparable, { current: { start, end }, previous: { start: localIsoDate(priorStart), end: localIsoDate(priorEnd) } });
+}
+
+function renderHistoryComparison(history, filtered) {
+  const comparison = currentComparison(history, filtered);
+  const current = comparison.current;
+  const previous = comparison.previous;
+  const time = (value) => value === null ? '—' : `${value.toFixed(1)}s`;
+  const delta = (value, suffix = '') => value === null ? 'No comparable prior range' : `${value > 0 ? '+' : ''}${value}${suffix}`;
+  refs['history-comparison'].replaceChildren(...[
+    [`${current.accuracyPercent ?? '—'}%`, `Accuracy (${delta(comparison.accuracyDelta, ' points')})`],
+    [time(current.averageResponseTimeSeconds), `Speed (${delta(comparison.responseTimeDelta === null ? null : Number(comparison.responseTimeDelta.toFixed(1)), 's')})`],
+    [`${current.attempts}`, `${previous.attempts} previous attempts`],
+  ].map(([value, label]) => {
+    const item = document.createElement('div');
+    item.className = 'comparison-metric';
+    const strong = document.createElement('strong');
+    strong.textContent = value;
+    const span = document.createElement('span');
+    span.textContent = label;
+    item.append(strong, span);
+    return item;
+  }));
+}
+
+function fallbackChallenge(recommendation) {
+  if (!recommendation?.game || !recommendation?.difficulty) return null;
+  const game = recommendation.game;
+  const preset = { ...presetFor(game, recommendation.difficulty) };
+  const focus = {};
+  const filters = recommendation.focusFilter ?? {};
+  let axisDetail = 'Keep the recorded workload focused while you repeat this pattern.';
+  if (game === 'cash') {
+    const type = filters.cash?.transactionTypes?.[0];
+    if (type) focus.expectedType = type;
+    if (recommendation.axis === 'pieces') {
+      preset.splitCount = Math.max(1, preset.splitCount - 1);
+      axisDetail = 'Use one fewer cash split first, then return to the observed piece load after sustained success.';
+    }
+  }
+  if (game === 'memory') {
+    const observed = Number(filters.memory?.digitsPerValue?.max ?? filters.memory?.totalDigits?.max);
+    if (Number.isFinite(observed)) {
+      const safe = Math.max(1, observed - 1);
+      preset.minimumDigits = safe;
+      preset.maximumDigits = safe;
+      axisDetail = `Start one digit below the observed ${observed}-digit threshold, then raise only digit length after sustained success.`;
+    }
+  }
+  if (game === 'task') {
+    const kind = filters.task?.workflowKinds?.[0];
+    if (kind) focus.workspaceKind = kind;
+    const observed = Number(filters.task?.expectedSteps?.max);
+    if (Number.isFinite(observed)) {
+      const safe = Math.max(2, observed - 1);
+      preset.minimumSteps = safe;
+      preset.maximumSteps = safe;
+      axisDetail = `Start with ${safe} steps, then raise only the workflow step count after sustained success.`;
+    }
+  }
+  if (game === 'error-detection') {
+    const family = filters.error?.puzzleFamilies?.[0];
+    if (family) focus.puzzleFamily = family;
+    const observed = Number(filters.error?.clueCount?.max);
+    if (Number.isFinite(observed)) {
+      preset.details = Math.max(3, observed - 1);
+      preset.maximumErrors = Math.min(preset.maximumErrors, preset.details);
+      axisDetail = `Start with ${preset.details} clues, then raise only clue count after sustained success.`;
+    }
+  }
+  const options = game === 'cash'
+    ? { distraction: false, cashSessionMode: 'testing', cashBuilder: false, customerRequests: false, timeLimitSeconds: state.timeLimitSeconds || 30 }
+    : { distraction: false };
+  return {
+    ...recommendation, id: recommendation.id, game, difficulty: recommendation.difficulty, preset, focus, options,
+    questionCount: 10, title: `Recommended next challenge: ${recommendation.target}`, basis: axisDetail,
+    progressionRule: 'Complete two successful sessions before raising only this same workload axis.',
+  };
+}
+
+function renderRecommendedChallenge(records) {
+  const candidates = rankPracticeCandidates(records, historyPresetMap());
+  const recommendation = recommendNextChallenge(records, { candidatePlans: candidates, currentChallenge: state.currentChallenge });
+  const target = refs['history-recommendations'];
+  const previous = refs['previous-challenges'];
+  target.replaceChildren();
+  previous.replaceChildren();
+  let plan = recommendation.challenge ? recommendation : null;
+  if (plan && (!plan.preset || !plan.options)) plan = fallbackChallenge(recommendation);
+  const currentCandidate = state.currentChallenge && candidates.find((candidate) => candidate.id === state.currentChallenge.id);
+  if (currentCandidate && !recommendation.recoveredCurrent) plan = { ...currentCandidate, ...state.currentChallenge, reason: state.currentChallenge.reason ?? currentCandidate.reason };
+  if (!plan || !plan.preset || !plan.options) {
+    const note = document.createElement('p');
+    note.className = 'practice-note';
+    note.textContent = recommendation.reason;
+    target.append(note);
+  } else {
+    const card = document.createElement('article');
+    card.className = 'practice-recommendation';
+    const title = document.createElement('h4');
+    title.textContent = `${PRACTICE_GAMES[plan.game]} — ${plan.target}`;
+    const why = document.createElement('p');
+    why.textContent = `Why recommended: ${recommendation.reason}`;
+    const detail = document.createElement('p');
+    detail.className = 'practice-note';
+    detail.textContent = `Evidence: ${recommendation.evidenceCount ?? plan.evidenceStats?.attempts ?? 0} comparable attempts. ${plan.progressionRule ?? 'Only the relevant workload axis changes after sustained success.'}`;
+    const review = document.createElement('details');
+    const summary = document.createElement('summary');
+    summary.textContent = 'Review proposed settings';
+    review.append(summary);
+    appendPracticeSettings(review, plan);
+    const apply = document.createElement('button');
+    apply.type = 'button';
+    apply.className = 'secondary-button';
+    apply.textContent = 'Use practice plan';
+    apply.addEventListener('click', () => { saveCurrentChallenge({ ...plan, weaknessKey: recommendation.weaknessKey }); applyPracticePlan(plan); });
+    card.append(title, why, detail, review, apply);
+    if (state.currentChallenge?.id === plan.id) {
+      const clear = document.createElement('button');
+      clear.type = 'button';
+      clear.className = 'text-button';
+      clear.textContent = 'Clear current challenge';
+      clear.addEventListener('click', clearCurrentChallenge);
+      card.append(clear);
+    }
+    target.append(card);
+  }
+  if (recommendation.previousChallenges.length) {
+    const heading = document.createElement('h4');
+    heading.textContent = 'Previous challenges';
+    const list = document.createElement('ul');
+    list.className = 'previous-challenge-list';
+    recommendation.previousChallenges.forEach((entry) => {
+      const item = document.createElement('li');
+      item.textContent = `${entry.title}: started ${entry.startedAccuracyPercent ?? '—'}%, finished ${entry.finishedAccuracyPercent ?? '—'}% across ${entry.attempts} attempts${entry.completed ? ' — Completed' : ''}.`;
+      list.append(item);
+    });
+    previous.append(heading, list);
+  }
+}
+
+function renderHistoryRows(records) {
+  refs['history-rows'].replaceChildren();
+  if (records.length === 0) {
+    const row = document.createElement('tr');
+    const cell = document.createElement('td');
+    cell.className = 'empty-row'; cell.colSpan = 6;
+    cell.textContent = 'No saved attempts match these filters.';
+    row.append(cell); refs['history-rows'].append(row); return;
+  }
+  for (const record of records.slice().reverse()) {
+    const row = document.createElement('tr');
+    row.tabIndex = 0;
+    row.title = 'Open attempt details';
+    const open = () => openAttemptDetails(records, [record.attemptId], 'Selected attempt');
+    row.addEventListener('click', open);
+    row.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); } });
+    const cells = [new Date(record.timestamp).toLocaleString(), `${record.gameName}${record.sessionMode ? ` · ${record.sessionMode}` : ''}`,
+      record.difficulty ?? 'Not recorded', record.outcome, record.responseTimeSeconds === null ? 'Not recorded' : `${record.responseTimeSeconds.toFixed(1)}s`, record.expectedAnswer ?? 'Not recorded'];
+    row.append(...cells.map((value) => { const cell = document.createElement('td'); cell.textContent = value; return cell; }));
     refs['history-rows'].append(row);
   }
 }
 
-function renderHistoryRecommendations(history = getHistory()) {
-  const level = document.getElementById('recommendation-level').value;
-  const target = document.getElementById('history-recommendations');
-  target.replaceChildren();
-  for (const [game, name] of Object.entries(PRACTICE_GAMES)) {
-    const section = document.createElement('section');
-    const heading = document.createElement('h3');
-    heading.textContent = name;
-    const content = document.createElement('div');
-    renderPracticeRecommendations(content, game, level, history);
-    section.append(heading, content);
-    target.append(section);
-  }
+function renderHistory() {
+  const history = getHistory();
+  const gameOnly = filterHistory(history, { game: historyView.filters.game });
+  renderHistoryFilters(gameOnly);
+  const records = filterHistory(history, historyView.filters);
+  const model = buildProgressModel(records);
+  renderProgressMetrics(model);
+  renderHistoryVisuals(summarizeHistory(records));
+  renderRecommendedChallenge(records);
+  renderHistoryComparison(history, records);
+  renderHistoryCharts(records);
+  renderHistoryRows(records);
+}
+
+function applyHistoryQuickRange(kind) {
+  delete historyView.filters.startDate; delete historyView.filters.endDate; delete historyView.filters.attemptLimit;
+  historyView.activeRange = kind;
+  if (kind === 'today') historyView.filters.startDate = historyView.filters.endDate = shiftDate(0);
+  if (kind === 'yesterday') historyView.filters.startDate = historyView.filters.endDate = shiftDate(-1);
+  if (kind === '7d') { historyView.filters.startDate = shiftDate(-6); historyView.filters.endDate = shiftDate(0); }
+  if (kind === '30d') { historyView.filters.startDate = shiftDate(-29); historyView.filters.endDate = shiftDate(0); }
+  if (kind === '30a') historyView.filters.attemptLimit = 30;
+  if (kind === '50a') historyView.filters.attemptLimit = 50;
+  rerenderHistoryForFilter();
 }
 
 function openHistory() {
@@ -2394,7 +3040,6 @@ function openHistory() {
     return;
   }
   stopContinuousDistractionNoise();
-  document.getElementById('recommendation-level').value = selectedDifficulty();
   renderHistory();
   showScreen('history');
 }
@@ -2584,17 +3229,40 @@ refs['theme-toggle'].addEventListener('click', () => {
   applyTheme(isDark ? 'light' : 'dark', true);
 });
 refs['download-csv'].addEventListener('click', downloadHistory);
+refs['history-game-tabs'].addEventListener('click', (event) => {
+  const button = event.target.closest('button[data-history-game]');
+  if (!button) return;
+  historyView.filters = { game: button.dataset.historyGame };
+  historyView.activeRange = 'all';
+  renderHistory();
+});
+refs['history-quick-ranges'].addEventListener('click', (event) => {
+  const button = event.target.closest('button[data-history-range]');
+  if (button) applyHistoryQuickRange(button.dataset.historyRange);
+});
+refs['clear-history-filters'].addEventListener('click', () => {
+  historyView.filters = { game: historyView.filters.game ?? 'all' };
+  historyView.activeRange = 'all';
+  renderHistory();
+});
+refs['close-attempt-detail'].addEventListener('click', () => refs['attempt-detail-dialog'].close());
+refs['attempt-detail-dialog'].addEventListener('click', (event) => {
+  if (event.target === refs['attempt-detail-dialog']) refs['attempt-detail-dialog'].close();
+});
 refs['clear-history'].addEventListener('click', () => {
   if (window.confirm('Clear all saved quiz history from this browser? This cannot be undone.')) {
     localStorage.removeItem(HISTORY_KEY);
     clearPracticePlan();
+    // A current challenge is derived from the saved attempts, so it must not
+    // survive an explicit full-history clear without the evidence behind it.
+    localStorage.removeItem(CURRENT_CHALLENGE_KEY);
+    state.currentChallenge = null;
     renderHistory();
     setMessage('Saved quiz history was cleared from this browser.');
   }
 });
 
 document.getElementById('clear-practice-plan').addEventListener('click', clearPracticePlan);
-document.getElementById('recommendation-level').addEventListener('change', () => renderHistoryRecommendations());
 refs['setup-form'].addEventListener('input', (event) => {
   if (event.target.id === 'auto-continue-toggle') return;
   if (['question-count', 'memory-question-count', 'task-question-count', 'error-detection-question-count'].includes(event.target.id)) {

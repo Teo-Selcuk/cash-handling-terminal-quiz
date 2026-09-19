@@ -8,12 +8,13 @@ import { fileURLToPath } from 'node:url';
 import { checkHistory, checkAutoContinue, checkTimeouts } from './browser-history-checks.mjs';
 import { checkResponsive } from './browser-responsive-checks.mjs';
 import { checkGuidance } from './browser-guidance-checks.mjs';
+import { checkProgress } from './browser-progress-checks.mjs';
 const { chromium } = createRequire(import.meta.url)('playwright');
 const root = fileURLToPath(new URL('../', import.meta.url));
 const server = createServer(async (request, response) => {
   const path = new URL(request.url, 'http://localhost').pathname;
   const file = path === '/' ? 'index.html' : path.slice(1);
-  if (!['index.html', 'app.js', 'style.css', 'quiz-core.mjs', 'pattern-games.mjs', 'distraction-sounds.mjs', 'adaptive-practice.mjs'].includes(file)) {
+  if (!['index.html', 'app.js', 'style.css', 'quiz-core.mjs', 'pattern-games.mjs', 'distraction-sounds.mjs', 'adaptive-practice.mjs', 'progress-analytics.mjs'].includes(file)) {
     response.writeHead(404).end(); return;
   }
   response.setHeader('Content-Type', ({ '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.mjs': 'text/javascript' })[extname(file)]);
@@ -53,6 +54,7 @@ try {
   await checkResponsive(browser, base);
   await checkGuidance(browser, base);
   await checkHistory(browser, base);
+  await checkProgress(browser, base);
   await checkAutoContinue(browser, base);
   await checkTimeouts(browser, base);
   const audioState = () => page.evaluate(() => ({

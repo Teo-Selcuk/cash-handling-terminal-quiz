@@ -7,7 +7,7 @@
     <meta name="theme-color" content="#12343b">
     <title>Cash, Memory &amp; Detail Trainer</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="style.css?v=20260908-practice">
+    <link rel="stylesheet" href="style.css?v=20260918-progress">
   </head>
   <body>
     <main class="app-shell">
@@ -19,14 +19,14 @@
         </div>
         <div class="header-actions">
           <button class="secondary-button theme-toggle" id="theme-toggle" type="button" aria-pressed="false">Dark mode</button>
-          <button class="secondary-button" id="open-history" type="button">History &amp; statistics</button>
+          <button class="secondary-button" id="open-history" type="button">History | Progress</button>
         </div>
       </header>
 
       <p class="screen-reader-only" id="message" role="status" aria-live="polite"></p>
 
-      <details id="qralarm-connection" class="preset-editor">
-        <summary>QRAlarm connection</summary>
+      <details id="qralarm-connection" class="preset-editor qralarm-compact">
+        <summary>QR Alarm <span aria-hidden="true">▸</span></summary>
         <p id="qralarm-status" role="status">Reconnect required — use info &lt;QR ID&gt; --connect in QRAlarm.</p>
         <label for="qralarm-link">Pairing link from QRAlarm</label>
         <input id="qralarm-link" type="url" autocomplete="off" spellcheck="false">
@@ -437,24 +437,54 @@
         <div class="screen-title-row">
           <div>
             <p class="eyebrow">Saved on this device</p>
-            <h2 id="history-heading" tabindex="-1">History &amp; statistics</h2>
+            <h2 id="history-heading" tabindex="-1">History | Progress | Charts | Attempts</h2>
           </div>
           <button class="text-button" id="back-to-setup" type="button">Back to setup</button>
         </div>
-        <div class="metric-grid" id="history-metrics"></div>
-        <section class="practice-section" aria-labelledby="history-practice-heading">
-          <div class="practice-heading-row">
-            <h3 id="history-practice-heading">Practice recommendations</h3>
-            <label for="recommendation-level">Difficulty
-              <select id="recommendation-level">
-                <option>Easy</option><option>Medium</option><option>Hard</option>
-              </select>
-            </label>
+        <nav class="history-tabs" id="history-game-tabs" aria-label="Game history">
+          <button type="button" data-history-game="all" aria-pressed="true">All games</button>
+          <button type="button" data-history-game="cash" aria-pressed="false">Cash Handling</button>
+          <button type="button" data-history-game="memory" aria-pressed="false">Number Memory</button>
+          <button type="button" data-history-game="task" aria-pressed="false">Task Simulation</button>
+          <button type="button" data-history-game="error-detection" aria-pressed="false">Error Detection</button>
+        </nav>
+        <section class="history-filter-panel" aria-labelledby="history-filter-heading">
+          <div class="visual-heading">
+            <div>
+              <p class="eyebrow">Explore</p>
+              <h3 id="history-filter-heading">Filter progress</h3>
+            </div>
+            <button class="text-button" id="clear-history-filters" type="button">Clear filters</button>
           </div>
-          <p class="practice-note">Practice history on this device. Recommendations update after each session.</p>
-          <div id="history-recommendations"></div>
+          <div class="history-quick-ranges" id="history-quick-ranges" aria-label="Quick ranges">
+            <button type="button" data-history-range="today">Today</button>
+            <button type="button" data-history-range="yesterday">Yesterday</button>
+            <button type="button" data-history-range="7d">Last 7 days</button>
+            <button type="button" data-history-range="30d">Last 30 days</button>
+            <button type="button" data-history-range="30a">Last 30 attempts</button>
+            <button type="button" data-history-range="50a">Last 50 attempts</button>
+            <button type="button" data-history-range="all" aria-pressed="true">All time</button>
+          </div>
+          <div class="history-filter-grid" id="history-common-filters"></div>
+          <div class="history-filter-grid" id="history-game-filters"></div>
         </section>
-        <p class="chart-note">Not answered counts as wrong for accuracy. Refresh keeps completed answers and the current round (including study or briefing), but never counts future rounds you have not reached.</p>
+        <div class="metric-grid" id="history-metrics"></div>
+        <section class="practice-section recommendation-focus" aria-labelledby="history-practice-heading">
+          <div class="practice-heading-row">
+            <h3 id="history-practice-heading">Recommended Next Challenge</h3>
+            <p class="practice-note">One evidence-based focus at a time</p>
+          </div>
+          <div id="history-recommendations"></div>
+          <div id="previous-challenges"></div>
+        </section>
+        <section class="history-comparison" aria-labelledby="history-comparison-heading">
+          <div>
+            <p class="eyebrow">Progression</p>
+            <h3 id="history-comparison-heading">Current range compared with the previous range</h3>
+          </div>
+          <div id="history-comparison"></div>
+        </section>
+        <p class="chart-note">Old attempts keep only the fields they actually saved. Charts that need a newer field identify how many eligible attempts they use.</p>
         <section class="history-visuals" aria-label="History visualizations">
           <article class="visual-card" aria-labelledby="outcome-diagram-heading">
             <div class="visual-heading">
@@ -478,6 +508,16 @@
             <div class="bar-chart" id="history-accuracy-chart"></div>
           </article>
         </section>
+        <section class="history-charts" aria-labelledby="history-charts-heading">
+          <div class="visual-heading">
+            <div>
+              <p class="eyebrow">Interactive</p>
+              <h3 id="history-charts-heading">Charts</h3>
+            </div>
+            <p class="chart-note">Select a chart mark to inspect its exact attempts.</p>
+          </div>
+          <div id="history-charts"></div>
+        </section>
         <div class="action-row">
           <button class="secondary-button" id="download-csv" type="button">Download CSV</button>
           <button class="danger-button" id="clear-history" type="button">Clear history</button>
@@ -491,7 +531,16 @@
       </section>
     </main>
 
+    <dialog id="attempt-detail-dialog" class="attempt-detail-dialog" aria-labelledby="attempt-detail-heading">
+      <div class="dialog-heading">
+        <h2 id="attempt-detail-heading">Attempts behind this result</h2>
+        <button class="text-button" id="close-attempt-detail" type="button">Close</button>
+      </div>
+      <p id="attempt-detail-summary" class="chart-note"></p>
+      <div id="attempt-detail-content"></div>
+    </dialog>
+
     <footer>Browser edition. The original PowerShell quiz remains in this repository.</footer>
-    <script type="module" src="app.js?v=20260908-practice"></script>
+    <script type="module" src="app.js?v=20260918-progress"></script>
   </body>
 </html>

@@ -238,6 +238,16 @@ The browser suite covers all four games and three difficulty presets at 320, 390
 
 The compact task layout includes 1024-pixel landscape tablets. Case notes remain accessible from the Verification tab so longer casework sequences can be completed without an extra, unrequested tab switch. These checks emulate viewport and touch behavior in Chromium; they do not replace physical iOS/Android device testing.
 
+## Progress analytics
+
+The browser History screen is a local **History | Progress | Charts | Attempts** workspace. It keeps existing saved attempts untouched and adds optional detail only to new attempts. A shared analytics module normalizes each record, treats missing legacy fields as “not recorded,” removes checkpoint/replacement duplicates, and then feeds the same filtered attempt set to metrics, charts, drill-downs, and the recommendation.
+
+Choose a game tab to reveal filters that match that game’s actual work: cash denominations and piece count; memory digit load and mismatch positions; task workflow, steps, and action mistakes; or puzzle family, rule depth, and anomaly mistakes. Chart marks are keyboard-operable and open the exact contributing attempts. Charts include a table alternative and never pretend an old attempt recorded a newer mechanic.
+
+History presents one **Recommended Next Challenge** at a time. It requires repeated comparable evidence, explains the accuracy and/or speed gap, starts one relevant workload axis below the observed threshold, and records recovered challenges from immutable practice-attempt evidence. Applying a challenge updates normal setup controls; it does not rewrite saved presets. QR Alarm remains a collapsed `QR Alarm` section and continues to receive measurement-only history fields.
+
+Run `node --test tests/progress-analytics.test.mjs tests/adaptive-practice.test.mjs` for the analytics and adaptation rules. The browser smoke check includes `tests/browser-progress-checks.mjs`; it verifies each game’s unique controls, quick ranges, chart controls, keyboard drill-down, and responsive layout when Playwright is available.
+
 ## QRAlarm performance connection
 
 The browser quiz can provide saved performance evidence to QRAlarm while this

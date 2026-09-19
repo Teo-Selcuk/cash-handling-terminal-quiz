@@ -209,18 +209,32 @@ export function recommendPractice(history, game, difficulty, currentPreset) {
   const result = { game, difficulty, attempts: records.length, unanswered: reached.length - records.length, plans: [] };
   const ongoing = continuingPlan(records, game, difficulty);
   if (ongoing) result.plans.push(ongoing);
+  const baselineTimes = records.map((record) => Number(record.timeUsedSeconds)).filter((value) => Number.isFinite(value) && value >= 0);
+  const baselineTime = baselineTimes.length ? baselineTimes.reduce((sum, value) => sum + value, 0) / baselineTimes.length : null;
+  const baselineAccuracy = records.length ? records.filter((record) => record.outcome === 'Correct').length / records.length * 100 : null;
   const groups = groupsFor(records, game, difficulty, currentPreset).map((g) => {
     const observations = g.observations.slice(-20);
     const misses = observations.filter((o) => !o.correct).length;
-    return { ...g, observations, misses, rate: misses / observations.length };
-  }).filter((g) => g.observations.length >= 5 && g.misses >= 2 && g.rate > 0.2)
-    .sort((a, b) => b.rate - a.rate || b.misses - a.misses);
+    const times = observations.map(({ record }) => Number(record.timeUsedSeconds)).filter((value) => Number.isFinite(value) && value >= 0);
+    const averageTime = times.length ? times.reduce((sum, value) => sum + value, 0) / times.length : null;
+    const speedSlowdownPercent = baselineTime && averageTime ? Math.round(((averageTime / baselineTime) - 1) * 100) : 0;
+    const slowResponses = baselineTime ? observations.filter(({ record }) => Number(record.timeUsedSeconds) >= baselineTime * 1.2).length : 0;
+    const accuracy = (1 - misses / observations.length) * 100;
+    const accuracyGap = baselineAccuracy === null ? 0 : Math.round(baselineAccuracy - accuracy);
+    const latest = Math.max(...observations.map(({ record }) => Date.parse(record.timestamp) || 0));
+    return { ...g, observations, misses, rate: misses / observations.length, averageTime, baselineTime,
+      speedSlowdownPercent, slowResponses, accuracy, baselineAccuracy, accuracyGap, latest };
+  }).filter((g) => g.observations.length >= 5
+    && ((g.misses >= 2 && g.rate > 0.2) || (g.slowResponses >= 2 && g.speedSlowdownPercent >= 20)))
+    .sort((a, b) => b.accuracyGap - a.accuracyGap || b.speedSlowdownPercent - a.speedSlowdownPercent
+      || b.latest - a.latest || b.observations.length - a.observations.length || a.key.localeCompare(b.key));
   for (const g of groups) {
     const id = `${game}:${difficulty}:${g.key}`;
     if (id === ongoing?.id) continue;
     const observations = g.observations.map((o) => o.record);
     const timeouts = observations.filter((r) => r.outcome === 'Timed Out').length;
     let reason = `${g.misses} of ${observations.length} recent rounds missed on ${g.title} (${timeouts} timed out).`;
+    if (g.speedSlowdownPercent >= 20) reason += ` Average response time was ${g.averageTime.toFixed(1)}s versus ${g.baselineTime.toFixed(1)}s across this game's comparable rounds (${g.speedSlowdownPercent}% slower).`;
     if (game === 'error-detection') {
       const missed = observations.reduce((sum, r) => sum + Math.max(0, Number(r.expectedErrorCount || 0) - Number(r.correctlyFlagged || 0)), 0);
       const falseMarks = observations.reduce((sum, r) => sum + Math.max(0, Number(r.falseFlagCount || 0)), 0);
@@ -231,7 +245,9 @@ export function recommendPractice(history, game, difficulty, currentPreset) {
     try { preset = resolvers[game](difficulty, g.preset); } catch { continue; }
     const plan = { id, game, difficulty, stage: 0, target: g.title, title: `Focused practice: ${g.title}`,
       basis: reason, reason: `${reason}${g.detail ? ` ${g.detail}` : ''}`, preset, focus: g.focus, options: g.options, axis: g.axis,
-      questionCount: 10, evidence: evidenceFor(observations), progressionRule };
+      questionCount: 10, evidence: evidenceFor(observations), progressionRule,
+      evidenceStats: { attempts: observations.length, errors: g.misses, timeouts, accuracyPercent: Math.round(g.accuracy), baselineAccuracyPercent: Math.round(g.baselineAccuracy ?? g.accuracy),
+        accuracyGap: g.accuracyGap, averageResponseTimeSeconds: g.averageTime, baselineResponseTimeSeconds: g.baselineTime, speedSlowdownPercent: g.speedSlowdownPercent, latest: g.latest } };
     result.plans.push(plan);
     if (result.plans.length >= 3) break;
   }
@@ -239,6 +255,26 @@ export function recommendPractice(history, game, difficulty, currentPreset) {
     : result.plans.length ? `Based on up to ${reached.length} recent reached rounds at ${difficulty}.`
       : 'No repeated weak spot has enough comparable evidence yet. Continue regular practice.';
   return result;
+}
+
+/**
+ * Return comparable, game-specific plan candidates in one deterministic global
+ * order. The visible UI chooses one, while manual review can still expose it.
+ */
+export function rankPracticeCandidates(history, presets = {}) {
+  const candidates = [];
+  for (const game of Object.keys(PRACTICE_GAMES)) {
+    for (const difficulty of ['Easy', 'Medium', 'Hard']) {
+      const currentPreset = presets?.[game]?.[difficulty] ?? presets?.[game] ?? undefined;
+      const result = recommendPractice(history, game, difficulty, currentPreset);
+      result.plans.filter((plan) => plan.evidenceStats).forEach((plan) => {
+        candidates.push({ ...plan, rank: plan.evidenceStats });
+      });
+    }
+  }
+  return candidates.sort((left, right) => right.rank.accuracyGap - left.rank.accuracyGap
+    || right.rank.speedSlowdownPercent - left.rank.speedSlowdownPercent || right.rank.latest - left.rank.latest
+    || right.rank.attempts - left.rank.attempts || left.id.localeCompare(right.id));
 }
 
 export function practiceSettings(plan) {
