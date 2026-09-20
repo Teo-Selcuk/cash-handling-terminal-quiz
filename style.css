@@ -20,6 +20,9 @@
   --outcome-correct: #176343;
   --outcome-incorrect: #c86531;
   --outcome-timeout: #536569;
+  --chart-series-1: #216f91;
+  --chart-series-2: #7656a8;
+  --chart-series-3: #b16a16;
   --radius: 0.5rem;
   --shadow: 0 0.5rem 1.5rem rgb(23 39 42 / 9%);
 }
@@ -46,6 +49,9 @@
   --outcome-correct: #78d7a2;
   --outcome-incorrect: #f1a36c;
   --outcome-timeout: #b6c8c2;
+  --chart-series-1: #77c9ee;
+  --chart-series-2: #cbb4ff;
+  --chart-series-3: #ffc46b;
   --shadow: 0 0.5rem 1.5rem rgb(0 0 0 / 28%);
 }
 
@@ -157,16 +163,28 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 .interactive-chart h4 { margin: 0; font-size: 1rem; }
 .chart-controls { justify-content: flex-end; }
 .chart-controls .text-button { min-height: 2.75rem; padding: 0.35rem 0.5rem; font-size: 0.8125rem; }
-.analytics-svg { width: 100%; height: auto; min-height: 22rem; margin-top: 0.5rem; overflow: visible; }
-.analytics-svg .analytics-mark { fill: var(--brand-fill); cursor: pointer; }
-.analytics-svg .analytics-mark:hover, .analytics-svg .analytics-mark:focus { fill: var(--accent); outline: none; }
+.analytics-svg { width: 100%; height: auto; min-height: 22rem; margin-top: 0.5rem; overflow: visible; touch-action: pan-y; }
+.analytics-svg .analytics-mark { fill: var(--chart-color, var(--brand-fill)); cursor: pointer; }
+.analytics-svg .analytics-mark:hover, .analytics-svg .analytics-mark:focus { --chart-color: var(--accent); outline: none; }
+.chart-value-primary { --chart-color: var(--brand-fill); }
+.chart-value-success { --chart-color: var(--success); }
+.chart-value-caution { --chart-color: var(--accent); }
+.chart-value-danger { --chart-color: var(--danger); }
+.chart-value-muted { --chart-color: var(--muted); }
+.chart-value-series-0 { --chart-color: var(--brand-fill); }
+.chart-value-series-1 { --chart-color: var(--chart-series-1); }
+.chart-value-series-2 { --chart-color: var(--chart-series-2); }
+.chart-value-series-3 { --chart-color: var(--chart-series-3); }
 .analytics-svg text { fill: var(--muted); font-family: inherit; font-size: 0.72rem; }
 .analytics-svg .chart-axis-line { stroke: var(--ink); stroke-width: 1.25; }
 .analytics-svg .chart-grid-line { stroke: var(--line); stroke-width: 1; }
 .analytics-svg .chart-axis-title { fill: var(--ink); font-size: 0.78rem; font-weight: 750; }
 .analytics-svg .chart-y-tick, .analytics-svg .chart-x-tick { fill: var(--muted); font-variant-numeric: tabular-nums; }
 .analytics-svg .chart-series-line { stroke: var(--brand-fill); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+.analytics-svg .chart-series-segment { stroke: var(--chart-color); stroke-width: 2.5; stroke-linecap: round; pointer-events: none; }
+.analytics-svg .chart-selection { fill: var(--accent); fill-opacity: 0.2; stroke: var(--accent); stroke-width: 1.5; pointer-events: none; }
 .analytics-svg .chart-value-label { fill: var(--ink); font-size: 0.68rem; font-weight: 750; pointer-events: none; }
+.chart-selection-hint { margin: 0.5rem 0 0; color: var(--muted); font-size: 0.8125rem; }
 .chart-table-alternative { margin-top: 0.75rem; }
 .chart-table-alternative summary { min-height: 2.75rem; display: flex; align-items: center; cursor: pointer; font-weight: 700; }
 .chart-table-alternative table { margin-top: 0.5rem; }
@@ -451,7 +469,7 @@ input:disabled { background: var(--disabled-surface); color: var(--muted); }
 .bar-chart-row { display: grid; gap: 0.5rem; grid-template-columns: 4rem minmax(0, 1fr); align-items: center; }
 .bar-chart-label { font-weight: 750; }
 .bar-chart-track { height: 0.875rem; overflow: hidden; border-radius: 999rem; background: var(--surface); }
-.bar-chart-fill { display: block; width: var(--bar-size); min-width: 0; height: 100%; border-radius: inherit; background: var(--brand-fill); }
+.bar-chart-fill { display: block; width: var(--bar-size); min-width: 0; height: 100%; border-radius: inherit; background: var(--chart-color, var(--brand-fill)); }
 .bar-chart-value { grid-column: 2; color: var(--muted); font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
 
 .table-wrap { overflow-x: auto; margin-top: 1.5rem; border: 0.0625rem solid var(--line); border-radius: var(--radius); }

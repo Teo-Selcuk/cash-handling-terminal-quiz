@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 
 const historyKey = 'cash-handling-terminal-quiz-history-v1';
 const timestamp = (minute) => new Date(Date.UTC(2026, 8, 1, 9, minute)).toISOString();
+const dayTimestamp = (day) => new Date(Date.UTC(2026, 8, 1 + day, 9)).toISOString();
 const base = (game, index, extra) => ({
   game, gameType: ({ cash: 'Cash handling', memory: 'Number memory', task: 'Task simulation', 'error-detection': 'Error detection' })[game],
   sessionId: `${game}-${index}`, questionNumber: 1, timestamp: timestamp(index), difficulty: 'Easy',
@@ -30,6 +31,7 @@ const fixtures = [
 
 const manySessions = Array.from({ length: 300 }, (_, index) => base('cash', index + 100, {
   sessionId: `scrollable-session-${String(index + 1).padStart(3, '0')}`,
+  timestamp: dayTimestamp(index + 100),
   timeUsedSeconds: 4 + (index % 24),
 }));
 
@@ -86,9 +88,26 @@ export async function checkProgress(browser, site) {
     await chart.getByRole('button', { name: 'Hide data' }).click();
     await chart.getByRole('button', { name: 'Show data' }).click();
     await chart.getByRole('button', { name: 'Zoom in' }).click();
+    assert.match(await chart.locator('.analytics-svg').getAttribute('data-chart-window'), /:\d+$/);
     await chart.getByRole('button', { name: 'Earlier' }).click();
     await chart.getByRole('button', { name: 'Later' }).click();
     await chart.getByRole('button', { name: 'Reset' }).click();
+    const svg = chart.locator('.analytics-svg');
+    const initialWindow = await svg.getAttribute('data-chart-window');
+    const bounds = await svg.boundingBox();
+    assert.ok(bounds, 'chart has a visible plot area for selection zoom');
+    await page.mouse.move(bounds.x + bounds.width * 0.2, bounds.y + bounds.height * 0.45);
+    await page.mouse.down();
+    await page.mouse.move(bounds.x + bounds.width * 0.6, bounds.y + bounds.height * 0.45);
+    await page.mouse.up();
+    assert.notEqual(await chart.locator('.analytics-svg').getAttribute('data-chart-window'), initialWindow, 'dragging a chart range zooms to the selected marks');
+    assert.ok(await chart.locator('.chart-selection-hint').count(), 'charts explain drag-to-zoom interaction');
+    assert.ok(await page.locator('#history-charts .chart-value-danger').count(), 'low accuracy and incorrect outcomes use a distinct warning color');
+    assert.ok(await page.locator('#history-charts .chart-value-series-1').count(), 'category bars use more than one series color');
+    const lightMarkColor = await chart.locator('.analytics-mark circle').first().evaluate((mark) => getComputedStyle(mark).fill);
+    await page.locator('#theme-toggle').click();
+    assert.notEqual(await chart.locator('.analytics-mark circle').first().evaluate((mark) => getComputedStyle(mark).fill), lightMarkColor, 'chart colors adapt to dark mode');
+    await page.locator('#theme-toggle').click();
     await chart.locator('.analytics-mark').first().focus();
     await page.keyboard.press('Enter');
     assert.equal(await page.locator('#attempt-detail-dialog').evaluate((dialog) => dialog.open), true);

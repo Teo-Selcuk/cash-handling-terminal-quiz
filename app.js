@@ -2447,7 +2447,7 @@ function renderHistoryVisuals(summary) {
     track.className = 'bar-chart-track';
     track.setAttribute('aria-hidden', 'true');
     const fill = document.createElement('span');
-    fill.className = 'bar-chart-fill';
+    fill.className = `bar-chart-fill ${chartColorClass({ id: 'accuracy-by-difficulty', kind: 'bar', series: [{ metric: 'accuracy' }] }, { key: level.level, value: level.accuracyPercent }, 0)}`;
     fill.style.setProperty('--bar-size', `${level.accuracyPercent}%`);
     track.append(fill);
     const value = document.createElement('span');
@@ -2766,6 +2766,23 @@ function chartTickValue(value, metric) {
   return metric === 'time' ? `${value}s` : metric === 'accuracy' ? `${value}%` : String(value);
 }
 
+function chartColorClass(spec, point, index) {
+  const metric = spec.series[0].metric;
+  const outcome = String(point.key ?? '').toLowerCase();
+  if (spec.id === 'outcomes') {
+    if (outcome === 'correct') return 'chart-value-success';
+    if (outcome === 'incorrect') return 'chart-value-danger';
+    return 'chart-value-muted';
+  }
+  if (metric === 'accuracy') {
+    if (point.value < 60) return 'chart-value-danger';
+    if (point.value < 85) return 'chart-value-caution';
+    return 'chart-value-success';
+  }
+  if (spec.kind === 'bar') return `chart-value-series-${index % 4}`;
+  return 'chart-value-primary';
+}
+
 function openAttemptDetails(records, attemptIds, heading) {
   const rows = records.filter((record) => attemptIds.includes(record.attemptId));
   refs['attempt-detail-summary'].textContent = `${rows.length} contributing attempt${rows.length === 1 ? '' : 's'} — ${heading}`;
@@ -2816,18 +2833,22 @@ function renderChartCard(spec, records) {
     controls.append(button);
   };
   control(view.visible ? 'Hide data' : 'Show data', () => { view.visible = !view.visible; });
-  control('Zoom in', () => { view.count = Math.max(4, Math.floor(view.count / 1.5)); });
+  control('Zoom in', () => { view.count = Math.max(1, Math.floor(view.count / 1.5)); view.notice = 'Zoomed in. Drag across the plot to choose an exact range.'; });
   control('Zoom out', () => { view.count = Math.min(60, view.count + 6); });
   control('Earlier', () => { view.start = Math.max(0, view.start - Math.max(1, Math.floor(view.count / 2))); });
   control('Later', () => { view.start = Math.min(Math.max(0, spec.series[0].points.length - view.count), view.start + Math.max(1, Math.floor(view.count / 2))); });
-  control('Reset', () => { Object.assign(view, { start: 0, count: 12, visible: true, compare: false }); });
+  control('Reset', () => { Object.assign(view, { start: 0, count: 12, visible: true, compare: false, notice: 'Showing the default chart range.' }); });
   control(view.compare ? 'Hide comparison' : 'Compare periods', () => { view.compare = !view.compare; });
   heading.append(title, controls);
   card.append(heading);
   const status = document.createElement('p');
   status.className = 'chart-note chart-hover';
-  status.textContent = `${spec.attemptIds.length} eligible filtered attempt${spec.attemptIds.length === 1 ? '' : 's'}.`;
+  status.textContent = view.notice ?? `${spec.attemptIds.length} eligible filtered attempt${spec.attemptIds.length === 1 ? '' : 's'}.`;
   card.append(status);
+  const selectionHint = document.createElement('p');
+  selectionHint.className = 'chart-selection-hint';
+  selectionHint.textContent = 'Drag across the plot to zoom to those marks. Reset returns to the default range.';
+  card.append(selectionHint);
   const series = spec.series[0];
   const points = series.points.slice(view.start, view.start + view.count);
   if (!view.visible || !points.length) {
@@ -2837,7 +2858,7 @@ function renderChartCard(spec, records) {
     card.append(empty);
     return card;
   }
-  const svg = chartSvgElement('svg', { class: 'analytics-svg', viewBox: '0 0 760 330', role: 'img', 'aria-label': `${spec.title}. Each mark can be selected to inspect exact attempts.` });
+  const svg = chartSvgElement('svg', { class: 'analytics-svg', viewBox: '0 0 760 330', role: 'img', 'aria-label': `${spec.title}. Drag across the plot to zoom to selected marks. Each mark can be selected to inspect exact attempts.`, 'data-chart-window': `${view.start}:${view.count}` });
   const plot = { left: 72, right: 24, top: 24, bottom: 254 };
   const plotWidth = 760 - plot.left - plot.right;
   const plotHeight = plot.bottom - plot.top;
@@ -2884,7 +2905,10 @@ function renderChartCard(spec, records) {
   xTitle.textContent = spec.kind === 'scatter' ? 'Response time (seconds)' : points.every((point) => /^\d{4}-\d{2}-\d{2}$/.test(point.label)) ? 'Date' : 'Category';
   xAxis.append(xTitle);
   svg.append(yAxis, xAxis);
+  const selection = chartSvgElement('rect', { class: 'chart-selection', x: plot.left, y: plot.top, width: 0, height: plotHeight, visibility: 'hidden' });
+  svg.append(selection);
   const linePoints = [];
+  const lineSegments = [];
   points.forEach((point, index) => {
     const value = Number(spec.kind === 'scatter' ? point.y : point.value);
     if (!Number.isFinite(value)) return;
@@ -2892,8 +2916,12 @@ function renderChartCard(spec, records) {
     const y = yFor(value);
     const width = plotWidth / Math.max(points.length, 1);
     const height = Math.max(2, plot.bottom - y);
-    if (spec.kind === 'line') linePoints.push(`${x},${y}`);
-    const mark = chartSvgElement('g', { class: 'analytics-mark', role: 'button', tabindex: '0', 'aria-label': `${point.label}: ${chartValue(point, series.metric)} from ${point.attemptIds.length} attempts` });
+    if (spec.kind === 'line') {
+      linePoints.push(`${x},${y}`);
+      if (index > 0) lineSegments.push({ x1: xFor(points[index - 1], index - 1), y1: yFor(Number(points[index - 1].value)), x2: x, y2: y, color: chartColorClass(spec, point, index) });
+    }
+    const colorClass = chartColorClass(spec, point, index);
+    const mark = chartSvgElement('g', { class: `analytics-mark ${colorClass}`, role: 'button', tabindex: '0', 'aria-label': `${point.label}: ${chartValue(point, series.metric)} from ${point.attemptIds.length} attempts` });
     const shape = chartSvgElement(spec.kind === 'line' || spec.kind === 'scatter' ? 'circle' : 'rect', spec.kind === 'line' || spec.kind === 'scatter'
       ? { cx: x, cy: y, r: Math.max(4, Math.min(8, width * 0.18)) }
       : { x: x - Math.max(3, width * 0.32), y, width: Math.max(5, width * 0.64), height, rx: 2 });
@@ -2917,7 +2945,57 @@ function renderChartCard(spec, records) {
   if (linePoints.length > 1) {
     const path = chartSvgElement('polyline', { class: 'chart-series-line', points: linePoints.join(' '), fill: 'none' });
     svg.insertBefore(path, svg.querySelector('.analytics-mark'));
+    lineSegments.forEach((segment) => svg.insertBefore(chartSvgElement('line', { class: `chart-series-segment ${segment.color}`, x1: segment.x1, y1: segment.y1, x2: segment.x2, y2: segment.y2 }), svg.querySelector('.analytics-mark')));
   }
+  let drag = null;
+  let suppressClick = false;
+  const plotX = (event) => {
+    const bounds = svg.getBoundingClientRect();
+    return Math.max(plot.left, Math.min(plot.left + plotWidth, (event.clientX - bounds.left) / bounds.width * 760));
+  };
+  const updateSelection = () => {
+    const left = Math.min(drag.startX, drag.currentX);
+    selection.setAttribute('x', left);
+    selection.setAttribute('width', Math.abs(drag.currentX - drag.startX));
+    selection.setAttribute('visibility', drag.moved ? 'visible' : 'hidden');
+  };
+  svg.addEventListener('pointerdown', (event) => {
+    if (event.isPrimary === false || (event.pointerType === 'mouse' && event.button !== 0)) return;
+    const x = plotX(event);
+    drag = { pointerId: event.pointerId, startX: x, currentX: x, moved: false };
+    svg.setPointerCapture(event.pointerId);
+  });
+  svg.addEventListener('pointermove', (event) => {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    drag.currentX = plotX(event);
+    drag.moved ||= Math.abs(drag.currentX - drag.startX) > 12;
+    if (drag.moved) event.preventDefault();
+    updateSelection();
+  });
+  const finishSelection = (event) => {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    const completed = drag;
+    drag = null;
+    if (svg.hasPointerCapture(event.pointerId)) svg.releasePointerCapture(event.pointerId);
+    if (!completed.moved) return;
+    const left = Math.min(completed.startX, completed.currentX);
+    const right = Math.max(completed.startX, completed.currentX);
+    const selected = points.map((point, index) => ({ index, x: xFor(point, index) })).filter(({ x }) => x >= left && x <= right).map(({ index }) => index);
+    if (!selected.length || selected.length === points.length) return;
+    view.start += selected[0];
+    view.count = selected.at(-1) - selected[0] + 1;
+    view.notice = `Zoomed to ${view.count} selected mark${view.count === 1 ? '' : 's'}.`;
+    suppressClick = true;
+    renderHistory();
+  };
+  svg.addEventListener('pointerup', finishSelection);
+  svg.addEventListener('pointercancel', () => { drag = null; selection.setAttribute('visibility', 'hidden'); });
+  svg.addEventListener('click', (event) => {
+    if (!suppressClick) return;
+    event.preventDefault();
+    event.stopPropagation();
+    suppressClick = false;
+  }, true);
   card.append(svg);
   if (view.compare) {
     const compare = document.createElement('p');
