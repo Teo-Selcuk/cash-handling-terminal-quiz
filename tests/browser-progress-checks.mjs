@@ -97,6 +97,10 @@ export async function checkProgress(browser, site) {
     for (const width of [320, 768, 1024, 1440]) {
       await page.setViewportSize({ width, height: 900 });
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `progress history fits ${width}px`);
+      if (width === 1440) {
+        assert.ok(await page.locator('.app-shell').evaluate((shell) => shell.getBoundingClientRect().width >= 1400), 'desktop layout uses the available width');
+        assert.ok(await chart.locator('.analytics-svg').evaluate((svg) => svg.getBoundingClientRect().height >= 320), 'desktop charts have a readable height');
+      }
     }
     assert.deepEqual(errors, []);
     console.log('Progress history: game-specific filters, chart controls, keyboard drill-down, QR Alarm collapse, and responsive layouts passed');

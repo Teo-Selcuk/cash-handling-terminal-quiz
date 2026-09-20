@@ -18,7 +18,7 @@ export async function checkHistory(browser, base) {
           outcome = await page.locator('#feedback-heading').textContent() === 'Correct' ? 'Correct' : 'Incorrect';
           await assertSavedGameMechanics(page, game);
           if (game === 'memory') assert.equal(outcome, 'Correct');
-          if (phase === 'next') await page.locator('#next-question').click();
+          if (phase === 'next') await page.keyboard.press('Enter');
         }
         for (let refresh = 0; refresh < 2; refresh += 1) {
           await page.reload();

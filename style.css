@@ -66,7 +66,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 0.187
 h2:focus { outline: 0; }
 
 .app-shell {
-  width: min(100% - 2rem, 64rem);
+  width: min(100% - 2rem, 88rem);
   margin: 0 auto;
   padding: 2rem 0 3rem;
 }
@@ -157,7 +157,7 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 .interactive-chart h4 { margin: 0; font-size: 1rem; }
 .chart-controls { justify-content: flex-end; }
 .chart-controls .text-button { min-height: 2.75rem; padding: 0.35rem 0.5rem; font-size: 0.8125rem; }
-.analytics-svg { width: 100%; height: auto; min-height: 12rem; margin-top: 0.5rem; overflow: visible; }
+.analytics-svg { width: 100%; height: auto; min-height: 22rem; margin-top: 0.5rem; overflow: visible; }
 .analytics-svg .analytics-mark { fill: var(--brand-fill); cursor: pointer; }
 .analytics-svg .analytics-mark:hover, .analytics-svg .analytics-mark:focus { fill: var(--accent); outline: none; }
 .analytics-svg text { fill: var(--muted); font-family: inherit; font-size: 0.72rem; }
@@ -462,7 +462,7 @@ tr:last-child td { border-bottom: 0; }
 .empty-row { color: var(--muted); text-align: center; }
 
 .screen-reader-only { position: absolute; width: 0.0625rem; height: 0.0625rem; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
-footer { width: min(100% - 2rem, 64rem); margin: 0 auto; padding-bottom: 2rem; color: var(--muted); font-size: 0.875rem; }
+footer { width: min(100% - 2rem, 88rem); margin: 0 auto; padding-bottom: 2rem; color: var(--muted); font-size: 0.875rem; }
 
 @media (min-width: 42rem) {
   .choice-grid { grid-template-columns: repeat(3, 1fr); }
@@ -543,6 +543,7 @@ footer { width: min(100% - 2rem, 64rem); margin: 0 auto; padding-bottom: 2rem; c
 }
 
 @media (max-width: 36rem) {
+  .analytics-svg { min-height: 16rem; }
   .feedback-details { grid-template-columns: minmax(0, 1fr); gap: 0.25rem; }
   .feedback-details dd + dt { margin-top: 0.75rem; }
   .cash-builder-heading { flex-direction: column; align-items: flex-start; gap: 0.5rem; }

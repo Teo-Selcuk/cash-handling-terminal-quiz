@@ -3309,6 +3309,12 @@ refs['next-question'].addEventListener('click', () => {
   else if (state.game === 'error-detection') showNextErrorDetectionQuestion();
   else showNextQuestion();
 });
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter' || event.defaultPrevented || event.isComposing || event.repeat) return;
+  if (state.activeScreen !== 'feedback' || event.target.closest('dialog[open]')) return;
+  event.preventDefault();
+  refs['next-question'].click();
+});
 refs['memory-answer-form'].addEventListener('submit', (event) => {
   event.preventDefault();
   submitMemoryAnswer();
