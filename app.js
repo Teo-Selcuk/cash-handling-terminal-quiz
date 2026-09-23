@@ -2850,7 +2850,12 @@ function renderChartCard(spec, records) {
   selectionHint.textContent = 'Drag across the plot to zoom to those marks. Reset returns to the default range.';
   card.append(selectionHint);
   const series = spec.series[0];
-  const points = series.points.slice(view.start, view.start + view.count);
+  const sourcePoints = series.points.slice(view.start, view.start + view.count);
+  const points = sourcePoints.filter((point) => {
+    const value = spec.kind === 'scatter' ? point.y : point.value;
+    return value !== null && value !== undefined && Number.isFinite(Number(value))
+      && (spec.kind !== 'scatter' || (point.x !== null && point.x !== undefined && Number.isFinite(Number(point.x))));
+  });
   if (!view.visible || !points.length) {
     const empty = document.createElement('p');
     empty.className = 'chart-empty';
@@ -2916,9 +2921,9 @@ function renderChartCard(spec, records) {
     const y = yFor(value);
     const width = plotWidth / Math.max(points.length, 1);
     const height = Math.max(2, plot.bottom - y);
-    if (spec.kind === 'line') {
+    if (spec.kind === 'line' || spec.kind === 'scatter') {
       linePoints.push(`${x},${y}`);
-      if (index > 0) lineSegments.push({ x1: xFor(points[index - 1], index - 1), y1: yFor(Number(points[index - 1].value)), x2: x, y2: y, color: chartColorClass(spec, point, index) });
+      if (index > 0) lineSegments.push({ x1: xFor(points[index - 1], index - 1), y1: yFor(Number(spec.kind === 'scatter' ? points[index - 1].y : points[index - 1].value)), x2: x, y2: y, color: chartColorClass(spec, point, index) });
     }
     const colorClass = chartColorClass(spec, point, index);
     const mark = chartSvgElement('g', { class: `analytics-mark ${colorClass}`, role: 'button', tabindex: '0', 'aria-label': `${point.label}: ${chartValue(point, series.metric)} from ${point.attemptIds.length} attempts` });
@@ -2935,18 +2940,18 @@ function renderChartCard(spec, records) {
     const tooltip = chartSvgElement('title');
     tooltip.textContent = `${point.label}: ${chartValue(point, series.metric)}`;
     mark.append(tooltip, shape);
-    if (spec.kind === 'bar' || points.length <= 8) {
+    if (spec.kind === 'bar' || spec.kind === 'line' || spec.kind === 'scatter') {
       const label = chartSvgElement('text', { class: 'chart-value-label', x, y: Math.max(plot.top + 11, y - 7), 'text-anchor': 'middle' });
-      label.textContent = chartValue(point, series.metric);
+      label.textContent = spec.kind === 'scatter' ? `${point.label}: ${chartValue(point, series.metric)}` : chartValue(point, series.metric);
       mark.append(label);
     }
     svg.append(mark);
   });
-  if (linePoints.length > 1) {
+  if (linePoints.length > 1 && spec.kind === 'line') {
     const path = chartSvgElement('polyline', { class: 'chart-series-line', points: linePoints.join(' '), fill: 'none' });
     svg.insertBefore(path, svg.querySelector('.analytics-mark'));
-    lineSegments.forEach((segment) => svg.insertBefore(chartSvgElement('line', { class: `chart-series-segment ${segment.color}`, x1: segment.x1, y1: segment.y1, x2: segment.x2, y2: segment.y2 }), svg.querySelector('.analytics-mark')));
   }
+  if (lineSegments.length) lineSegments.forEach((segment) => svg.insertBefore(chartSvgElement('line', { class: `chart-series-segment ${segment.color}`, x1: segment.x1, y1: segment.y1, x2: segment.x2, y2: segment.y2 }), svg.querySelector('.analytics-mark'));
   let drag = null;
   let suppressClick = false;
   const plotX = (event) => {
