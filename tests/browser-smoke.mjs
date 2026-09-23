@@ -52,6 +52,10 @@ try {
     };
   });
   const base = process.env.QUIZ_LIVE_URL || `http://127.0.0.1:${server.address().port}/`;
+  if (process.env.QUIZ_FOCUSED === 'progress') {
+    await checkProgress(browser, base);
+    console.log('Focused History and Progress browser checks passed.');
+  } else {
   await checkResponsive(browser, base);
   await checkGuidance(browser, base);
   await checkHistory(browser, base);
@@ -157,6 +161,7 @@ try {
   await page.screenshot({ path: resolve(process.env.TEMP || '/tmp', 'quiz-pattern-games.png'), fullPage: true });
   assert.deepEqual(errors, []);
   console.log('Responsive layouts passed at 320/768/1440px; no page errors or failed asset requests.');
+  }
 } finally {
   await browser?.close();
   server.close();

@@ -31,6 +31,7 @@ const fixtures = [
 
 const manySessions = Array.from({ length: 300 }, (_, index) => base('cash', index + 100, {
   sessionId: `scrollable-session-${String(index + 1).padStart(3, '0')}`,
+  difficulty: ['Easy', 'Medium', 'Hard'][index % 3],
   timestamp: dayTimestamp(index + 100),
   timeUsedSeconds: 4 + (index % 24),
 }));
@@ -76,8 +77,14 @@ export async function checkProgress(browser, site) {
     await page.locator('#history-common-filters label').filter({ hasText: 'Incorrect' }).first().click();
     assert.ok(await page.locator('#history-rows tr').count(), 'compound filters keep their intersection visible');
     await page.locator('#clear-history-filters').click();
+    const conditions = page.locator('#history-insights select');
+    await conditions.nth(0).selectOption('cash|Transaction|Change');
+    await conditions.nth(1).selectOption('cash|Hundred-dollar bills|Two or more');
+    assert.match(await page.locator('#history-insights').innerText(), /4\/6; 95% Wilson interval/);
+    await page.locator('#clear-history-filters').click();
     await page.locator('#history-quick-ranges button[data-history-range="50a"]').click();
     assert.equal(await page.locator('#history-quick-ranges button[data-history-range="50a"]').getAttribute('aria-pressed'), 'true');
+    assert.match(await page.locator('#history-insights').innerText(), /Correct by:.*5s.*10s.*15s/s);
     const chart = page.locator('#history-charts .interactive-chart').first();
     assert.ok(await chart.locator('.chart-axis').count() >= 2, 'charts render visible X and Y axes');
     assert.ok(await chart.locator('.chart-axis-title').count() >= 2, 'charts label both axes');
@@ -89,11 +96,29 @@ export async function checkProgress(browser, site) {
     await chart.getByRole('button', { name: 'Show data' }).click();
     await chart.getByRole('button', { name: 'Zoom in' }).click();
     assert.match(await chart.locator('.analytics-svg').getAttribute('data-chart-window'), /:\d+$/);
-    await chart.getByRole('button', { name: 'Earlier' }).click();
     await chart.getByRole('button', { name: 'Later' }).click();
+    await chart.getByRole('button', { name: 'Earlier' }).click();
     await chart.getByRole('button', { name: 'Reset' }).click();
+    const scatter = page.locator('#history-charts .interactive-chart').filter({ has: page.getByRole('heading', { name: 'Speed versus accuracy' }) });
+    assert.equal(await scatter.locator('.analytics-mark').count(), 3, 'scatter has one point for each difficulty');
+    const scatterFull = await scatter.locator('.analytics-svg').getAttribute('data-chart-window');
+    await scatter.getByRole('button', { name: 'Zoom in' }).click();
+    const scatterZoomed = await scatter.locator('.analytics-svg').getAttribute('data-chart-window');
+    assert.notEqual(scatterZoomed, scatterFull, 'first scatter zoom changes its numeric time domain');
+    await scatter.getByRole('button', { name: 'Zoom out' }).click();
+    assert.equal(await scatter.locator('.analytics-svg').getAttribute('data-chart-window'), scatterFull, 'scatter zoom out restores the full domain');
+    assert.equal(await scatter.locator('.chart-series-segment').count(), 0, 'scatter dots have no implied connecting line');
+    const scatterBox = await scatter.locator('.analytics-svg').boundingBox();
+    await page.mouse.move(scatterBox.x + scatterBox.width * .2, scatterBox.y + scatterBox.height * .45);
+    await page.mouse.down();
+    await page.mouse.move(scatterBox.x + scatterBox.width * .9, scatterBox.y + scatterBox.height * .45);
+    await page.mouse.up();
+    assert.notEqual(await scatter.locator('.analytics-svg').getAttribute('data-chart-window'), scatterFull, 'scatter drag selection changes its time domain');
+    await scatter.getByRole('button', { name: 'Reset' }).click();
+    assert.equal(await scatter.locator('.analytics-svg').getAttribute('data-chart-window'), scatterFull);
     const svg = chart.locator('.analytics-svg');
     const initialWindow = await svg.getAttribute('data-chart-window');
+    await chart.scrollIntoViewIfNeeded();
     const bounds = await svg.boundingBox();
     assert.ok(bounds, 'chart has a visible plot area for selection zoom');
     await page.mouse.move(bounds.x + bounds.width * 0.2, bounds.y + bounds.height * 0.45);
@@ -115,7 +140,10 @@ export async function checkProgress(browser, site) {
     await page.locator('#close-attempt-detail').click();
     for (const width of [320, 768, 1024, 1440]) {
       await page.setViewportSize({ width, height: 900 });
-      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `progress history fits ${width}px`);
+      const overflow = await page.evaluate(() => ({ page: document.documentElement.scrollWidth, width: innerWidth,
+        elements: [...document.querySelectorAll('*')].filter((element) => element.getBoundingClientRect().right > innerWidth + 1)
+          .slice(0, 8).map((element) => `${element.tagName}#${element.id}.${element.className?.baseVal ?? element.className}: ${Math.round(element.getBoundingClientRect().right)}`) }));
+      assert.ok(overflow.page <= overflow.width, `progress history fits ${width}px: ${JSON.stringify(overflow)}`);
       if (width === 1440) {
         assert.ok(await page.locator('.app-shell').evaluate((shell) => shell.getBoundingClientRect().width >= 1400), 'desktop layout uses the available width');
         assert.ok(await chart.locator('.analytics-svg').evaluate((svg) => svg.getBoundingClientRect().height >= 320), 'desktop charts have a readable height');

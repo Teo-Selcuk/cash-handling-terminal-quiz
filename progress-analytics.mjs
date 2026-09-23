@@ -51,6 +51,28 @@ function denominationValues(record) {
   return values.length ? [...new Set(values)] : [];
 }
 
+function cashWorkload(record) {
+  if (!Array.isArray(record.tenderBreakdown)) return null;
+  const terms = record.tenderBreakdown.filter((item) => integer(item.cents) > 0 && integer(item.count) > 0);
+  return { terms: terms.length, multiplications: terms.filter((item) => item.count > 1).length,
+    additions: Math.max(0, terms.length - 1), hundredBills: terms.filter((item) => item.cents === 10000).reduce((sum, item) => sum + item.count, 0) };
+}
+
+function digitDistance(expected, received) {
+  if (!Array.isArray(expected) || !Array.isArray(received)) return null;
+  let wrong = 0; let omitted = 0; let extra = 0; let decimal = 0;
+  expected.forEach((value, index) => {
+    const answer = String(received[index] ?? '').replaceAll(/\s/g, '');
+    const target = String(value).replaceAll(/\s/g, '');
+    const left = target.replace('.', ''); const right = answer.replace('.', '');
+    for (let position = 0; position < Math.min(left.length, right.length); position += 1) wrong += Number(left[position] !== right[position]);
+    omitted += Math.max(0, left.length - right.length);
+    extra += Math.max(0, right.length - left.length);
+    decimal += Number(target.includes('.') !== answer.includes('.') || (target.includes('.') && target.indexOf('.') !== answer.indexOf('.')));
+  });
+  return { wrong, omitted, extra, decimal };
+}
+
 function memoryDigits(record) {
   if (Array.isArray(record.digitsByValue) && record.digitsByValue.every((value) => integer(value) !== null)) return record.digitsByValue.map(integer);
   if (!Array.isArray(record.expectedValues)) return null;
@@ -75,9 +97,12 @@ export function normalizeHistoryRecord(record, index = 0) {
   if (!record || typeof record !== 'object' || !OUTCOMES.has(record.outcome)) return null;
   const game = gameOf(record);
   if (!game) return null;
+  const answered = ANSWERED_OUTCOMES.has(record.outcome);
   const elapsed = positive(record.timeUsedSeconds);
   const digits = game === 'memory' ? memoryDigits(record) : null;
   const tenderValues = game === 'cash' ? denominationValues(record) : null;
+  const workload = game === 'cash' ? cashWorkload(record) : null;
+  const digitErrors = game === 'memory' && answered ? digitDistance(record.expectedValues, record.answeredValues) : null;
   const dueCents = integer(record.amountDueCents);
   const tenderCents = integer(record.cashGivenCents);
   const derivedTransaction = dueCents !== null && tenderCents !== null
@@ -98,9 +123,9 @@ export function normalizeHistoryRecord(record, index = 0) {
     gameName: GAME_NAMES[game],
     day: dayOf(record.timestamp),
     timestampMs: dateValue(record.timestamp),
-    isAnswered: ANSWERED_OUTCOMES.has(record.outcome),
+    isAnswered: answered,
     isCorrect: record.outcome === 'Correct',
-    attemptAccuracyPercent: add('attemptAccuracyPercent', ANSWERED_OUTCOMES.has(record.outcome) ? record.outcome === 'Correct' ? 100 : 0 : null),
+    attemptAccuracyPercent: add('attemptAccuracyPercent', answered ? record.outcome === 'Correct' ? 100 : 0 : null),
     responseTimeSeconds: add('responseTimeSeconds', elapsed),
     difficulty: known(record.difficulty) ? String(record.difficulty) : null,
     session: known(record.sessionId) ? String(record.sessionId) : null,
@@ -110,9 +135,22 @@ export function normalizeHistoryRecord(record, index = 0) {
     coinCount: add('coinCount', integer(record.tenderCoinCount)),
     denominationTypes: add('denominationTypes', integer(record.tenderDenominationTypes)),
     denominations: add('denominations', tenderValues),
+    hundredBillCount: add('hundredBillCount', workload?.hundredBills ?? null),
+    workloadMultiplications: add('workloadMultiplications', workload?.multiplications ?? null),
+    workloadAdditions: add('workloadAdditions', workload?.additions ?? null),
+    cashAddClicks: add('cashAddClicks', integer(record.cashAddClicks)),
+    cashRemoveClicks: add('cashRemoveClicks', integer(record.cashRemoveClicks)),
+    cashQuickEntries: add('cashQuickEntries', integer(record.cashQuickEntries)),
+    cashClearClicks: add('cashClearClicks', integer(record.cashClearClicks)),
     dueCents: add('dueCents', dueCents),
     tenderCents: add('tenderCents', tenderCents),
     changeOrShortfallCents: add('changeOrShortfallCents', integer(record.changeOrShortfallCents)),
+    cashSignedErrorCents: add('cashSignedErrorCents', answered && integer(record.userDeclaredAmountCents) !== null && integer(record.changeOrShortfallCents) !== null
+      ? integer(record.userDeclaredAmountCents) - integer(record.changeOrShortfallCents) : null),
+    cashWrongType: add('cashWrongType', answered && known(record.userAnswer) && known(record.cashTransactionType) ? record.userAnswer !== record.cashTransactionType : null),
+    cashWrongAmount: add('cashWrongAmount', answered && known(record.userAnswer) && integer(record.userDeclaredAmountCents) !== null && integer(record.changeOrShortfallCents) !== null
+      ? record.userAnswer === (record.cashTransactionType ?? derivedTransaction) && integer(record.userDeclaredAmountCents) !== integer(record.changeOrShortfallCents) : null),
+    cashBuilderMismatch: add('cashBuilderMismatch', answered && record.cashBuilder === true && boolean(record.breakdownMatchesDeclaredAmount) !== null ? !record.breakdownMatchesDeclaredAmount : null),
     transactionType: add('transactionType', record.cashTransactionType ?? derivedTransaction),
     customerRequestKind: add('customerRequestKind', record.customerBillRequestKind),
     customerRequestResult: add('customerRequestResult', record.customerRequestResult),
@@ -129,6 +167,10 @@ export function normalizeHistoryRecord(record, index = 0) {
     writeSeconds: add('writeSeconds', positive(record.writeTimeSeconds)),
     correctValueCount: add('correctValueCount', integer(record.correctValueCount)),
     mismatchPositions: add('mismatchPositions', mismatch),
+    wrongDigits: add('wrongDigits', digitErrors?.wrong ?? null),
+    omittedDigits: add('omittedDigits', digitErrors?.omitted ?? null),
+    extraDigits: add('extraDigits', digitErrors?.extra ?? null),
+    decimalErrors: add('decimalErrors', digitErrors?.decimal ?? null),
     workspaceKind: add('workspaceKind', record.workspaceKind),
     expectedSteps: add('expectedSteps', integer(record.stepsExpected)),
     completedSteps: add('completedSteps', integer(record.stepsCompleted)),
@@ -140,6 +182,11 @@ export function normalizeHistoryRecord(record, index = 0) {
     sequenceAccuracyPercent: add('sequenceAccuracyPercent', positive(record.sequenceAccuracyPercent)),
     totalMistakes: add('totalMistakes', integer(record.mistakes)),
     taskMistakeCategories: add('taskMistakeCategories', taskCategories(record)),
+    taskMissingCount: add('taskMissingCount', integer(record.taskMissingCount)),
+    taskExtraCount: add('taskExtraCount', integer(record.taskExtraCount)),
+    taskOutOfOrderCount: add('taskOutOfOrderCount', integer(record.taskOutOfOrderCount)),
+    taskTabChanges: add('taskTabChanges', integer(record.taskTabChanges)),
+    taskCorrections: add('taskCorrections', integer(record.taskCorrections)),
     puzzleFamily: add('puzzleFamily', record.puzzleFamilyId ?? record.puzzleFamily),
     puzzleType: add('puzzleType', record.puzzleType),
     ruleLayers: add('ruleLayers', integer(record.ruleLayers)),
@@ -148,6 +195,9 @@ export function normalizeHistoryRecord(record, index = 0) {
     selectedAnomalyCount: add('selectedAnomalyCount', integer(record.selectedErrorCount)),
     missedAnomalyCount: add('missedAnomalyCount', integer(record.missedAnomalyCount)),
     falseFlagCount: add('falseFlagCount', integer(record.falseFlagCount)),
+    selectionDistance: add('selectionDistance', answered && game === 'error-detection' && integer(record.missedAnomalyCount) !== null && integer(record.falseFlagCount) !== null
+      ? integer(record.missedAnomalyCount) + integer(record.falseFlagCount) : answered && game === 'fraud-inspection' && integer(record.fraudFalseNegativeCount) !== null && integer(record.fraudFalsePositiveCount) !== null
+        ? integer(record.fraudFalseNegativeCount) + integer(record.fraudFalsePositiveCount) : null),
     cleanPuzzle: add('cleanPuzzle', typeof record.cleanPuzzle === 'boolean' ? record.cleanPuzzle : null),
     timeLimitSeconds: add('timeLimitSeconds', positive(record.timeLimitSeconds)),
     fraudRunMode: add('fraudRunMode', record.fraudRunMode),
@@ -396,28 +446,160 @@ function groupedPoints(records, getKey, metric = 'accuracy') {
   return [...groups.entries()].map(([label, rows]) => aggregatePoint(label, label, rows, metric)).sort((left, right) => left.label.localeCompare(right.label, undefined, { numeric: true }));
 }
 
+function groupedMeanPoints(records, getKey, getValue) {
+  const groups = new Map();
+  for (const row of records) {
+    const key = getKey(row);
+    const value = getValue(row);
+    if (!known(key) || value === null || !Number.isFinite(value)) continue;
+    const label = String(key);
+    if (!groups.has(label)) groups.set(label, { rows: [], values: [] });
+    groups.get(label).rows.push(row);
+    groups.get(label).values.push(value);
+  }
+  return [...groups.entries()].map(([label, group]) => ({ ...aggregatePoint(label, label, group.rows), value: average(group.values), measure: 'mean' }))
+    .sort((left, right) => left.label.localeCompare(right.label, undefined, { numeric: true }));
+}
+
 function chart(id, title, points, options = {}) {
-  return { id, title, kind: options.kind ?? 'bar', description: options.description ?? '', series: [{ id: options.seriesId ?? 'value', label: options.seriesLabel ?? title, metric: options.metric ?? 'accuracy', points }], attemptIds: [...new Set(points.flatMap((point) => point.attemptIds))] };
+  return { id, title, kind: options.kind ?? 'bar', description: options.description ?? '', axisLabel: options.axisLabel,
+    series: [{ id: options.seriesId ?? 'value', label: options.seriesLabel ?? title, metric: options.metric ?? 'accuracy', points }], attemptIds: [...new Set(points.flatMap((point) => point.attemptIds))] };
 }
 function band(value, bands, suffix = '') { if (value === null) return null; const found = bands.find(([max]) => value <= max); return found ? found[1] : `${bands.at(-1)[0]}+${suffix}`; }
+
+const speedBand = (seconds) => seconds === null ? null : seconds <= 5 ? '0–5s' : seconds <= 10 ? '>5–10s' : seconds <= 15 ? '>10–15s' : '>15s';
+const SPEED_BANDS = ['0–5s', '>5–10s', '>10–15s', '>15s'];
+export function wilsonInterval(successes, attempts) {
+  if (!attempts) return null;
+  const z = 1.96;
+  const p = successes / attempts;
+  const divisor = 1 + z * z / attempts;
+  const center = (p + z * z / (2 * attempts)) / divisor;
+  const margin = z * Math.sqrt(p * (1 - p) / attempts + z * z / (4 * attempts * attempts)) / divisor;
+  return [Math.max(0, Math.round((center - margin) * 100)), Math.min(100, Math.round((center + margin) * 100))];
+}
+
+function ratePoint(label, rows) {
+  const correct = rows.filter((row) => row.isCorrect).length;
+  return { key: label, label, value: percent(correct, rows.length), count: rows.length, correct,
+    interval: wilsonInterval(correct, rows.length),
+    attemptIds: rows.map((row) => row.attemptId) };
+}
+
+function conditionAxes(game) {
+  const common = [['Speed', (row) => speedBand(row.responseTimeSeconds)]];
+  if (game === 'cash') return [...common,
+    ['Transaction', (row) => row.transactionType], ['Hundred-dollar bills', (row) => row.hundredBillCount === null ? null : row.hundredBillCount === 0 ? 'None' : row.hundredBillCount === 1 ? 'One' : 'Two or more'],
+    ['Denomination present', (row) => row.denominations?.map((cents) => `$${(cents / 100).toFixed(2)}`)],
+    ['Denomination load', (row) => row.denominationTypes], ['Customer request', (row) => row.customerRequestKind || (row.customerRequests === false ? 'None' : null)],
+    ['Cash builder clicks', (row) => row.cashAddClicks === null ? null : band(row.cashAddClicks + (row.cashRemoveClicks ?? 0), [[0, '0'], [3, '1–3'], [8, '4–8']])],
+    ['Inferred multiplications', (row) => row.workloadMultiplications], ['Inferred additions', (row) => row.workloadAdditions]];
+  if (game === 'memory') return [...common, ['Digits per value', (row) => row.maxDigits], ['Total digits', (row) => row.totalDigits], ['Value count', (row) => row.valueCount],
+    ['Decimal mode', (row) => row.decimalMode === null ? null : row.decimalMode ? 'Decimals' : 'Whole numbers'], ['Read seconds', (row) => row.readSeconds]];
+  if (game === 'task') return [...common, ['Workflow', (row) => row.workspaceKind], ['Expected steps', (row) => row.expectedSteps],
+    ['Workspace rows', (row) => row.workspaceRows], ['Workspace tabs', (row) => row.workspaceTabs], ['Recall limit', (row) => row.recallSeconds],
+    ['Tab changes', (row) => row.taskTabChanges], ['Corrections', (row) => row.taskCorrections]];
+  if (game === 'error-detection') return [...common, ['Puzzle family', (row) => row.puzzleFamily], ['Rule layers', (row) => row.ruleLayers],
+    ['Clue count', (row) => row.clueCount], ['Puzzle type', (row) => row.puzzleType],
+    ['Clean puzzle', (row) => row.cleanPuzzle === null ? null : row.cleanPuzzle ? 'Clean' : 'Has anomalies']];
+  if (game === 'fraud-inspection') return [...common, ['Run mode', (row) => row.fraudRunMode], ['Case difficulty', (row) => row.fraudCaseDifficulty],
+    ['Issue count', (row) => row.fraudExpectedIssueCount], ['Actual issue', (row) => row.fraudExpectedCategories],
+    ['Clean case', (row) => row.fraudCleanCase === null ? null : row.fraudCleanCase ? 'Clean' : 'Has issues']];
+  return common;
+}
+
+/** Conditional choices and exact rates share the filtered, normalized attempt set. */
+export function buildConditionalReport(history, game = 'all', selectedIds = []) {
+  const records = modelRows(history).filter((row) => row.isAnswered && (game === 'all' || row.game === game));
+  const groups = new Map();
+  for (const row of records) for (const [axis, getter] of conditionAxes(row.game)) {
+    const values = getter(row);
+    for (const value of Array.isArray(values) ? values : [values]) {
+      if (!known(value)) continue;
+      const id = `${row.game}|${axis}|${value}`;
+      if (!groups.has(id)) groups.set(id, { id, label: `${axis}: ${value}`, game: row.game, axis, rows: [] });
+      groups.get(id).rows.push(row);
+    }
+  }
+  const choices = [...groups.values()].sort((a, b) => a.game.localeCompare(b.game) || a.label.localeCompare(b.label, undefined, { numeric: true }));
+  const selected = [...new Set(selectedIds)].slice(0, 2).map((id) => groups.get(id)).filter(Boolean);
+  const base = selected.length ? records.filter((row) => row.game === selected[0].game) : records;
+  const matched = selected.length ? base.filter((row) => selected.every((group) => group.rows.includes(row))) : base;
+  const eligible = base.filter((row) => selected.every((group) => {
+    const axis = conditionAxes(row.game).find(([label]) => label === group.axis);
+    return axis && known(axis[1](row));
+  }));
+  const rate = { ...ratePoint(selected.map((group) => group.label).join(' + ') || 'All answered attempts', matched), missing: base.length - eligible.length };
+  const missingTime = base.filter((row) => row.responseTimeSeconds === null).length;
+  const strata = new Map();
+  for (const row of records) {
+    const key = `${row.game}|${row.difficulty ?? '?'}|${row.sessionMode ?? row.fraudRunMode ?? '?'}`;
+    if (!strata.has(key)) strata.set(key, { rows: [], correct: 0 });
+    strata.get(key).rows.push(row);
+    strata.get(key).correct += Number(row.isCorrect);
+  }
+  const summaries = choices.map((group) => {
+    const qualifying = group.rows;
+    const comparable = new Set();
+    let expectedCorrect = 0;
+    for (const row of qualifying) {
+      const key = `${row.game}|${row.difficulty ?? '?'}|${row.sessionMode ?? row.fraudRunMode ?? '?'}`;
+      const peers = strata.get(key);
+      comparable.add(key);
+      expectedCorrect += peers.correct / peers.rows.length;
+    }
+    const comparableCount = [...comparable].reduce((sum, key) => sum + strata.get(key).rows.length, 0);
+    const point = ratePoint(group.label, qualifying);
+    return { ...point, id: group.id, game: group.game, comparableCount,
+      baselinePercent: qualifying.length ? Math.round(expectedCorrect / qualifying.length * 100) : null,
+      gapPoints: qualifying.length ? point.value - Math.round(expectedCorrect / qualifying.length * 100) : null,
+      evidence: qualifying.length >= 10 && comparableCount >= 20 ? 'Recurring' : qualifying.length >= 5 ? 'Early signal' : 'Limited' };
+  });
+  const ranked = summaries.filter((group) => group.count >= 5 && group.comparableCount >= 10);
+  const strengths = ranked.filter((group) => group.gapPoints >= 10).sort((a, b) => b.gapPoints - a.gapPoints || b.count - a.count).slice(0, 4);
+  const weaknesses = ranked.filter((group) => group.gapPoints <= -10).sort((a, b) => a.gapPoints - b.gapPoints || b.count - a.count).slice(0, 4);
+  const distances = matched.map((row) => row.game === 'cash' ? row.cashSignedErrorCents === null ? null : Math.abs(row.cashSignedErrorCents)
+    : row.game === 'memory' ? [row.wrongDigits, row.omittedDigits, row.extraDigits, row.decimalErrors].every((v) => v !== null) ? row.wrongDigits + row.omittedDigits + row.extraDigits + row.decimalErrors : null
+      : row.game === 'task' ? [row.taskMissingCount, row.taskExtraCount, row.taskOutOfOrderCount].every((v) => v !== null) ? row.taskMissingCount + row.taskExtraCount + row.taskOutOfOrderCount : null
+        : row.selectionDistance).filter((value) => value !== null);
+  return { choices: choices.map(({ id, label, game: choiceGame, rows }) => ({ id, label: game === 'all' ? `${GAME_NAMES[choiceGame]} · ${label}` : label, count: rows.length })),
+    selectedIds: selected.map((group) => group.id), rate, missingTime, notAnswered: modelRows(history).filter((row) => !row.isAnswered && (game === 'all' || row.game === game)).length,
+    strengths, weaknesses, meanDistance: average(distances), distanceCount: distances.length,
+    speed: SPEED_BANDS.map((label) => ratePoint(label, matched.filter((row) => speedBand(row.responseTimeSeconds) === label))),
+    correctBy: [5, 10, 15].map((seconds) => {
+      const measured = matched.filter((row) => row.responseTimeSeconds !== null);
+      const point = ratePoint(`By ${seconds}s`, measured);
+      point.correct = measured.filter((row) => row.isCorrect && row.responseTimeSeconds <= seconds).length;
+      point.value = percent(point.correct, measured.length);
+      point.interval = wilsonInterval(point.correct, measured.length);
+      return { seconds, ...point };
+    }) };
+}
 
 /** Return accessible, data-only specifications for shared and game-specific charts. */
 export function buildChartSpecs(history, game = 'all') {
   const records = modelRows(history).filter((record) => game === 'all' || record.game === game);
   const model = buildProgressModel(records);
   const daily = model.daily;
+  const timed = records.filter((record) => record.isAnswered && record.responseTimeSeconds !== null);
+  const speedPoints = SPEED_BANDS.map((label) => ratePoint(label, timed.filter((row) => speedBand(row.responseTimeSeconds) === label))).filter((point) => point.count);
+  const thresholdPoints = [5, 10, 15].map((seconds) => {
+    const point = ratePoint(`By ${seconds}s`, timed);
+    point.correct = timed.filter((row) => row.isCorrect && row.responseTimeSeconds <= seconds).length;
+    point.value = percent(point.correct, timed.length);
+    point.interval = wilsonInterval(point.correct, timed.length);
+    return point;
+  }).filter((point) => point.count);
   const specs = [
     chart('accuracy-over-time', 'Accuracy over time', daily.map((row) => ({ key: row.day, label: row.day, value: row.accuracyPercent, count: row.answered, attemptIds: row.attemptIds, detail: row })), { kind: 'line' }),
     chart('response-time-over-time', 'Response time over time', daily.filter((row) => row.averageResponseTimeSeconds !== null).map((row) => ({ key: row.day, label: row.day, value: row.averageResponseTimeSeconds, count: row.eligibleResponseAttempts, attemptIds: row.attemptIds, detail: row })), { kind: 'line', metric: 'time' }),
     chart('attempts-per-day', 'Attempts per day', daily.map((row) => ({ key: row.day, label: row.day, value: row.attempts, count: row.attempts, attemptIds: row.attemptIds, detail: row })), { metric: 'attempts' }),
     chart('outcomes', 'Correct, incorrect, and timed out', groupedPoints(records, (record) => record.outcome, 'attempts'), { metric: 'attempts' }),
-    chart('accuracy-by-difficulty', 'Accuracy by difficulty', groupedPoints(records, (record) => record.difficulty)),
     chart('speed-vs-accuracy', 'Speed versus accuracy', groupedPoints(records, (record) => record.difficulty).map((point) => ({ ...point, x: point.detail.averageResponseTimeSeconds, y: point.value })), { kind: 'scatter' }),
+    chart('accuracy-by-response-band', 'Accuracy by response time', speedPoints),
+    chart('correct-by-threshold', 'Correct by 5, 10, and 15 seconds', thresholdPoints),
     chart('performance-distribution', 'Response-time distribution', groupedPoints(records.filter((record) => record.responseTimeSeconds !== null), (record) => band(record.responseTimeSeconds, [[5, '0–5s'], [10, '6–10s'], [20, '11–20s'], [40, '21–40s']], 's'), 'attempts'), { metric: 'attempts' }),
     chart('best-vs-recent', 'First attempts versus recent attempts', [aggregatePoint('first', 'First 20', records.slice(0, 20)), aggregatePoint('recent', 'Recent 20', records.slice(-20))]),
-    chart('difficulty-progression', 'Difficulty progression', groupedPoints(records, (record) => record.difficulty, 'attempts'), { kind: 'line', metric: 'attempts' }),
-    chart('improvement-by-period', 'Improvement by period', [aggregatePoint('first-ten', 'First 10', records.slice(0, 10)), aggregatePoint('recent-ten', 'Recent 10', records.slice(-10))]),
-    chart('consistency', 'Daily consistency', daily.map((row) => ({ key: row.day, label: row.day, value: row.accuracyPercent, count: row.answered, attemptIds: row.attemptIds, detail: row })), { kind: 'line' }),
   ];
   const weaknesses = findWeaknesses(records, game);
   if (weaknesses.length) specs.push(chart('weakest-variables', 'Weakest recorded variables', weaknesses.slice(0, 8).map((weakness) => ({
@@ -433,6 +615,13 @@ export function buildChartSpecs(history, game = 'all') {
     chart('cash-transaction-type', 'Performance by transaction type', groupedPoints(records, (record) => record.transactionType)),
     chart('cash-due-band', 'Performance by amount due', groupedPoints(records, (record) => band(record.dueCents, [[5000, '$0–50'], [10000, '$50–100'], [50000, '$100–500']], ' cents'))),
     chart('cash-customer-request', 'Performance by customer request', groupedPoints(records, (record) => record.customerRequestKind ?? 'No request')),
+    chart('cash-hundred-bills', 'Accuracy by $100 bill count', groupedPoints(records, (row) => row.hundredBillCount === null ? null : row.hundredBillCount === 0 ? 'None' : row.hundredBillCount === 1 ? 'One' : 'Two or more')),
+    chart('cash-error-distance', 'Average absolute cents off by transaction', groupedMeanPoints(records, (row) => row.transactionType, (row) => row.cashSignedErrorCents === null ? null : Math.abs(row.cashSignedErrorCents)), { metric: 'cents' }),
+    chart('cash-builder-actions', 'Cash-builder actions by result', groupedMeanPoints(records, (row) => row.outcome, (row) => [row.cashAddClicks, row.cashRemoveClicks, row.cashQuickEntries, row.cashClearClicks].every((value) => value !== null) ? row.cashAddClicks + row.cashRemoveClicks + row.cashQuickEntries + row.cashClearClicks : null), { metric: 'actions' }),
+    chart('cash-workload', 'Accuracy by inferred arithmetic workload', groupedPoints(records, (row) => row.workloadMultiplications === null ? null : `${row.workloadMultiplications} ×, ${row.workloadAdditions} +`)),
+    chart('cash-error-reasons', 'Cash answer error reasons', [
+      ['Wrong transaction type', 'cashWrongType'], ['Wrong declared amount', 'cashWrongAmount'], ['Constructed cash mismatch', 'cashBuilderMismatch'],
+    ].map(([label, field]) => aggregatePoint(field, label, records.filter((row) => row[field] === true), 'attempts')), { metric: 'attempts' }),
   );
   if (game === 'memory') specs.push(
     chart('memory-digit-length', 'Accuracy by digit length', groupedPoints(records, (record) => record.maxDigits)),
@@ -441,6 +630,9 @@ export function buildChartSpecs(history, game = 'all') {
     chart('memory-value-count', 'Performance by value count', groupedPoints(records, (record) => record.valueCount)),
     chart('memory-read-duration', 'Accuracy by display duration', groupedPoints(records, (record) => record.readSeconds)),
     chart('memory-mismatch-position', 'Mismatch position frequency', groupedPoints(records.filter((record) => record.mismatchPositions !== null), (record) => record.mismatchPositions, 'attempts'), { metric: 'attempts' }),
+    chart('memory-decimal', 'Accuracy with and without decimals', groupedPoints(records, (row) => row.decimalMode === null ? null : row.decimalMode ? 'Decimals' : 'Whole numbers')),
+    chart('memory-error-distance', 'Average digit errors by load', groupedMeanPoints(records, (row) => row.totalDigits, (row) => row.wrongDigits === null ? null : row.wrongDigits + row.omittedDigits + row.extraDigits + row.decimalErrors), { metric: 'digits' }),
+    chart('memory-partial-recall', 'Average values recalled by digit load', groupedMeanPoints(records, (row) => row.totalDigits, (row) => row.correctValueCount !== null && row.valueCount > 0 ? row.correctValueCount / row.valueCount * 100 : null).map((point) => ({ ...point, value: Math.round(point.value) })), { axisLabel: 'Values recalled (%)' }),
   );
   if (game === 'task') specs.push(
     chart('task-workflow', 'Sequence quality by workflow', groupedPoints(records, (record) => record.workspaceKind)),
@@ -448,6 +640,9 @@ export function buildChartSpecs(history, game = 'all') {
     chart('task-workspace-load', 'Performance by rows and tabs', groupedPoints(records, (record) => record.workspaceRows !== null && record.workspaceTabs !== null ? `${record.workspaceRows} rows · ${record.workspaceTabs} tabs` : null)),
     chart('task-timing', 'Performance by recall limit', groupedPoints(records, (record) => record.recallSeconds)),
     chart('task-mistake-type', 'Mistake category frequency', groupedPoints(records.filter((record) => record.taskMistakeCategories !== null), (record) => record.taskMistakeCategories, 'attempts'), { metric: 'attempts' }),
+    chart('task-sequence-by-workflow', 'Average sequence accuracy by workflow', groupedMeanPoints(records, (row) => row.workspaceKind, (row) => row.sequenceAccuracyPercent).map((point) => ({ ...point, value: Math.round(point.value) })), { axisLabel: 'Sequence accuracy (%)' }),
+    chart('task-action-distance', 'Average action errors by workflow', groupedMeanPoints(records, (row) => row.workspaceKind, (row) => row.taskMissingCount === null ? null : row.taskMissingCount + row.taskExtraCount + row.taskOutOfOrderCount), { metric: 'actions' }),
+    chart('task-errors-by-speed', 'Average action errors by response time', groupedMeanPoints(records, (row) => speedBand(row.responseTimeSeconds), (row) => row.taskMissingCount === null ? null : row.taskMissingCount + row.taskExtraCount + row.taskOutOfOrderCount), { metric: 'actions' }),
   );
   if (game === 'error-detection') specs.push(
     chart('error-family', 'Accuracy by puzzle family', groupedPoints(records, (record) => record.puzzleFamily)),
@@ -456,7 +651,31 @@ export function buildChartSpecs(history, game = 'all') {
     chart('error-anomaly-count', 'Accuracy by anomaly count', groupedPoints(records, (record) => record.expectedAnomalyCount)),
     chart('error-missed-versus-false', 'Missed anomalies versus false flags', [aggregatePoint('missed', 'Missed anomalies', records.filter((record) => (record.missedAnomalyCount ?? 0) > 0), 'attempts'), aggregatePoint('false', 'False flags', records.filter((record) => (record.falseFlagCount ?? 0) > 0), 'attempts')], { metric: 'attempts' }),
     chart('error-clean-puzzle', 'Clean-puzzle accuracy', groupedPoints(records, (record) => record.cleanPuzzle === null ? null : record.cleanPuzzle ? 'Clean' : 'Has anomalies')),
+    chart('error-selection-distance', 'Average clue selections to fix by family', groupedMeanPoints(records, (row) => row.puzzleFamily, (row) => row.selectionDistance), { metric: 'selections' }),
+    chart('cipher-rule-distance', 'Cipher Ring selection distance by rule layers', groupedMeanPoints(records.filter((row) => String(row.puzzleFamily).includes('cipher')), (row) => row.ruleLayers, (row) => row.selectionDistance), { metric: 'selections' }),
   );
+  if (game === 'fraud-inspection') {
+    specs.push(
+      chart('fraud-run-mode', 'Exact-set accuracy by run mode', groupedPoints(records, (row) => row.fraudRunMode)),
+      chart('fraud-difficulty', 'Exact-set accuracy by case difficulty', groupedPoints(records, (row) => row.fraudCaseDifficulty)),
+      chart('fraud-clean', 'Exact-set accuracy by clean case', groupedPoints(records, (row) => row.fraudCleanCase === null ? null : row.fraudCleanCase ? 'Clean' : 'Has issues')),
+      chart('fraud-issue-count', 'Exact-set accuracy by issue count', groupedPoints(records, (row) => row.fraudExpectedIssueCount)),
+      chart('fraud-selection-distance', 'Average issue selections to fix by run mode', groupedMeanPoints(records, (row) => row.fraudRunMode, (row) => row.selectionDistance), { metric: 'selections' }),
+    );
+    const categoryRows = new Map();
+    records.forEach((row) => Object.entries(row.fraudCategoryResults ?? {}).forEach(([id, result]) => {
+      if (!categoryRows.has(id)) categoryRows.set(id, { found: [], missed: [], valid: [], falsePositive: [] });
+      categoryRows.get(id)[result === 'false-positive' ? 'falsePositive' : result]?.push(row);
+    }));
+    specs.push(chart('fraud-issue-detection', 'Issue detection when present', [...categoryRows].map(([id, rows]) => {
+      const present = [...rows.found, ...rows.missed];
+      return { ...ratePoint(id, present), correct: rows.found.length, interval: wilsonInterval(rows.found.length, present.length), value: percent(rows.found.length, present.length) };
+    }).filter((point) => point.count)));
+    specs.push(chart('fraud-false-flags', 'False flags when issue absent', [...categoryRows].map(([id, rows]) => {
+      const absent = [...rows.valid, ...rows.falsePositive];
+      return { ...ratePoint(id, absent), correct: rows.falsePositive.length, interval: wilsonInterval(rows.falsePositive.length, absent.length), value: percent(rows.falsePositive.length, absent.length) };
+    }).filter((point) => point.count), { axisLabel: 'False flags (%)' }));
+  }
   return specs.filter((spec) => spec.series.some((series) => series.points.length));
 }
 
@@ -494,6 +713,12 @@ function weaknessGroups(records, game) {
     add('family', 'Puzzle family', (record) => record.puzzleFamily, (value) => ({ game: 'error-detection', error: { puzzleFamilies: [value] } }), 'family');
     add('clues', 'Clue count', (record) => record.clueCount, (value) => ({ game: 'error-detection', error: { clueCount: { min: Number(value), max: Number(value) } } }), 'clues');
     add('rules', 'Rule layers', (record) => record.ruleLayers, (value) => ({ game: 'error-detection', error: { ruleLayers: { min: Number(value), max: Number(value) } } }), 'ruleLayers');
+  }
+  if (game === 'fraud-inspection') {
+    add('run-mode', 'Run mode', (record) => record.fraudRunMode, (value) => ({ game, fraud: { runModes: [value] } }), 'runMode');
+    add('case-difficulty', 'Case difficulty', (record) => record.fraudCaseDifficulty, (value) => ({ game, fraud: { caseDifficulties: [value] } }), 'caseDifficulty');
+    add('issues', 'Actual issue', (record) => record.fraudExpectedCategories, (value) => ({ game, fraud: { issueCategories: [value] } }), 'issueCategory');
+    add('issue-count', 'Issue count', (record) => record.fraudExpectedIssueCount, (value) => ({ game, fraud: { expectedIssueCount: { min: Number(value), max: Number(value) } } }), 'issueCount');
   }
   return groups;
 }

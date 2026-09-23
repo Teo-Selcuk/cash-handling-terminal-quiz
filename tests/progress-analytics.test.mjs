@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   normalizeHistoryRecord, filterHistory, buildProgressModel, buildGameFilters,
-  buildChartSpecs, comparePeriods, findWeaknesses, recommendNextChallenge,
+  buildChartSpecs, buildConditionalReport, wilsonInterval, comparePeriods, findWeaknesses, recommendNextChallenge,
 } from '../progress-analytics.mjs';
 
 const at = (minute, extra = {}) => ({
@@ -110,6 +110,54 @@ test('charts only expose attempt ids from the supplied filtered attempt set', ()
       assert.ok(point.attemptIds.every((id) => allowed.has(id)), `${spec.id} includes only filtered attempts`);
     }
   }
+});
+
+test('speed bands and cumulative thresholds count 5, 10, and 15 second boundaries', () => {
+  const records = [cash(1, { outcome: 'Correct', timeUsedSeconds: 5 }), cash(2, { outcome: 'Incorrect', timeUsedSeconds: 10 }),
+    cash(3, { outcome: 'Correct', timeUsedSeconds: 15 }), cash(4, { outcome: 'Timed Out', timeUsedSeconds: 16 }),
+    cash(5, { outcome: 'Not answered', timeUsedSeconds: null })];
+  const specs = buildChartSpecs(records, 'cash');
+  const bands = specs.find((spec) => spec.id === 'accuracy-by-response-band').series[0].points;
+  assert.deepEqual(bands.map((point) => [point.label, point.value, point.count]), [['0–5s', 100, 1], ['>5–10s', 0, 1], ['>10–15s', 100, 1], ['>15s', 0, 1]]);
+  const thresholds = specs.find((spec) => spec.id === 'correct-by-threshold').series[0].points;
+  assert.deepEqual(thresholds.map((point) => [point.correct, point.count, point.value]), [[1, 4, 25], [1, 4, 25], [2, 4, 50]]);
+});
+
+test('combined conditions use their actual intersection and disclose missing legacy fields', () => {
+  const records = [cash(1, { outcome: 'Correct', cashTransactionType: 'Change' }), cash(2, { outcome: 'Incorrect', cashTransactionType: 'Change' }),
+    cash(3, { outcome: 'Correct', cashTransactionType: 'Exact', tenderBreakdown: [{ cents: 5000, count: 1 }] }),
+    cash(4, { outcome: 'Correct', cashTransactionType: 'Change', tenderBreakdown: undefined })];
+  const all = buildConditionalReport(records, 'cash');
+  const change = all.choices.find((choice) => choice.id === 'cash|Transaction|Change');
+  const hundred = all.choices.find((choice) => choice.id === 'cash|Hundred-dollar bills|Two or more');
+  const report = buildConditionalReport(records, 'cash', [change.id, hundred.id]);
+  assert.deepEqual([report.rate.correct, report.rate.count, report.rate.value, report.rate.missing], [1, 2, 50, 1]);
+  assert.deepEqual(wilsonInterval(0, 0), null);
+  assert.ok(wilsonInterval(1, 2)[0] < 50 && wilsonInterval(1, 2)[1] > 50);
+});
+
+test('derives cash, memory, task, and selection distance only from recorded evidence', () => {
+  const c = normalizeHistoryRecord(cash(1, { userAnswer: 'Change', userDeclaredAmountCents: 9999, cashBuilder: true, breakdownMatchesDeclaredAmount: false,
+    cashAddClicks: 2, cashRemoveClicks: 1, cashQuickEntries: 1, cashClearClicks: 0 }));
+  assert.deepEqual([c.hundredBillCount, c.workloadMultiplications, c.workloadAdditions, c.cashSignedErrorCents, c.cashWrongAmount, c.cashBuilderMismatch], [2, 1, 1, -1, true, true]);
+  const m = normalizeHistoryRecord(memory(2, { expectedValues: ['12.3'], answeredValues: ['1.45'] }));
+  assert.deepEqual([m.wrongDigits, m.omittedDigits, m.extraDigits, m.decimalErrors], [2, 0, 0, 1]);
+  assert.equal(normalizeHistoryRecord(errorPuzzle(3)).selectionDistance, 1);
+  assert.equal(normalizeHistoryRecord(fraudInspection(4)).selectionDistance, 1);
+  assert.equal(normalizeHistoryRecord(task(5)).taskMissingCount, null);
+});
+
+test('fraud charts use present and absent categories as separate denominators', () => {
+  const records = [
+    fraudInspection(1, { fraudCategoryResults: { 'id-expired': 'found', 'payee-mismatch': 'valid' } }),
+    fraudInspection(2, { fraudCategoryResults: { 'id-expired': 'missed', 'payee-mismatch': 'false-positive' } }),
+    fraudInspection(3, { fraudCategoryResults: { 'id-expired': 'valid', 'payee-mismatch': 'valid' } }),
+  ];
+  const specs = buildChartSpecs(records, 'fraud-inspection');
+  const found = specs.find((spec) => spec.id === 'fraud-issue-detection').series[0].points.find((point) => point.key === 'id-expired');
+  const falseFlags = specs.find((spec) => spec.id === 'fraud-false-flags').series[0].points.find((point) => point.key === 'payee-mismatch');
+  assert.deepEqual([found.correct, found.count, found.value], [1, 2, 50]);
+  assert.deepEqual([falseFlags.correct, falseFlags.count, falseFlags.value], [1, 3, 33]);
 });
 
 test('weakness and next challenge require repeated evidence and can identify speed-only gaps', () => {

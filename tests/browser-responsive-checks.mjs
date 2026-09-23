@@ -91,6 +91,10 @@ export async function checkResponsive(browser, base) {
           }
           const submit = { cash: '#submit-answer', memory: '#memory-answer-form button[type="submit"]', task: '#task-save-workspace', 'error-detection': '#submit-error-detection' }[game];
           await page.locator(submit).click();
+          const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('cash-handling-terminal-quiz-history-v1') || '[]').find((row) => row.questionNumber === 1));
+          if (game === 'cash') assert.deepEqual([saved.cashQuickEntries, saved.cashAddClicks, saved.cashRemoveClicks, saved.cashClearClicks], [1, 1, 1, 0], `${label} records observable builder actions`);
+          if (game === 'task') assert.ok([saved.taskMissingCount, saved.taskExtraCount, saved.taskOutOfOrderCount, saved.taskTabChanges, saved.taskCorrections].every(Number.isInteger), `${label} records compact action counts`);
+          if (game === 'error-detection') assert.ok(['expectedErrorIds', 'selectedDetailIds', 'missedErrorIds', 'falseFlagIds'].every((key) => Array.isArray(saved[key])), `${label} records selected clue IDs`);
           assert.equal(await page.locator('#feedback-screen').isVisible(), false, `${label} answer auto-continues`);
           await fits(page, `${label} second round`);
           await timedPhase(page, game);

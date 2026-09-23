@@ -9,9 +9,9 @@ import {
 } from './fraud-inspection.mjs?v=20260922-signature-portrait';
 import { PRACTICE_GAMES, rankPracticeCandidates, recommendPractice, practiceSettings } from './adaptive-practice.mjs?v=20260918-progress';
 import {
-  buildChartSpecs, buildGameFilters, buildProgressModel, comparePeriods,
+  buildChartSpecs, buildConditionalReport, buildGameFilters, buildProgressModel, comparePeriods,
   filterHistory, recommendNextChallenge,
-} from './progress-analytics.mjs?v=20260922-signature-portrait';
+} from './progress-analytics.mjs?v=20260923-performance-insights';
 import {
   DENOMINATIONS,
   DIFFICULTY_CONFIG,
@@ -59,7 +59,7 @@ const refs = Object.fromEntries([
   'history-outcome-diagram', 'history-outcome-legend', 'history-outcomes-summary', 'history-accuracy-chart',
   'history-rows', 'download-csv', 'clear-history', 'message', 'submit-answer', 'theme-toggle',
   'history-game-tabs', 'history-quick-ranges', 'history-common-filters', 'history-game-filters', 'clear-history-filters',
-  'history-charts', 'history-comparison', 'history-recommendations', 'previous-challenges',
+  'history-charts', 'history-insights', 'history-comparison', 'history-recommendations', 'previous-challenges',
   'attempt-detail-dialog', 'attempt-detail-summary', 'attempt-detail-content', 'close-attempt-detail',
   'memory-question-count', 'memory-read-progress', 'memory-read-timer', 'memory-number', 'memory-read-hint', 'memory-answer-now',
   'memory-answer-form', 'memory-answer-list', 'memory-answer-progress', 'memory-answer-timer', 'memory-answer-heading', 'summary-heading',
@@ -82,7 +82,7 @@ const refs = Object.fromEntries([
 ].map((id) => [id, document.getElementById(id)]));
 
 const savedPresetState = loadPresetState();
-const historyView = { filters: { game: 'all' }, activeRange: 'all', charts: new Map() };
+const historyView = { filters: { game: 'all' }, activeRange: 'all', charts: new Map(), conditions: [] };
 
 const state = {
   activeScreen: 'setup',
@@ -110,6 +110,7 @@ const state = {
   question: null,
   results: [],
   builderCounts: new Map(),
+  cashActions: { add: 0, remove: 0, quick: 0, clear: 0 },
   timerId: null,
   deadline: 0,
   answerSubmitted: false,
@@ -945,7 +946,10 @@ function createDenominationRow(denomination) {
 }
 
 function changeBuilderCount(cents, change) {
-  state.builderCounts.set(cents, Math.max(0, state.builderCounts.get(cents) + change));
+  const current = state.builderCounts.get(cents);
+  const next = Math.max(0, current + change);
+  if (next !== current) state.cashActions[change > 0 ? 'add' : 'remove'] += 1;
+  state.builderCounts.set(cents, next);
   updateCashBuilder();
 }
 
@@ -959,6 +963,7 @@ function applyQuickCashEntry() {
 
   state.builderCounts = new Map(DENOMINATIONS.map((item) => [item.cents, 0]));
   for (const item of parsed.breakdown) state.builderCounts.set(item.cents, item.count);
+  state.cashActions.quick += 1;
   refs['quick-cash-entry'].value = '';
   updateCashBuilder();
   setMessage(`Cash builder updated to ${formatMoney(parsed.totalCents)}. You can still adjust any bill or coin button.`);
@@ -1070,6 +1075,7 @@ function renderQuestion() {
   refs['answer-amount'].disabled = true;
   refs['cash-builder-section'].hidden = !state.cashBuilderEnabled;
   resetBuilder();
+  state.cashActions = { add: 0, remove: 0, quick: 0, clear: 0 };
   renderCustomerBillRequest();
   const panel = document.getElementById('cash-guidance');
   panel.replaceChildren();
@@ -1183,6 +1189,10 @@ function recordAnswer(answer, score, timedOut, elapsedSeconds) {
     tenderCoinCount,
     tenderPieceCount: tenderBillCount + tenderCoinCount,
     tenderDenominationTypes: tenderBreakdown.length,
+    cashAddClicks: state.cashActions.add,
+    cashRemoveClicks: state.cashActions.remove,
+    cashQuickEntries: state.cashActions.quick,
+    cashClearClicks: state.cashActions.clear,
     cashTransactionType: transactionType,
     changeOrShortfallCents: question.expectedAmountCents,
     expectedAnswer: expectedAnswerText(question),
@@ -1622,6 +1632,10 @@ function recordErrorDetectionAttempt(score, timedOut, elapsedSeconds) {
     correctlyFlagged: score.correctlyFlagged,
     missedAnomalyCount: score.missedErrorIds.length,
     falseFlagCount: score.falseFlagIds.length,
+    expectedErrorIds: score.expectedErrorIds,
+    selectedDetailIds: score.selectedDetailIds,
+    missedErrorIds: score.missedErrorIds,
+    falseFlagIds: score.falseFlagIds,
     cleanPuzzle: score.errorCount === 0,
     missedErrors: describeErrorDetails(score.missedErrorIds, true),
     falseFlags: describeErrorDetails(score.falseFlagIds),
@@ -2899,6 +2913,11 @@ function taskActionAnalytics(challenge, actionLog) {
     expectedActionCategories: [...new Set(expected.map((step) => step.type))],
     completedActionCategories: [...new Set(completed)],
     taskMissingActions: [...new Set(expected.slice(next).map((step) => step.type))],
+    taskMissingCount: expected.length - next,
+    taskExtraCount: extra.length,
+    taskOutOfOrderCount: outOfOrder.length,
+    taskTabChanges: actionLog.filter((action) => action.type === 'activate-tab' || action.type === 'open-workspace-tab').length,
+    taskCorrections: actionLog.filter((action, index) => actionLog.slice(0, index).some((prior) => prior.targetId === action.targetId && prior.value !== action.value)).length,
     taskExtraActions: [...new Set(extra)],
     taskOutOfOrderActions: [...new Set(outOfOrder)],
     taskMistakeCategories: [...new Set([
@@ -3412,12 +3431,18 @@ function chartValue(point, metric) {
   if (point.value === null || point.value === undefined) return 'Not recorded';
   if (metric === 'time') return `${Number(point.value).toFixed(1)}s`;
   if (metric === 'attempts') return `${point.value}`;
+  if (metric === 'cents') return `${Math.round(point.value)}¢`;
+  if (['actions', 'digits', 'selections'].includes(metric)) return Number(point.value).toFixed(1);
   return `${point.value}%`;
 }
 
 function chartAxisLabel(metric) {
   if (metric === 'time') return 'Response time (seconds)';
   if (metric === 'attempts') return 'Attempts';
+  if (metric === 'cents') return 'Average cents off';
+  if (metric === 'actions') return 'Average actions';
+  if (metric === 'digits') return 'Average digit errors';
+  if (metric === 'selections') return 'Average selections to fix';
   return 'Accuracy (%)';
 }
 
@@ -3450,6 +3475,7 @@ function chartColorClass(spec, point, index) {
     if (outcome === 'incorrect') return 'chart-value-danger';
     return 'chart-value-muted';
   }
+  if (spec.id === 'fraud-false-flags') return point.value >= 30 ? 'chart-value-danger' : point.value > 0 ? 'chart-value-caution' : 'chart-value-success';
   if (metric === 'accuracy') {
     if (point.value < 60) return 'chart-value-danger';
     if (point.value < 85) return 'chart-value-caution';
@@ -3492,6 +3518,25 @@ function openAttemptDetails(records, attemptIds, heading) {
 function renderChartCard(spec, records) {
   const view = historyView.charts.get(spec.id) ?? { start: 0, count: 12, visible: true, compare: false };
   historyView.charts.set(spec.id, view);
+  const allPoints = spec.series[0].points;
+  const isScatter = spec.kind === 'scatter';
+  const allX = isScatter ? allPoints.map((point) => Number(point.x)).filter(Number.isFinite) : [];
+  const fullXMax = isScatter ? chartScale(allX, 'time').max : 0;
+  const dataKey = `${historyView.filters.game}:${spec.attemptIds.join('|')}`;
+  if (view.dataKey !== dataKey) Object.assign(view, { dataKey, start: 0, count: 12, xMin: 0, xMax: fullXMax });
+  if (isScatter) {
+    view.xMin = Math.max(0, Math.min(view.xMin ?? 0, fullXMax - 0.1));
+    view.xMax = Math.max(view.xMin + 0.1, Math.min(view.xMax ?? fullXMax, fullXMax));
+  }
+  const scatterZoom = (factor) => {
+    const span = view.xMax - view.xMin;
+    const next = Math.max(0.5, Math.min(fullXMax, span * factor));
+    const visibleX = allX.filter((x) => x >= view.xMin && x <= view.xMax).sort((a, b) => a - b);
+    const center = factor < 1 && visibleX.length ? visibleX[Math.floor(visibleX.length / 2)] : (view.xMin + view.xMax) / 2;
+    view.xMin = Math.max(0, Math.min(fullXMax - next, center - next / 2));
+    view.xMax = view.xMin + next;
+    view.notice = `Showing ${view.xMin.toFixed(1)}–${view.xMax.toFixed(1)} seconds.`;
+  };
   const card = document.createElement('article');
   card.className = 'interactive-chart visual-card';
   const heading = document.createElement('div');
@@ -3500,20 +3545,21 @@ function renderChartCard(spec, records) {
   title.textContent = spec.title;
   const controls = document.createElement('div');
   controls.className = 'chart-controls';
-  const control = (label, action) => {
+  const control = (label, action, disabled = false) => {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'text-button';
     button.textContent = label;
+    button.disabled = disabled;
     button.addEventListener('click', () => { action(); renderHistory(); });
     controls.append(button);
   };
   control(view.visible ? 'Hide data' : 'Show data', () => { view.visible = !view.visible; });
-  control('Zoom in', () => { view.count = Math.max(1, Math.floor(view.count / 1.5)); view.notice = 'Zoomed in. Drag across the plot to choose an exact range.'; });
-  control('Zoom out', () => { view.count = Math.min(60, view.count + 6); });
-  control('Earlier', () => { view.start = Math.max(0, view.start - Math.max(1, Math.floor(view.count / 2))); });
-  control('Later', () => { view.start = Math.min(Math.max(0, spec.series[0].points.length - view.count), view.start + Math.max(1, Math.floor(view.count / 2))); });
-  control('Reset', () => { Object.assign(view, { start: 0, count: 12, visible: true, compare: false, notice: 'Showing the default chart range.' }); });
+  control('Zoom in', () => { if (isScatter) scatterZoom(1 / 1.5); else view.count = Math.max(1, Math.floor(view.count / 1.5)); }, isScatter ? view.xMax - view.xMin <= 0.5 : view.count <= 1);
+  control('Zoom out', () => { if (isScatter) scatterZoom(1.5); else view.count = Math.min(allPoints.length, view.count + 6); }, isScatter ? view.xMin <= 0 && view.xMax >= fullXMax : view.count >= allPoints.length);
+  control('Earlier', () => { view.start = Math.max(0, view.start - Math.max(1, Math.floor(view.count / 2))); }, isScatter || view.start === 0);
+  control('Later', () => { view.start = Math.min(Math.max(0, allPoints.length - view.count), view.start + Math.max(1, Math.floor(view.count / 2))); }, isScatter || view.start >= allPoints.length - view.count);
+  control('Reset', () => { Object.assign(view, { start: 0, count: 12, xMin: 0, xMax: fullXMax, visible: true, compare: false, notice: 'Showing the default chart range.' }); });
   control(view.compare ? 'Hide comparison' : 'Compare periods', () => { view.compare = !view.compare; });
   heading.append(title, controls);
   card.append(heading);
@@ -3526,11 +3572,11 @@ function renderChartCard(spec, records) {
   selectionHint.textContent = 'Drag across the plot to zoom to those marks. Reset returns to the default range.';
   card.append(selectionHint);
   const series = spec.series[0];
-  const sourcePoints = series.points.slice(view.start, view.start + view.count);
+  const sourcePoints = isScatter ? series.points : series.points.slice(view.start, view.start + view.count);
   const points = sourcePoints.filter((point) => {
     const value = spec.kind === 'scatter' ? point.y : point.value;
     return value !== null && value !== undefined && Number.isFinite(Number(value))
-      && (spec.kind !== 'scatter' || (point.x !== null && point.x !== undefined && Number.isFinite(Number(point.x))));
+      && (spec.kind !== 'scatter' || (point.x !== null && point.x !== undefined && Number.isFinite(Number(point.x)) && Number(point.x) >= view.xMin && Number(point.x) <= view.xMax));
   });
   if (!view.visible || !points.length) {
     const empty = document.createElement('p');
@@ -3539,7 +3585,7 @@ function renderChartCard(spec, records) {
     card.append(empty);
     return card;
   }
-  const svg = chartSvgElement('svg', { class: 'analytics-svg', viewBox: '0 0 760 330', role: 'img', 'aria-label': `${spec.title}. Drag across the plot to zoom to selected marks. Each mark can be selected to inspect exact attempts.`, 'data-chart-window': `${view.start}:${view.count}` });
+  const svg = chartSvgElement('svg', { class: 'analytics-svg', viewBox: '0 0 760 330', role: 'img', 'aria-label': `${spec.title}. Drag across the plot to zoom to selected marks. Each mark can be selected to inspect exact attempts.`, 'data-chart-window': isScatter ? `${view.xMin.toFixed(2)}:${view.xMax.toFixed(2)}` : `${view.start}:${view.count}` });
   const plot = { left: 72, right: 24, top: 24, bottom: 254 };
   const plotWidth = 760 - plot.left - plot.right;
   const plotHeight = plot.bottom - plot.top;
@@ -3547,10 +3593,12 @@ function renderChartCard(spec, records) {
   const values = points.map((point) => Number(spec.kind === 'scatter' ? point.y : point.value)).filter(Number.isFinite);
   const scale = chartScale(values, metric);
   const yFor = (value) => plot.bottom - (Number(value) / scale.max * plotHeight);
-  const xValues = spec.kind === 'scatter' ? points.map((point) => Number(point.x)).filter(Number.isFinite) : [];
-  const xScale = spec.kind === 'scatter' ? chartScale(xValues, 'time') : null;
+  const xScale = spec.kind === 'scatter' ? { min: view.xMin, max: view.xMax,
+    ticks: (() => { const step = chartTickStep(view.xMax - view.xMin, 'time'); const ticks = [];
+      for (let tick = Math.ceil(view.xMin / step) * step; tick <= view.xMax + step / 100; tick += step) ticks.push(Number(tick.toFixed(8)));
+      return ticks; })() } : null;
   const xFor = (point, index) => spec.kind === 'scatter'
-    ? plot.left + (Number(point.x) / xScale.max * plotWidth)
+    ? plot.left + ((Number(point.x) - xScale.min) / (xScale.max - xScale.min) * plotWidth)
     : plot.left + ((index + 0.5) / Math.max(points.length, 1) * plotWidth);
   const yAxis = chartSvgElement('g', { class: 'chart-axis chart-y-axis' });
   scale.ticks.forEach((tick) => {
@@ -3562,14 +3610,14 @@ function renderChartCard(spec, records) {
   });
   yAxis.append(chartSvgElement('line', { class: 'chart-axis-line', x1: plot.left, y1: plot.top, x2: plot.left, y2: plot.bottom }));
   const yTitle = chartSvgElement('text', { class: 'chart-axis-title', x: 16, y: (plot.top + plot.bottom) / 2, transform: `rotate(-90 16 ${(plot.top + plot.bottom) / 2})`, 'text-anchor': 'middle' });
-  yTitle.textContent = chartAxisLabel(metric);
+  yTitle.textContent = spec.axisLabel ?? chartAxisLabel(metric);
   yAxis.append(yTitle);
   const xAxis = chartSvgElement('g', { class: 'chart-axis chart-x-axis' });
   xAxis.append(chartSvgElement('line', { class: 'chart-axis-line', x1: plot.left, y1: plot.bottom, x2: plot.left + plotWidth, y2: plot.bottom }));
   const tickIndexes = points.length <= 6 ? points.map((_, index) => index) : [...new Set([0, Math.round((points.length - 1) / 4), Math.round((points.length - 1) / 2), Math.round((points.length - 1) * 3 / 4), points.length - 1])];
   if (spec.kind === 'scatter') {
     xScale.ticks.forEach((tick) => {
-      const x = plot.left + (tick / xScale.max * plotWidth);
+      const x = plot.left + ((tick - xScale.min) / (xScale.max - xScale.min) * plotWidth);
       xAxis.append(chartSvgElement('line', { class: 'chart-axis-line', x1: x, y1: plot.bottom, x2: x, y2: plot.bottom + 5 }));
       const label = chartSvgElement('text', { class: 'chart-x-tick', x, y: plot.bottom + 19, 'text-anchor': 'middle' });
       label.textContent = chartTickValue(tick, 'time');
@@ -3597,7 +3645,7 @@ function renderChartCard(spec, records) {
     const y = yFor(value);
     const width = plotWidth / Math.max(points.length, 1);
     const height = Math.max(2, plot.bottom - y);
-    if (spec.kind === 'line' || spec.kind === 'scatter') {
+    if (spec.kind === 'line') {
       linePoints.push(`${x},${y}`);
       if (index > 0) lineSegments.push({ x1: xFor(points[index - 1], index - 1), y1: yFor(Number(spec.kind === 'scatter' ? points[index - 1].y : points[index - 1].value)), x2: x, y2: y, color: chartColorClass(spec, point, index) });
     }
@@ -3631,8 +3679,10 @@ function renderChartCard(spec, records) {
   let drag = null;
   let suppressClick = false;
   const plotX = (event) => {
-    const bounds = svg.getBoundingClientRect();
-    return Math.max(plot.left, Math.min(plot.left + plotWidth, (event.clientX - bounds.left) / bounds.width * 760));
+    const matrix = svg.getScreenCTM();
+    if (!matrix) return plot.left;
+    const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse());
+    return Math.max(plot.left, Math.min(plot.left + plotWidth, point.x));
   };
   const updateSelection = () => {
     const left = Math.min(drag.startX, drag.currentX);
@@ -3661,11 +3711,21 @@ function renderChartCard(spec, records) {
     if (!completed.moved) return;
     const left = Math.min(completed.startX, completed.currentX);
     const right = Math.max(completed.startX, completed.currentX);
-    const selected = points.map((point, index) => ({ index, x: xFor(point, index) })).filter(({ x }) => x >= left && x <= right).map(({ index }) => index);
-    if (!selected.length || selected.length === points.length) return;
-    view.start += selected[0];
-    view.count = selected.at(-1) - selected[0] + 1;
-    view.notice = `Zoomed to ${view.count} selected mark${view.count === 1 ? '' : 's'}.`;
+    if (isScatter) {
+      const chosenMin = xScale.min + (left - plot.left) / plotWidth * (xScale.max - xScale.min);
+      const chosenMax = xScale.min + (right - plot.left) / plotWidth * (xScale.max - xScale.min);
+      if (!points.some((point) => point.x >= chosenMin && point.x <= chosenMax)) return;
+      const width = Math.max(0.5, chosenMax - chosenMin);
+      view.xMin = Math.max(0, Math.min(fullXMax - width, (chosenMin + chosenMax - width) / 2));
+      view.xMax = view.xMin + width;
+      view.notice = `Showing ${view.xMin.toFixed(1)}–${view.xMax.toFixed(1)} seconds.`;
+    } else {
+      const selected = points.map((point, index) => ({ index, x: xFor(point, index) })).filter(({ x }) => x >= left && x <= right).map(({ index }) => index);
+      if (!selected.length || selected.length === points.length) return;
+      view.start += selected[0];
+      view.count = selected.at(-1) - selected[0] + 1;
+      view.notice = `Zoomed to ${view.count} selected mark${view.count === 1 ? '' : 's'}.`;
+    }
     suppressClick = true;
     renderHistory();
   };
@@ -3690,11 +3750,14 @@ function renderChartCard(spec, records) {
   summary.textContent = 'Table alternative';
   tableDetails.append(summary);
   const table = document.createElement('table');
-  table.innerHTML = '<thead><tr><th>Category</th><th>Value</th><th>Attempts</th></tr></thead>';
+  table.innerHTML = '<thead><tr><th>Category</th><th>Value</th><th>Evidence</th><th>95% interval</th></tr></thead>';
   const body = document.createElement('tbody');
   points.forEach((point) => {
     const row = document.createElement('tr');
-    [point.label, chartValue(point, series.metric), String(point.attemptIds.length)].forEach((value) => {
+    const correct = point.correct ?? point.detail?.correct;
+    const evidence = series.metric === 'accuracy' && point.measure !== 'mean' && correct !== undefined
+      ? `${correct} / ${point.count}` : `${point.attemptIds.length} attempts`;
+    [point.label, chartValue(point, series.metric), evidence, point.interval ? `${point.interval[0]}–${point.interval[1]}%` : '—'].forEach((value) => {
       const cell = document.createElement('td');
       cell.textContent = value;
       row.append(cell);
@@ -3710,6 +3773,82 @@ function renderChartCard(spec, records) {
 function renderHistoryCharts(records) {
   const specs = buildChartSpecs(records, historyView.filters.game);
   refs['history-charts'].replaceChildren(...specs.map((spec) => renderChartCard(spec, records)));
+}
+
+function renderHistoryInsights(records) {
+  const report = buildConditionalReport(records, historyView.filters.game, historyView.conditions);
+  historyView.conditions = report.selectedIds;
+  const root = refs['history-insights'];
+  root.replaceChildren();
+  const controls = document.createElement('div');
+  controls.className = 'insight-conditions';
+  [0, 1].forEach((index) => {
+    const label = document.createElement('label');
+    label.textContent = `Condition ${index + 1}`;
+    const select = document.createElement('select');
+    const blank = document.createElement('option');
+    blank.value = '';
+    blank.textContent = index ? 'Any second condition' : 'All attempts';
+    select.append(blank);
+    report.choices.filter((choice) => index === 0 || !historyView.conditions[0] || choice.id.split('|')[0] === historyView.conditions[0].split('|')[0]).forEach((choice) => {
+      const option = document.createElement('option');
+      option.value = choice.id;
+      option.textContent = `${choice.label} (${choice.count})`;
+      select.append(option);
+    });
+    select.value = historyView.conditions[index] ?? '';
+    select.addEventListener('change', () => {
+      historyView.conditions[index] = select.value;
+      historyView.conditions = historyView.conditions.filter(Boolean).slice(0, 2);
+      renderHistoryInsights(records);
+    });
+    label.append(select);
+    controls.append(label);
+  });
+  root.append(controls);
+  const summary = document.createElement('p');
+  summary.className = 'chart-note';
+  const rate = report.rate;
+  summary.textContent = `${rate.label}: ${rate.value === null ? 'no matching attempts' : `${rate.value}% (${rate.correct}/${rate.count}; 95% Wilson interval ${rate.interval[0]}–${rate.interval[1]}%)`}. ${report.notAnswered} not answered; ${rate.missing} lack a selected field; ${report.missingTime} lack response time.`;
+  root.append(summary);
+  const speed = document.createElement('p');
+  speed.className = 'chart-note';
+  speed.textContent = `Speed: ${report.speed.map((point) => `${point.label} ${point.value === null ? 'no data' : `${point.value}% (${point.correct}/${point.count})`}`).join(' · ')}. `
+    + `Correct by: ${report.correctBy.map((point) => `${point.seconds}s ${point.value ?? '—'}%`).join(' · ')}.`;
+  root.append(speed);
+  if (historyView.filters.game !== 'all') {
+    const distance = document.createElement('p');
+    distance.className = 'chart-note';
+    const unit = historyView.filters.game === 'cash' ? 'cents off' : historyView.filters.game === 'memory' ? 'digit edits' : historyView.filters.game === 'task' ? 'action errors' : 'selections to fix';
+    distance.textContent = report.meanDistance === null ? 'Answer distance is not recorded for these attempts.'
+      : `Average answer distance: ${report.meanDistance.toFixed(1)} ${unit} across ${report.distanceCount} attempts.`;
+    root.append(distance);
+  }
+  const columns = document.createElement('div');
+  columns.className = 'insight-columns';
+  for (const [title, groups] of [['Strengths', report.strengths], ['Work on', report.weaknesses]]) {
+    const section = document.createElement('section');
+    const heading = document.createElement('h4'); heading.textContent = title;
+    const list = document.createElement('ul');
+    if (!groups.length) {
+      const item = document.createElement('li');
+      item.textContent = 'No supported pattern yet. Keep practicing under the same conditions.';
+      list.append(item);
+    }
+    groups.forEach((group) => {
+      const item = document.createElement('li');
+      item.textContent = `${group.label}: ${group.value}% (${group.correct}/${group.count}, 95% interval ${group.interval[0]}–${group.interval[1]}%); ${group.gapPoints >= 0 ? '+' : ''}${group.gapPoints} points versus ${group.baselinePercent}% for comparable difficulty and mode (${group.comparableCount} attempts). ${group.evidence}.`;
+      list.append(item);
+    });
+    section.append(heading, list);
+    columns.append(section);
+  }
+  root.append(columns);
+  const focus = document.createElement('p');
+  focus.className = 'chart-note';
+  const recommendation = recommendNextChallenge(records, { game: historyView.filters.game });
+  focus.textContent = recommendation.challenge ? `Practice focus: ${recommendation.target}. ${recommendation.reason}` : recommendation.reason;
+  root.append(focus);
 }
 
 function currentComparison(history, filtered) {
@@ -3766,6 +3905,7 @@ function renderHistoryComparison(history, filtered) {
 function fallbackChallenge(recommendation) {
   if (!recommendation?.game || !recommendation?.difficulty) return null;
   const game = recommendation.game;
+  if (game === 'fraud-inspection') return null;
   const preset = { ...presetFor(game, recommendation.difficulty) };
   const focus = {};
   const filters = recommendation.focusFilter ?? {};
@@ -3989,6 +4129,7 @@ function renderHistory() {
   renderRecommendedChallenge(records);
   renderHistoryComparison(history, records);
   renderHistoryCharts(records);
+  renderHistoryInsights(records);
   renderHistoryRows(records);
   renderFraudHistory(records);
 }
@@ -4193,7 +4334,7 @@ document.querySelectorAll('input[name="answerType"]').forEach((input) => input.a
   updateCashBuilder();
 }));
 refs['answer-amount'].addEventListener('input', updateCashBuilder);
-refs['clear-builder'].addEventListener('click', resetBuilder);
+refs['clear-builder'].addEventListener('click', () => { state.cashActions.clear += 1; resetBuilder(); });
 refs['apply-quick-cash'].addEventListener('click', applyQuickCashEntry);
 refs['cash-builder-toggle'].addEventListener('change', () => {
   if (!refs['cash-builder-toggle'].checked && refs['customer-bill-request-toggle'].checked) {
@@ -4304,6 +4445,7 @@ refs['history-game-tabs'].addEventListener('click', (event) => {
   const button = event.target.closest('button[data-history-game]');
   if (!button) return;
   historyView.filters = { game: button.dataset.historyGame };
+  historyView.conditions = [];
   historyView.activeRange = 'all';
   renderHistory();
 });
@@ -4313,6 +4455,7 @@ refs['history-quick-ranges'].addEventListener('click', (event) => {
 });
 refs['clear-history-filters'].addEventListener('click', () => {
   historyView.filters = { game: historyView.filters.game ?? 'all' };
+  historyView.conditions = [];
   historyView.activeRange = 'all';
   renderHistory();
 });
