@@ -2951,7 +2951,7 @@ function renderChartCard(spec, records) {
     const path = chartSvgElement('polyline', { class: 'chart-series-line', points: linePoints.join(' '), fill: 'none' });
     svg.insertBefore(path, svg.querySelector('.analytics-mark'));
   }
-  if (lineSegments.length) lineSegments.forEach((segment) => svg.insertBefore(chartSvgElement('line', { class: `chart-series-segment ${segment.color}`, x1: segment.x1, y1: segment.y1, x2: segment.x2, y2: segment.y2 }), svg.querySelector('.analytics-mark'));
+  if (lineSegments.length) lineSegments.forEach((segment) => svg.insertBefore(chartSvgElement('line', { class: `chart-series-segment ${segment.color}`, x1: segment.x1, y1: segment.y1, x2: segment.x2, y2: segment.y2 }), svg.querySelector('.analytics-mark')));
   let drag = null;
   let suppressClick = false;
   const plotX = (event) => {
