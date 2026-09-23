@@ -7,7 +7,7 @@
     <meta name="theme-color" content="#12343b">
     <title>Cash, Memory &amp; Detail Trainer</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="style.css?v=20260920-chart-interactions">
+    <link rel="stylesheet" href="style.css?v=20260922-fraud-inspection">
   </head>
   <body>
     <main class="app-shell">
@@ -48,6 +48,7 @@
               <label class="choice-card"><input type="radio" name="game" value="memory"><span><strong>Number memory</strong><small>Read a number, then type it back from memory.</small></span></label>
               <label class="choice-card"><input type="radio" name="game" value="task"><span><strong>Task simulation</strong><small>Watch a workflow, then repeat its tabs, fields, and selections from memory.</small></span></label>
               <label class="choice-card"><input type="radio" name="game" value="error-detection"><span><strong>Error detection</strong><small>15 rotating games: sequences, mirrors, rotations, binary patterns, grids, and more. Each has Easy, Medium, and Hard puzzles.</small></span></label>
+              <label class="choice-card"><input type="radio" name="game" value="fraud-inspection"><span><strong>Check &amp; ID Fraud Inspection</strong><small>Inspect fictional teller documents, find every issue, and recognize clean cases.</small></span></label>
             </div>
           </fieldset>
 
@@ -57,6 +58,7 @@
               <label class="choice-card"><input type="radio" name="difficulty" value="Easy" checked><span><strong>Easy</strong><small id="easy-description">Up to $200, quarter increments</small></span></label>
               <label class="choice-card"><input type="radio" name="difficulty" value="Medium"><span><strong>Medium</strong><small id="medium-description">Up to $1,000, exact cents</small></span></label>
               <label class="choice-card"><input type="radio" name="difficulty" value="Hard"><span><strong>Hard</strong><small id="hard-description">Up to $5,000, larger differences</small></span></label>
+              <label class="choice-card" id="custom-difficulty-card" hidden><input type="radio" name="difficulty" value="Custom"><span><strong>Custom</strong><small>Set the inspection timer, case mix, and document challenges.</small></span></label>
             </div>
           </fieldset>
 
@@ -73,7 +75,7 @@
 
           <label class="toggle-row" for="auto-continue-toggle">
             <input id="auto-continue-toggle" name="autoContinue" type="checkbox">
-            <span><strong>Auto-continue after answering or timeout</strong><small>In all four modes, immediately advance after submitting an answer or when its timer expires. The next round starts with its usual question, study screen, or briefing; the final round shows your results. Leave unchecked to review feedback before clicking Next.</small></span>
+            <span><strong>Auto-continue after answering or timeout</strong><small>Automatically advance after answers or timeouts. Each game keeps its usual transition, such as the next question, study screen, or briefing; the final round shows your results. Leave unchecked to review feedback before clicking Next.</small></span>
           </label>
 
           <fieldset class="distraction-audio-settings">
@@ -223,6 +225,78 @@
             <label for="error-detection-question-count">Rounds
               <input id="error-detection-question-count" name="errorDetectionQuestionCount" type="number" value="10" min="1" max="100" inputmode="numeric" required>
             </label>
+          </div>
+
+          <div id="fraud-setup-options" hidden>
+            <p class="setup-note">Every check and ID is a fictional training sample with invented identifiers. This simulator's stale-date rule is 180 days. It is a document-inspection game, not an authenticity decision.</p>
+            <div class="form-grid">
+              <label for="fraud-question-count">Cases
+                <input id="fraud-question-count" type="number" value="10" min="1" max="100" inputmode="numeric">
+              </label>
+              <label for="fraud-time-limit">Seconds per case
+                <input id="fraud-time-limit" type="number" value="60" min="5" max="300" inputmode="numeric">
+              </label>
+              <label for="fraud-run-mode">Speed training
+                <select id="fraud-run-mode">
+                  <option value="standard">Standard</option>
+                  <option value="rapid-review">Rapid Review · 10 cases, 15 seconds each</option>
+                  <option value="sudden-death">Sudden Death · one mistake ends the run</option>
+                  <option value="endurance">Endurance · 30 cases</option>
+                </select>
+              </label>
+            </div>
+            <details class="preset-editor" id="fraud-custom-options" hidden>
+              <summary>Custom inspection settings</summary>
+              <div class="preset-editor-content">
+                <div class="form-grid">
+                  <label for="fraud-minimum-errors">Minimum issues per case
+                    <input id="fraud-minimum-errors" type="number" value="0" min="0" max="8" inputmode="numeric">
+                  </label>
+                  <label for="fraud-maximum-errors">Maximum issues per case
+                    <input id="fraud-maximum-errors" type="number" value="5" min="0" max="8" inputmode="numeric">
+                  </label>
+                  <label for="fraud-signature-difficulty">Signature difficulty
+                    <select id="fraud-signature-difficulty"><option value="easy">Easy</option><option value="medium" selected>Medium</option><option value="hard">Hard</option></select>
+                  </label>
+                  <label for="fraud-handwriting-similarity">Handwriting similarity
+                    <select id="fraud-handwriting-similarity"><option value="easy">Clearly different</option><option value="medium" selected>Somewhat similar</option><option value="hard">Subtle difference</option></select>
+                  </label>
+                  <label for="fraud-alteration-subtlety">Alteration subtlety
+                    <select id="fraud-alteration-subtlety"><option value="easy">Obvious</option><option value="medium" selected>Moderate</option><option value="hard">Subtle</option></select>
+                  </label>
+                  <label for="fraud-date-difficulty">Date difficulty
+                    <select id="fraud-date-difficulty"><option value="easy">Easy</option><option value="medium" selected>Medium</option><option value="hard">Hard · small year changes</option></select>
+                  </label>
+                  <label for="fraud-name-difficulty">Name-match difficulty
+                    <select id="fraud-name-difficulty"><option value="easy">Obvious mismatch</option><option value="medium" selected>Small spelling change</option><option value="hard">One-letter difference</option></select>
+                  </label>
+                  <label for="fraud-amount-difficulty">Amount-match difficulty
+                    <select id="fraud-amount-difficulty"><option value="easy">Large difference</option><option value="medium" selected>Moderate difference</option><option value="hard">Small difference</option></select>
+                  </label>
+                  <label for="fraud-id-difficulty">ID difficulty
+                    <select id="fraud-id-difficulty"><option value="easy">Easy</option><option value="medium" selected>Medium</option><option value="hard">Subtle</option></select>
+                  </label>
+                  <label for="fraud-field-density">Check field density
+                    <select id="fraud-field-density"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select>
+                  </label>
+                </div>
+                <label class="toggle-row" for="fraud-allow-clean">
+                  <input id="fraud-allow-clean" type="checkbox" checked>
+                  <span><strong>Allow no-error cases</strong><small>Include legitimate documents among the cases.</small></span>
+                </label>
+                <div class="choice-grid">
+                  <label class="toggle-row" for="fraud-zoom-enabled"><input id="fraud-zoom-enabled" type="checkbox" checked><span><strong>Allow document zoom</strong></span></label>
+                  <label class="toggle-row" for="fraud-show-timer"><input id="fraud-show-timer" type="checkbox" checked><span><strong>Show the timer</strong></span></label>
+                  <label class="toggle-row" for="fraud-auto-next"><input id="fraud-auto-next" type="checkbox"><span><strong>Automatically advance cases</strong></span></label>
+                  <label class="toggle-row" for="fraud-instant-feedback"><input id="fraud-instant-feedback" type="checkbox" checked><span><strong>Show instant feedback</strong></span></label>
+                  <label class="toggle-row" for="fraud-mix-difficulty"><input id="fraud-mix-difficulty" type="checkbox"><span><strong>Mix document difficulty between cases</strong></span></label>
+                </div>
+                <fieldset>
+                  <legend>Error categories enabled</legend>
+                  <div class="fraud-category-settings" id="fraud-enabled-categories"></div>
+                </fieldset>
+              </div>
+            </details>
           </div>
 
           <button class="primary-button" type="submit">Start quiz</button>
@@ -411,10 +485,34 @@
         </form>
       </section>
 
+      <section class="screen fraud-inspection-screen" id="fraud-inspection-screen" hidden aria-labelledby="fraud-inspection-heading">
+        <div class="question-header">
+          <p class="eyebrow" id="fraud-inspection-progress">Case 1 of 10 · EASY</p>
+          <time class="timer" id="fraud-inspection-timer" aria-label="Time remaining for this inspection">1:00</time>
+        </div>
+        <h2 id="fraud-inspection-heading" tabindex="-1">Inspect the check and customer ID</h2>
+        <p class="fraud-policy-note" id="fraud-policy-note">Fictional training documents. Use the simulator's stated rules for this exercise.</p>
+        <div class="fraud-transaction-strip" id="fraud-transaction-strip"></div>
+        <section class="fraud-document-grid" id="fraud-document-grid" aria-label="Fictional check and customer ID"></section>
+        <form class="answer-form" id="fraud-inspection-form">
+          <fieldset>
+            <legend>Select every issue you found</legend>
+            <p class="setup-note" id="fraud-selection-status" role="status" aria-live="polite">Choose one or more issues, or mark No Issues Found.</p>
+            <div class="fraud-issue-list" id="fraud-issue-list" aria-describedby="fraud-selection-status"></div>
+          </fieldset>
+          <button class="primary-button" id="submit-fraud-inspection" type="submit">Submit Review</button>
+        </form>
+      </section>
+
       <section class="screen feedback-screen" id="feedback-screen" hidden aria-labelledby="feedback-heading">
         <p class="eyebrow" id="feedback-kicker">Answer result</p>
         <h2 id="feedback-heading" tabindex="-1">Correct</h2>
         <p class="feedback-lead" id="feedback-lead"></p>
+        <section class="fraud-feedback" id="fraud-feedback" hidden aria-labelledby="fraud-feedback-heading">
+          <h3 id="fraud-feedback-heading">Document review</h3>
+          <div id="fraud-feedback-documents" class="fraud-feedback-documents"></div>
+          <ul id="fraud-feedback-issues" class="fraud-feedback-issues"></ul>
+        </section>
         <dl class="feedback-details" id="feedback-details"></dl>
           <button class="primary-button" id="next-question" type="button">Next question (Enter)</button>
       </section>
@@ -447,6 +545,7 @@
           <button type="button" data-history-game="memory" aria-pressed="false">Number Memory</button>
           <button type="button" data-history-game="task" aria-pressed="false">Task Simulation</button>
           <button type="button" data-history-game="error-detection" aria-pressed="false">Error Detection</button>
+          <button type="button" data-history-game="fraud-inspection" aria-pressed="false">Check &amp; ID Inspection</button>
         </nav>
         <section class="history-filter-panel" aria-labelledby="history-filter-heading">
           <div class="visual-heading">
@@ -469,6 +568,21 @@
           <div class="history-filter-grid" id="history-game-filters"></div>
         </section>
         <div class="metric-grid" id="history-metrics"></div>
+        <section class="fraud-history-panel" id="fraud-history-panel" hidden aria-labelledby="fraud-history-heading">
+          <div class="visual-heading">
+            <div><p class="eyebrow">Inspection progress</p><h3 id="fraud-history-heading">Check &amp; ID results</h3></div>
+          </div>
+          <div class="metric-grid" id="fraud-history-metrics"></div>
+          <p class="fraud-weakness" id="fraud-history-weakness"></p>
+          <div class="table-wrap">
+            <table>
+              <caption>Accuracy when each issue type appeared</caption>
+              <thead><tr><th scope="col">Issue type</th><th scope="col">Found</th><th scope="col">Missed</th><th scope="col">False positives</th><th scope="col">Accuracy</th></tr></thead>
+              <tbody id="fraud-history-categories"></tbody>
+            </table>
+          </div>
+          <div class="fraud-history-breakdowns" id="fraud-history-breakdowns"></div>
+        </section>
         <section class="practice-section recommendation-focus" aria-labelledby="history-practice-heading">
           <div class="practice-heading-row">
             <h3 id="history-practice-heading">Recommended Next Challenge</h3>
@@ -540,7 +654,20 @@
       <div id="attempt-detail-content"></div>
     </dialog>
 
+    <dialog id="fraud-document-dialog" class="fraud-document-dialog" aria-labelledby="fraud-document-dialog-heading">
+      <div class="dialog-heading">
+        <div><p class="eyebrow">Fictional training sample</p><h2 id="fraud-document-dialog-heading">Document preview</h2></div>
+        <button class="secondary-button" id="close-fraud-document-dialog" type="button">Close</button>
+      </div>
+      <div class="fraud-dialog-tools">
+        <button class="secondary-button" type="button" data-fraud-dialog-zoom="-0.15">Zoom out</button>
+        <button class="secondary-button" type="button" data-fraud-dialog-zoom="0.15">Zoom in</button>
+        <button class="text-button" type="button" data-fraud-dialog-reset>Reset zoom</button>
+      </div>
+      <div class="fraud-dialog-viewport" id="fraud-document-dialog-view"></div>
+    </dialog>
+
     <footer>Browser edition. The original PowerShell quiz remains in this repository.</footer>
-    <script type="module" src="app.js?v=20260922-history-repair"></script>
+    <script type="module" src="app.js?v=20260922-fraud-inspection"></script>
   </body>
 </html>

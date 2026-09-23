@@ -591,3 +591,70 @@ footer { width: min(100% - 2rem, 88rem); margin: 0 auto; padding-bottom: 2rem; c
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
   .task-demo-cursor { display: none; }
 }
+
+.choice-card[hidden] { display: none !important; }
+#fraud-setup-options[hidden], #fraud-custom-options[hidden] { display: none !important; }
+#fraud-setup-options { display: grid; gap: 1rem; }
+.fraud-category-settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr)); gap: 0.5rem; max-height: 17rem; overflow: auto; padding: 0.25rem; }
+.fraud-category-settings .history-facet { align-items: flex-start; border-radius: 0.25rem; }
+.fraud-inspection-screen { max-width: 88rem; margin: 0 auto; }
+.fraud-policy-note { margin: 0.75rem 0; padding: 0.75rem 1rem; border-left: 0.25rem solid var(--accent); background: var(--surface-quiet); color: var(--muted); font-size: 0.875rem; }
+.fraud-transaction-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.5rem; margin: 1rem 0; }
+.fraud-transaction-strip > div { min-width: 0; display: grid; gap: 0.125rem; padding: 0.65rem 0.75rem; border: 0.0625rem solid var(--line); border-radius: 0.25rem; background: var(--surface-quiet); }
+.fraud-transaction-strip strong { color: var(--muted); font-size: 0.7rem; letter-spacing: 0.055em; text-transform: uppercase; }
+.fraud-transaction-strip span { overflow-wrap: anywhere; font-size: 0.875rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.fraud-document-grid, .fraud-feedback-documents { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 1rem; }
+.fraud-document-card { min-width: 0; padding: 0.85rem; border: 0.0625rem solid var(--line); border-radius: var(--radius); background: var(--surface-quiet); }
+.fraud-document-card h3 { margin: 0 0 0.65rem; font-size: 1rem; letter-spacing: 0.01em; }
+.fraud-document-tools, .fraud-dialog-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin-bottom: 0.65rem; }
+.fraud-document-tools button, .fraud-dialog-tools button { min-height: 2.6rem; padding: 0.35rem 0.55rem; font-size: 0.8rem; }
+.fraud-doc-viewport, .fraud-dialog-viewport { min-width: 0; max-width: 100%; overflow: auto; overscroll-behavior: contain; touch-action: pan-x pan-y; border: 0.0625rem solid #c9d3cf; border-radius: 0.25rem; background: #e9e9df; }
+.fraud-doc-viewport { max-height: min(52vh, 36rem); }
+.fraud-doc-stage { width: 100%; min-width: 0; }
+.fraud-document-svg { display: block; width: 100%; min-width: 26rem; height: auto; }
+.fraud-field-bg { transition: fill 120ms ease; }
+.fraud-marked .fraud-field-bg { fill: #ffedbd; fill-opacity: 0.88; stroke: #a22c20; stroke-width: 3; stroke-dasharray: 7 4; }
+.fraud-signature { font-weight: 600; }
+.fraud-issue-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr)); gap: 0.55rem; }
+.fraud-issue-option { min-height: 3.5rem; padding: 0.65rem 0.8rem; border: 0.0625rem solid var(--line); border-radius: 0.3rem; background: var(--surface); color: var(--ink); text-align: left; font-weight: 650; }
+.fraud-issue-option:hover { background: var(--surface-quiet); }
+.fraud-issue-option[aria-pressed="true"] { border-color: var(--brand-fill); background: var(--brand-fill); color: #fff; }
+.fraud-issue-option[data-issue-id="no-issues"] { grid-column: 1 / -1; border-width: 0.125rem; border-color: var(--success); text-align: center; }
+.fraud-issue-option[data-issue-id="no-issues"][aria-pressed="true"] { background: var(--success); color: #fff; }
+.fraud-feedback { margin: 1.25rem 0; padding: 1rem; border: 0.0625rem solid var(--line); border-radius: var(--radius); background: var(--surface-quiet); }
+.fraud-feedback h3 { margin-bottom: 0.75rem; font-size: 1.125rem; }
+.fraud-feedback-documents { margin-bottom: 1rem; }
+.fraud-feedback-issues { display: grid; gap: 0.5rem; margin: 0; padding-left: 1.35rem; }
+.fraud-feedback-issues li { padding: 0.65rem 0.75rem; border-left: 0.25rem solid var(--line); background: var(--surface); }
+.fraud-feedback-correct { border-color: var(--success) !important; }
+.fraud-feedback-false { border-color: var(--accent) !important; }
+.fraud-feedback-missed { border-color: var(--danger) !important; }
+.fraud-history-panel { margin: 1.5rem 0; padding: 1rem; border: 0.0625rem solid var(--line); border-radius: var(--radius); background: var(--surface-quiet); }
+.fraud-history-panel[hidden] { display: none !important; }
+.fraud-history-panel h3 { margin-bottom: 0.25rem; }
+.fraud-history-panel .metric-grid { margin: 1rem 0; }
+.fraud-weakness { margin: 0.75rem 0 1rem; padding: 0.9rem 1rem; border-left: 0.25rem solid var(--accent); background: var(--surface); font-weight: 650; }
+.fraud-history-breakdowns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; margin-top: 1rem; }
+.fraud-history-breakdown { min-width: 0; padding: 0.75rem; border: 0.0625rem solid var(--line); border-radius: 0.25rem; background: var(--surface); }
+.fraud-history-breakdown h4 { margin: 0; font-size: 0.95rem; }
+.fraud-history-breakdown ul { margin-bottom: 0; padding-left: 1.2rem; }
+.fraud-document-dialog { width: min(calc(100% - 1rem), 78rem); max-width: 78rem; max-height: calc(100dvh - 1rem); padding: 1rem; border: 0.0625rem solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+.fraud-document-dialog::backdrop { background: rgb(0 0 0 / 60%); }
+.fraud-document-dialog .dialog-heading { margin-bottom: 0.75rem; }
+.fraud-document-dialog .dialog-heading h2 { margin-bottom: 0; font-size: 1.2rem; }
+.fraud-dialog-viewport { max-height: min(72dvh, 54rem); }
+.fraud-dialog-viewport .fraud-document-svg { min-width: 40rem; }
+
+@media (max-width: 64rem) {
+  .fraud-document-grid, .fraud-feedback-documents { grid-template-columns: minmax(0, 1fr); }
+  .fraud-transaction-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 36rem) {
+  .fraud-transaction-strip, .fraud-history-breakdowns { grid-template-columns: minmax(0, 1fr); }
+  .fraud-document-card { padding: 0.6rem; }
+  .fraud-document-tools { gap: 0.3rem; }
+  .fraud-document-tools button { min-height: 2.75rem; }
+  .fraud-document-dialog { padding: 0.7rem; }
+  .fraud-document-dialog .dialog-heading { flex-direction: row; }
+}

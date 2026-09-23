@@ -40,6 +40,13 @@ const errorPuzzle = (minute, extra = {}) => at(minute, {
   ...extra,
 });
 
+const fraudInspection = (minute, extra = {}) => at(minute, {
+  gameType: 'Check & ID Fraud Inspection', game: 'fraud-inspection', sessionMode: 'standard',
+  fraudRunMode: 'standard', fraudCaseDifficulty: 'Hard', fraudTimeLimitSeconds: 20,
+  fraudExpectedCategories: ['endorsement-signature-mismatch'], fraudFalsePositiveCount: 1,
+  fraudFalseNegativeCount: 0, fraudCleanCase: false, ...extra,
+});
+
 test('normalizes legacy records without inventing unavailable mechanics', () => {
   const normalized = normalizeHistoryRecord(at(1, { gameType: 'Cash handling' }), 0);
   assert.equal(normalized.game, 'cash');
@@ -63,6 +70,22 @@ test('offers mechanics that each game actually saves, not generic copies', () =>
   assert.ok(buildGameFilters(filterHistory([memory(2)], { game: 'memory' }), 'memory').fields.some((field) => field.id === 'memory.totalDigits'));
   assert.ok(buildGameFilters(filterHistory([task(3)], { game: 'task' }), 'task').fields.some((field) => field.id === 'task.mistakeCategory'));
   assert.ok(buildGameFilters(filterHistory([errorPuzzle(4)], { game: 'error-detection' }), 'error-detection').fields.some((field) => field.id === 'error.cleanPuzzle'));
+  assert.ok(buildGameFilters(filterHistory([fraudInspection(5)], { game: 'fraud-inspection' }), 'fraud-inspection').fields.some((field) => field.id === 'fraud.issueCategories'));
+});
+
+test('fraud inspection history filters preserve actual issue, timer, and run-mode evidence', () => {
+  const records = [
+    fraudInspection(6),
+    fraudInspection(7, { fraudExpectedCategories: ['id-expired'], fraudRunMode: 'rapid-review', fraudTimeLimitSeconds: 15 }),
+  ];
+  const filtered = filterHistory(records, {
+    game: 'fraud-inspection',
+    fraud: { issueCategories: ['endorsement-signature-mismatch'], timeLimitSeconds: { min: 20 }, runModes: ['standard'] },
+  });
+
+  assert.equal(filtered.length, 1);
+  assert.equal(filtered[0].fraudExpectedIssueCount, 1);
+  assert.equal(filtered[0].fraudFalsePositiveCount, 1);
 });
 
 test('progress and comparisons use answered attempts without treating missing time as zero', () => {

@@ -5,6 +5,7 @@ const ANSWERED_OUTCOMES = new Set(['Correct', 'Incorrect', 'Timed Out']);
 const OUTCOMES = new Set([...ANSWERED_OUTCOMES, 'Not answered']);
 const GAME_NAMES = Object.freeze({
   cash: 'Cash handling', memory: 'Number memory', task: 'Task simulation', 'error-detection': 'Error detection',
+  'fraud-inspection': 'Check & ID Fraud Inspection',
 });
 const GAME_BY_NAME = new Map(Object.entries(GAME_NAMES).map(([key, value]) => [value.toLowerCase(), key]));
 const known = (value) => value !== null && value !== undefined && value !== '';
@@ -149,6 +150,15 @@ export function normalizeHistoryRecord(record, index = 0) {
     falseFlagCount: add('falseFlagCount', integer(record.falseFlagCount)),
     cleanPuzzle: add('cleanPuzzle', typeof record.cleanPuzzle === 'boolean' ? record.cleanPuzzle : null),
     timeLimitSeconds: add('timeLimitSeconds', positive(record.timeLimitSeconds)),
+    fraudRunMode: add('fraudRunMode', record.fraudRunMode),
+    fraudCaseDifficulty: add('fraudCaseDifficulty', record.fraudCaseDifficulty),
+    fraudTimeLimitSeconds: add('fraudTimeLimitSeconds', positive(record.fraudTimeLimitSeconds)),
+    fraudExpectedIssueCount: add('fraudExpectedIssueCount', integer(record.fraudExpectedCategories?.length)),
+    fraudFalsePositiveCount: add('fraudFalsePositiveCount', integer(record.fraudFalsePositiveCount)),
+    fraudFalseNegativeCount: add('fraudFalseNegativeCount', integer(record.fraudFalseNegativeCount)),
+    fraudExpectedCategories: add('fraudExpectedCategories', Array.isArray(record.fraudExpectedCategories)
+      ? record.fraudExpectedCategories.filter((item) => typeof item === 'string' && item) : null),
+    fraudCleanCase: add('fraudCleanCase', boolean(record.fraudCleanCase)),
   };
   attempt.hasRecorded = (field) => available.has(field);
   attempt.recordedFields = available;
@@ -182,6 +192,7 @@ function gameMatches(record, filters) {
   const memory = filters.memory ?? {};
   const task = filters.task ?? {};
   const error = filters.error ?? {};
+  const fraud = filters.fraud ?? {};
   if (record.game === 'cash') return listMatches(record, cash.denominations)
     && range(record.billCount, cash.billCount) && range(record.coinCount, cash.coinCount)
     && range(record.totalPieces, cash.totalPieces) && range(record.denominationTypes, cash.denominationTypes)
@@ -208,6 +219,15 @@ function gameMatches(record, filters) {
     && range(record.selectedAnomalyCount, error.selectedAnomalyCount) && range(record.missedAnomalyCount, error.missedAnomalyCount)
     && range(record.falseFlagCount, error.falseFlagCount) && range(record.timeLimitSeconds, error.timeLimitSeconds)
     && (error.cleanPuzzle === undefined || record.cleanPuzzle === error.cleanPuzzle);
+  if (record.game === 'fraud-inspection') return selected(record.fraudRunMode, fraud.runModes)
+    && selected(record.fraudCaseDifficulty, fraud.caseDifficulties)
+    && range(record.fraudTimeLimitSeconds, fraud.timeLimitSeconds)
+    && range(record.fraudExpectedIssueCount, fraud.expectedIssueCount)
+    && range(record.fraudFalsePositiveCount, fraud.falsePositiveCount)
+    && range(record.fraudFalseNegativeCount, fraud.missedIssueCount)
+    && (!Array.isArray(fraud.issueCategories) || !fraud.issueCategories.length
+      || fraud.issueCategories.some((id) => record.fraudExpectedCategories?.includes(id)))
+    && (fraud.cleanCase === undefined || record.fraudCleanCase === fraud.cleanCase);
   return true;
 }
 
@@ -279,6 +299,16 @@ export function buildGameFilters(history, game = 'all') {
     rangeField('error.expectedAnomalyCount', 'Expected anomalies', 'anomalies', selectedRecords, 'expectedAnomalyCount'), { id: 'error.cleanPuzzle', label: 'Clean puzzle', type: 'boolean', available: countAvailable(selectedRecords, 'cleanPuzzle') },
     rangeField('error.selectedAnomalyCount', 'Selected anomalies', 'anomalies', selectedRecords, 'selectedAnomalyCount'), rangeField('error.missedAnomalyCount', 'Missed anomalies', 'anomalies', selectedRecords, 'missedAnomalyCount'),
     rangeField('error.falseFlagCount', 'False flags', 'flags', selectedRecords, 'falseFlagCount'), rangeField('error.timeLimitSeconds', 'Time limit', 'seconds', selectedRecords, 'timeLimitSeconds'),
+  );
+  if (game === 'fraud-inspection') fields.push(
+    facetField('fraud.runModes', 'Speed training', selectedRecords, (record) => [record.fraudRunMode]),
+    facetField('fraud.caseDifficulties', 'Case difficulty', selectedRecords, (record) => [record.fraudCaseDifficulty]),
+    facetField('fraud.issueCategories', 'Actual issue category', selectedRecords, (record) => record.fraudExpectedCategories),
+    rangeField('fraud.expectedIssueCount', 'Actual issues per case', 'issues', selectedRecords, 'fraudExpectedIssueCount'),
+    rangeField('fraud.falsePositiveCount', 'False positives', 'issues', selectedRecords, 'fraudFalsePositiveCount'),
+    rangeField('fraud.missedIssueCount', 'Missed issues', 'issues', selectedRecords, 'fraudFalseNegativeCount'),
+    rangeField('fraud.timeLimitSeconds', 'Seconds per case', 'seconds', selectedRecords, 'fraudTimeLimitSeconds'),
+    { id: 'fraud.cleanCase', label: 'Clean check and ID', type: 'boolean', available: countAvailable(selectedRecords, 'fraudCleanCase') },
   );
   return { game, availableAttempts: selectedRecords.length, fields };
 }

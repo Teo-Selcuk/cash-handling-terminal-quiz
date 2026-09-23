@@ -1,10 +1,17 @@
 import { PATTERN_GAME_NAMES } from './pattern-games.mjs';
 import { createDistractionSamples } from './distraction-sounds.mjs';
+import {
+  FRAUD_INSPECTION_CATEGORIES,
+  createFraudInspectionCase,
+  resolveFraudInspectionSettings,
+  scoreFraudInspectionAttempt,
+  summarizeFraudHistory,
+} from './fraud-inspection.mjs?v=20260922-fraud-inspection';
 import { PRACTICE_GAMES, rankPracticeCandidates, recommendPractice, practiceSettings } from './adaptive-practice.mjs?v=20260918-progress';
 import {
   buildChartSpecs, buildGameFilters, buildProgressModel, comparePeriods,
   filterHistory, recommendNextChallenge,
-} from './progress-analytics.mjs?v=20260918-progress';
+} from './progress-analytics.mjs?v=20260922-fraud-inspection';
 import {
   DENOMINATIONS,
   DIFFICULTY_CONFIG,
@@ -40,10 +47,10 @@ const HISTORY_KEY = 'cash-handling-terminal-quiz-history-v1';
 const THEME_KEY = 'cash-handling-terminal-quiz-theme-v1';
 const PRESET_KEY = 'cash-handling-terminal-quiz-presets-v1';
 const CURRENT_CHALLENGE_KEY = 'cash-handling-terminal-quiz-current-challenge-v1';
-const screens = ['setup', 'quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'error-detection-briefing', 'error-detection', 'feedback', 'summary', 'history'];
+const screens = ['setup', 'quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'error-detection-briefing', 'error-detection', 'fraud-inspection', 'feedback', 'summary', 'history'];
 const refs = Object.fromEntries([
   'setup-form', 'setup-screen', 'quiz-screen', 'feedback-screen', 'summary-screen', 'history-screen',
-  'memory-read-screen', 'memory-answer-screen', 'task-briefing-screen', 'task-workspace-screen', 'error-detection-briefing-screen', 'error-detection-screen', 'cash-setup-options', 'memory-setup-options', 'task-setup-options', 'error-detection-setup-options',
+  'memory-read-screen', 'memory-answer-screen', 'task-briefing-screen', 'task-workspace-screen', 'error-detection-briefing-screen', 'error-detection-screen', 'fraud-inspection-screen', 'cash-setup-options', 'memory-setup-options', 'task-setup-options', 'error-detection-setup-options', 'fraud-setup-options',
   'question-count', 'time-limit', 'cash-builder-toggle', 'customer-bill-request-toggle', 'auto-continue-toggle', 'distraction-noise-toggle', 'question-progress', 'timer', 'amount-due',
   'tender-breakdown', 'customer-bill-request', 'customer-bill-request-text', 'customer-bill-request-status', 'flag-bill-request', 'answer-form', 'answer-amount', 'cash-builder-section', 'cash-builder-heading',
   'cash-builder-purpose', 'cash-builder', 'selected-total', 'builder-status', 'clear-builder', 'quick-cash-entry', 'apply-quick-cash', 'feedback-heading',
@@ -61,6 +68,9 @@ const refs = Object.fromEntries([
   'task-tablist', 'task-tabpanel', 'task-workspace-content', 'task-workspace-dialog', 'task-save-workspace', 'task-demo-guide', 'task-demo-cursor', 'task-recall-note', 'task-row-template',
   'error-detection-question-count', 'error-detection-briefing-progress', 'error-detection-briefing-heading', 'error-detection-briefing-family', 'error-detection-briefing-title', 'error-detection-briefing-overview', 'error-detection-rule-steps', 'error-detection-example', 'error-detection-start-puzzle',
   'error-detection-progress', 'error-detection-timer', 'error-detection-heading', 'error-detection-title', 'error-detection-puzzle-family', 'error-detection-puzzle-legend', 'error-detection-detail-list', 'error-detection-no-errors', 'error-detection-selection-status', 'error-detection-form',
+  'fraud-inspection-progress', 'fraud-inspection-timer', 'fraud-inspection-heading', 'fraud-policy-note', 'fraud-transaction-strip', 'fraud-document-grid', 'fraud-inspection-form', 'fraud-selection-status', 'fraud-issue-list', 'fraud-feedback', 'fraud-feedback-documents', 'fraud-feedback-issues',
+  'fraud-question-count', 'fraud-time-limit', 'fraud-run-mode', 'fraud-custom-options', 'fraud-minimum-errors', 'fraud-maximum-errors', 'fraud-signature-difficulty', 'fraud-handwriting-similarity', 'fraud-alteration-subtlety', 'fraud-date-difficulty', 'fraud-name-difficulty', 'fraud-amount-difficulty', 'fraud-id-difficulty', 'fraud-field-density', 'fraud-allow-clean', 'fraud-zoom-enabled', 'fraud-show-timer', 'fraud-auto-next', 'fraud-instant-feedback', 'fraud-mix-difficulty', 'fraud-enabled-categories',
+  'fraud-history-panel', 'fraud-history-metrics', 'fraud-history-weakness', 'fraud-history-categories', 'fraud-history-breakdowns', 'fraud-document-dialog', 'fraud-document-dialog-heading', 'fraud-document-dialog-view', 'close-fraud-document-dialog', 'custom-difficulty-card', 'preset-editor',
   'easy-description', 'medium-description', 'hard-description',
   'preset-editor', 'preset-level', 'preset-cash-fields', 'preset-memory-fields', 'preset-task-fields', 'preset-error-detection-fields',
   'preset-cash-min-due', 'preset-cash-max-due', 'preset-cash-step', 'preset-cash-max-difference', 'preset-cash-split-count',
@@ -109,6 +119,17 @@ const state = {
   errorDetailSelections: new Set(),
   errorDetectionFamilyDeck: [],
   errorDetectionStartedAt: 0,
+  fraudSettings: null,
+  fraudChallenge: null,
+  fraudSelections: new Set(),
+  fraudStartedAt: 0,
+  fraudDocumentZooms: new Map(),
+  fraudDialogZoom: 1,
+  fraudRoundAdvanceTimer: null,
+  fraudStoppedEarly: false,
+  fraudLastScore: null,
+  fraudCurrentStreak: 0,
+  fraudBestStreak: 0,
   taskActionLog: [],
   taskPhase: '',
   taskDemoToken: 0,
@@ -250,6 +271,21 @@ function builtInErrorDetectionPresets() {
   return Object.fromEntries(Object.keys(ERROR_DETECTION_MODE_CONFIG).map((level) => [level, resolveErrorDetectionDifficultyPreset(level)]));
 }
 
+function renderFraudCategorySettings() {
+  refs['fraud-enabled-categories'].replaceChildren(...FRAUD_INSPECTION_CATEGORIES.map((category) => {
+    const label = document.createElement('label');
+    label.className = 'history-facet';
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.value = category.id;
+    input.checked = true;
+    const text = document.createElement('span');
+    text.textContent = category.label;
+    label.append(input, text);
+    return label;
+  }));
+}
+
 function loadPresetState() {
   const presets = {
     cash: builtInCashPresets(),
@@ -346,11 +382,12 @@ function isCompactViewport() {
 }
 
 function showScreen(name) {
+  refs['fraud-feedback'].hidden = name !== 'feedback' || state.game !== 'fraud-inspection';
   for (const screen of screens) refs[`${screen}-screen`].hidden = screen !== name;
   state.activeScreen = name;
   const activeScreen = refs[`${name}-screen`];
   if (isCompactViewport()) activeScreen.scrollIntoView({ block: 'start', inline: 'nearest' });
-  const roundInProgress = ['quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'error-detection-briefing', 'error-detection'].includes(name);
+  const roundInProgress = ['quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'error-detection-briefing', 'error-detection', 'fraud-inspection'].includes(name);
   refs['open-history'].disabled = roundInProgress;
   if (!roundInProgress) stopTimer();
   if (name === 'quiz') {
@@ -361,8 +398,16 @@ function showScreen(name) {
     window.setTimeout(() => refs['memory-answer-list'].querySelector('input')?.focus({ preventScroll: true }), 0);
     return;
   }
+  if (name === 'fraud-inspection') {
+    window.setTimeout(() => refs['fraud-issue-list'].querySelector('button')?.focus({ preventScroll: true }), 0);
+    return;
+  }
   if (name === 'error-detection') {
     window.setTimeout(() => refs['error-detection-detail-list'].querySelector('button')?.focus({ preventScroll: true }), 0);
+    return;
+  }
+  if (name === 'fraud-inspection') {
+    window.setTimeout(() => refs['fraud-issue-list'].querySelector('button')?.focus({ preventScroll: true }), 0);
     return;
   }
   const heading = document.querySelector(`#${name}-screen h2`);
@@ -437,7 +482,7 @@ function persistRecord(record) {
     state.sessionNoiseStarted = false;
   }
   const evidence = state.sessionEvidence;
-  if (record.outcome !== 'Not answered' && state.results.length === state.questionCount) {
+  if (record.outcome !== 'Not answered' && (state.results.length === state.questionCount || state.fraudStoppedEarly)) {
     evidence.sessionCompletedAt = new Date().toISOString();
     evidence.sessionElapsedSeconds = (performance.now() - state.sessionEvidenceStarted) / 1000;
     evidence.noiseMaintained = evidence.noiseMaintained && state.sessionNoiseStarted
@@ -540,12 +585,18 @@ function gameLabel(game) {
   if (game === 'cash') return 'cash handling';
   if (game === 'memory') return 'number memory';
   if (game === 'task') return 'task simulation';
-  return 'error detection puzzle';
+  if (game === 'error-detection') return 'error detection puzzle';
+  return 'check and ID fraud inspection';
 }
 
 function renderPresetEditor() {
   const game = selectedGame();
   const level = selectedDifficulty();
+  if (game === 'fraud-inspection') {
+    refs['preset-editor'].hidden = true;
+    return;
+  }
+  refs['preset-editor'].hidden = false;
   const cashGame = game === 'cash';
   const memoryGame = game === 'memory';
   const errorDetectionGame = game === 'error-detection';
@@ -597,13 +648,26 @@ function renderPresetEditor() {
 
 function updateGameSetup() {
   const game = selectedGame();
+  if (selectedDifficulty() === 'Custom' && game !== 'fraud-inspection') {
+    document.querySelector('input[name="difficulty"][value="Easy"]').checked = true;
+  }
   const memoryGame = game === 'memory';
   const taskGame = game === 'task';
   const errorDetectionGame = game === 'error-detection';
-  refs['cash-setup-options'].hidden = memoryGame || taskGame || errorDetectionGame;
+  const fraudGame = game === 'fraud-inspection';
+  const difficulty = selectedDifficulty();
+  refs['custom-difficulty-card'].hidden = !fraudGame;
+  refs['cash-setup-options'].hidden = memoryGame || taskGame || errorDetectionGame || fraudGame;
   refs['memory-setup-options'].hidden = !memoryGame;
   refs['task-setup-options'].hidden = !taskGame;
   refs['error-detection-setup-options'].hidden = !errorDetectionGame;
+  refs['fraud-setup-options'].hidden = !fraudGame;
+  refs['fraud-custom-options'].hidden = !fraudGame || difficulty !== 'Custom';
+  if (fraudGame) {
+    const preset = resolveFraudInspectionSettings(difficulty === 'Custom' ? 'Medium' : difficulty);
+    if (difficulty !== 'Custom') refs['fraud-time-limit'].value = String(preset.timeLimitSeconds);
+    refs['fraud-question-count'].value = String(preset.questionCount);
+  }
   const descriptions = Object.fromEntries(['Easy', 'Medium', 'Hard'].map((level) => [
     level,
     memoryGame
@@ -622,12 +686,32 @@ function updateGameSetup() {
   renderActivePractice();
 }
 
+function updateFraudRunModeControls() {
+  const mode = refs['fraud-run-mode'].value;
+  const lockedCount = mode === 'rapid-review' || mode === 'endurance';
+  refs['fraud-question-count'].disabled = lockedCount;
+  refs['fraud-time-limit'].disabled = mode === 'rapid-review';
+  if (mode === 'rapid-review') {
+    refs['fraud-question-count'].value = '10';
+    refs['fraud-time-limit'].value = '15';
+  } else if (mode === 'endurance') {
+    refs['fraud-question-count'].value = '30';
+  } else {
+    if (refs['fraud-question-count'].value === '30') refs['fraud-question-count'].value = '10';
+    if (refs['fraud-time-limit'].value === '15') {
+      const selected = selectedDifficulty() === 'Custom' ? 'Medium' : selectedDifficulty();
+      refs['fraud-time-limit'].value = String(resolveFraudInspectionSettings(selected).timeLimitSeconds);
+    }
+  }
+}
+
 function presetFor(game, difficulty) {
   const presets = { cash: state.cashPresets, memory: state.memoryPresets, task: state.taskPresets, 'error-detection': state.errorDetectionPresets };
   return presets[game][difficulty];
 }
 
 function sessionPreset() {
+  if (state.game === 'fraud-inspection') return state.fraudSettings;
   return state.practicePlan?.preset ?? presetFor(state.game, state.difficulty);
 }
 
@@ -645,6 +729,14 @@ function appendPracticeSettings(target, plan) {
 }
 
 function renderPracticeRecommendations(target, game, difficulty, history = getHistory()) {
+  if (game === 'fraud-inspection') {
+    const fraudSummary = summarizeFraudHistory(history);
+    const summary = document.createElement('p');
+    summary.className = 'practice-note';
+    summary.textContent = fraudSummary.recommendedChallenge;
+    target.replaceChildren(summary);
+    return;
+  }
   const result = recommendPractice(history, game, difficulty, presetFor(game, difficulty));
   target.replaceChildren();
   const summary = document.createElement('p');
@@ -1625,6 +1717,473 @@ function startErrorDetectionPuzzle() {
   startContinuousDistractionNoise();
 }
 
+function escapeSvgText(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;',
+  })[character]);
+}
+
+function svgText(x, y, value, size = 16, weight = 500, color = '#253236', extra = '') {
+  return '<text x="' + x + '" y="' + y + '" font-size="' + size + '" font-weight="' + weight
+    + '" fill="' + color + '" ' + extra + '>' + escapeSvgText(value) + '</text>';
+}
+
+function markedRegion(challenge, region) {
+  return challenge.document.issueRegions.includes(region) ? 'fraud-marked' : '';
+}
+
+function svgField(challenge, region, x, y, width, label, value, options = {}) {
+  const height = options.height ?? 58;
+  const ink = challenge.document.palette.ink;
+  const accent = challenge.document.palette.accent;
+  const groupClass = markedRegion(challenge, region);
+  const memoColor = challenge.check.memoInk === 'blue-bold' ? '#245f94'
+    : challenge.check.memoInk === 'violet-fine' ? '#665085' : ink;
+  const memoStyle = challenge.check.memoHandwriting
+    ? 'font-family="cursive" font-style="italic" font-weight="750"'
+    : '';
+  const text = options.signature
+    ? signatureSvgText(value, options.variation, x + 12, y + height - 12, options.ink ?? accent)
+    : svgText(x + 12, y + height - 13, value, options.valueSize ?? 17, options.weight ?? 650,
+      region === 'check-memo' ? memoColor : ink, region === 'check-memo' ? memoStyle : '');
+  const alteration = challenge.check.alterationMarks.find((item) =>
+    (item.field === 'amount' ? 'check-numeric-amount' : 'check-' + item.field) === region);
+  const subtleAlteration = challenge.settings.alterationSubtlety === 'hard';
+  const patch = alteration
+    ? '<path d="M' + (x + width - (subtleAlteration ? 104 : 136)) + ' ' + (y + 17) + 'h'
+      + (subtleAlteration ? 46 : 77) + 'l-8 18h-' + (subtleAlteration ? 44 : 75) + 'z" fill="#fffef8" opacity=".96"/>'
+      + '<path d="M' + (x + width - (subtleAlteration ? 109 : 141)) + ' ' + (y + 13) + 'l'
+      + (subtleAlteration ? 53 : 83) + ' 1m-' + (subtleAlteration ? 48 : 78) + ' 25 '
+      + (subtleAlteration ? 39 : 69) + ' -2" stroke="#a48763" stroke-width=".8" opacity="' + (subtleAlteration ? '.42' : '.72') + '"/>'
+    : '';
+  const idPatch = challenge.id.alterationMarks.length && region === 'id-address'
+    ? '<path d="M' + (x + width - 105) + ' ' + (y + 18) + 'h59v16h-59z" fill="#fffef8" opacity=".92"/>'
+      + '<path d="M' + (x + width - 109) + ' ' + (y + 15) + 'l67 0" stroke="#8a765a" stroke-width=".8" opacity=".7"/>'
+    : '';
+  return '<g class="fraud-doc-field ' + groupClass + '" data-region="' + region + '">'
+    + '<rect class="fraud-field-bg" x="' + x + '" y="' + y + '" width="' + width + '" height="' + height
+    + '" rx="4" fill="#ffffff" fill-opacity=".42" stroke="' + challenge.document.palette.rule + '"/>'
+    + svgText(x + 12, y + 17, label, 10, 750, accent, 'letter-spacing="1"')
+    + patch + idPatch + text + '</g>';
+}
+
+function signatureSvgText(value, variation, x, y, color) {
+  const style = variation ?? { style: 1, size: 24, slant: -2, spacing: 0 };
+  const family = ['Brush Script MT, Segoe Script, cursive', 'Segoe Script, Brush Script MT, cursive', 'cursive'][style.style % 3];
+  return '<text x="' + x + '" y="' + y + '" font-family="' + family + '" font-size="' + style.size
+    + '" letter-spacing="' + style.spacing + '" fill="' + escapeSvgText(color) + '" transform="skewX(' + (-style.slant)
+    + ')" class="fraud-signature">' + escapeSvgText(value) + '</text>';
+}
+
+function renderFraudCheckSvg(challenge, feedback = false) {
+  const check = challenge.check;
+  const palette = challenge.document.palette;
+  const attributes = [
+    'role="img"',
+    'aria-label="Fictional check front and endorsement area for case ' + escapeSvgText(challenge.caseId) + '"',
+    'viewBox="0 0 860 690"',
+    'xmlns="http://www.w3.org/2000/svg"',
+  ].join(' ');
+  const title = '<title>Training sample check and endorsement</title>'
+    + '<desc>Fictional check with written fields and a back endorsement area. Not negotiable and contains no real account data.</desc>';
+  const front = [
+    '<rect x="8" y="8" width="844" height="425" rx="16" fill="' + palette.paper + '" stroke="' + palette.accent + '" stroke-width="3"/>',
+    '<rect x="8" y="8" width="844" height="55" rx="16" fill="' + palette.accent + '"/>',
+    svgText(30, 43, challenge.document.olderDesign ? 'CEDARLINE SAVINGS · TRAINING DRAFT' : 'CEDARLINE COMMUNITY COOPERATIVE', 20, 800, '#ffffff'),
+    svgText(668, 39, 'TRAINING SAMPLE', 12, 800, '#ffffff', 'letter-spacing="1"'),
+    svgText(728, 91, 'NO REAL VALUE', 10, 800, palette.accent, 'letter-spacing="1"'),
+    svgField(challenge, 'check-number', 29, 78, 160, 'CHECK NO.', check.checkNumber, { valueSize: 22 }),
+    svgField(challenge, 'check-date', 671, 78, 157, 'DATE', check.dateText, { valueSize: 15 }),
+    svgField(challenge, 'check-payee', 29, 151, 519, 'PAY TO THE ORDER OF', check.payeeName, { valueSize: 20 }),
+    svgField(challenge, 'check-numeric-amount', 565, 151, 263, 'AMOUNT', check.numericAmount, { valueSize: 21 }),
+    svgField(challenge, 'check-written-amount', 29, 223, 799, 'AMOUNT IN WORDS', check.writtenAmount, { valueSize: 16 }),
+    svgField(challenge, 'check-maker-signature', 463, 302, 365, 'AUTHORIZED MAKER SIGNATURE', check.makerSignature || '', { signature: true, variation: check.makerSignatureVariation }),
+    svgField(challenge, 'check-memo', 29, 302, 406, 'MEMO / NOTE', check.memoText, { valueSize: 16 }),
+    svgText(32, 391, check.makerName, 13, 650, palette.ink),
+    svgText(32, 412, 'Fictional drawer · invented training fields', 10, 500, '#536569'),
+    challenge.settings.fieldDensity === 'low' ? '' : svgText(519, 121, 'Ref. ' + check.referenceNumber, 10, 550, '#536569'),
+    '<rect x="29" y="443" width="802" height="57" rx="7" fill="#f5f4ed" stroke="' + palette.rule + '"/>',
+    svgText(44, 466, 'MICR LINE · FICTIONAL PLACEHOLDERS', 9, 800, palette.accent, 'letter-spacing="1"'),
+    '<g class="fraud-doc-field ' + (feedback && markedRegion(challenge, 'check-micr') ? 'fraud-marked' : '') + '" data-region="check-micr">',
+    svgText(44, 490, '⑆ ' + check.routingNumber + ' ⑆  ' + check.accountNumber + ' ⑆  ' + check.micrCheckNumber, 16, 700, palette.ink, 'font-family="ui-monospace,monospace" letter-spacing="1"'),
+    '</g>',
+  ].join('');
+  const endorsement = [
+    '<rect x="8" y="520" width="844" height="158" rx="14" fill="' + palette.paper + '" stroke="' + palette.accent + '" stroke-width="3"/>',
+    '<rect x="8" y="520" width="844" height="38" rx="12" fill="' + palette.rule + '"/>',
+    svgText(28, 546, 'CHECK BACK · PAYEE ENDORSEMENT AREA', 13, 800, palette.ink, 'letter-spacing="1"'),
+    svgText(30, 578, 'ENDORSE HERE', 10, 750, palette.accent, 'letter-spacing="1"'),
+    '<g class="fraud-doc-field ' + (feedback && markedRegion(challenge, 'check-endorsement') ? 'fraud-marked' : '') + '" data-region="check-endorsement">',
+    '<path d="M30 641 H820" stroke="' + palette.rule + '" stroke-width="2"/>',
+    check.endorsementSignature
+      ? signatureSvgText(check.endorsementSignature, check.endorsementVariation, 42, 630, palette.accent)
+      : svgText(42, 626, '', 22, 500, palette.ink),
+    '</g>',
+    svgText(30, 663, 'TRAINING EXAMPLE ONLY · endorsement comparison uses the customer ID shown beside it', 10, 550, '#536569'),
+  ].join('');
+  return '<svg class="fraud-document-svg fraud-check-svg" ' + attributes + '>' + title + front + endorsement + '</svg>';
+}
+
+function renderFraudIdSvg(challenge, feedback = false) {
+  const identity = challenge.id;
+  const palette = challenge.document.palette;
+  const attributes = [
+    'role="img"',
+    'aria-label="Fictional customer identification card for ' + escapeSvgText(identity.legalName) + '"',
+    'viewBox="0 0 860 540"',
+    'xmlns="http://www.w3.org/2000/svg"',
+  ].join(' ');
+  const fields = [
+    '<rect x="8" y="8" width="844" height="524" rx="20" fill="' + palette.paper + '" stroke="' + palette.accent + '" stroke-width="3"/>',
+    '<rect x="8" y="8" width="844" height="92" rx="18" fill="' + palette.accent + '"/>',
+    svgText(34, 47, 'STATE OF ' + identity.issuingState + ' · RESIDENT IDENTIFICATION', 18, 800, '#ffffff', 'letter-spacing=".5"'),
+    svgText(34, 76, 'FICTIONAL TRAINING CARD · NOT A REAL ID', 11, 700, '#ffffff', 'letter-spacing="1"'),
+    '<rect x="37" y="129" width="208" height="256" rx="9" fill="#dfe8e3" stroke="' + palette.rule + '" stroke-width="2"/>',
+    '<circle cx="141" cy="211" r="52" fill="' + palette.accent + '" opacity=".16"/>',
+    '<path d="M73 358c12-67 121-67 136 0" fill="' + palette.accent + '" opacity=".28"/>',
+    '<g class="fraud-doc-field ' + (feedback && markedRegion(challenge, 'id-photo') ? 'fraud-marked' : '') + '" data-region="id-photo">',
+    svgText(91, 230, identity.avatarInitials, 34, 850, palette.accent, 'text-anchor="middle"'),
+    '</g>',
+    svgField(challenge, 'id-name', 278, 129, 542, 'FULL LEGAL NAME', identity.legalName, { valueSize: 23 }),
+    svgField(challenge, 'id-number', 278, 202, 248, 'ID NUMBER · FICTIONAL', identity.idNumber, { valueSize: 15 }),
+    svgField(challenge, 'id-birth-date', 540, 202, 280, 'DATE OF BIRTH', identity.dateOfBirth, { valueSize: 17 }),
+    svgField(challenge, 'id-address', 278, 275, 542, 'RESIDENCE ADDRESS', identity.address, { valueSize: 14 }),
+    svgField(challenge, 'id-expiration', 278, 348, 248, 'EXPIRES', identity.expirationText, { valueSize: 18 }),
+    svgField(challenge, 'id-issue-date', 540, 348, 280, 'ISSUED', new Date(identity.issueDate + 'T00:00:00Z').toLocaleDateString('en-US'), { valueSize: 17 }),
+    '<g class="fraud-doc-field ' + (feedback && markedRegion(challenge, 'id-signature') ? 'fraud-marked' : '') + '" data-region="id-signature">',
+    '<path d="M278 461h490" stroke="' + palette.rule + '" stroke-width="2"/>',
+    signatureSvgText(identity.signature, identity.signatureVariation, 290, 450, palette.accent),
+    '</g>',
+    svgText(278, 486, 'CUSTOMER SIGNATURE', 10, 750, palette.accent, 'letter-spacing="1"'),
+    '<g transform="rotate(-17 420 260)" opacity=".11">',
+    svgText(211, 280, 'SAMPLE · NOT FOR IDENTIFICATION', 38, 900, palette.accent, 'letter-spacing="3"'),
+    '</g>',
+    svgText(36, 416, 'REFERENCE ONLY', 10, 800, palette.accent, 'letter-spacing="1"'),
+    svgText(36, 442, identity.issuingState, 17, 800, palette.ink),
+  ];
+  return '<svg class="fraud-document-svg fraud-id-svg" ' + attributes + '><title>Fictional customer ID</title>'
+    + '<desc>Training-only identification card with made-up name, address, dates, and number.</desc>' + fields.join('') + '</svg>';
+}
+
+function makeFraudDocumentCard(kind, title, markup) {
+  const article = document.createElement('article');
+  article.className = 'fraud-document-card';
+  const heading = document.createElement('h3');
+  heading.textContent = title;
+  const tools = document.createElement('div');
+  tools.className = 'fraud-document-tools';
+  const viewport = document.createElement('div');
+  viewport.className = 'fraud-doc-viewport';
+  viewport.dataset.fraudViewport = kind;
+  const stage = document.createElement('div');
+  stage.className = 'fraud-doc-stage';
+  stage.innerHTML = markup;
+  viewport.append(stage);
+  const controls = [
+    ['−', 'Zoom out ' + title.toLowerCase(), 'out'],
+    ['+', 'Zoom in ' + title.toLowerCase(), 'in'],
+    ['Reset zoom', 'Reset ' + title.toLowerCase() + ' zoom', 'reset'],
+    ['Enlarge', 'Enlarge ' + title.toLowerCase(), 'enlarge'],
+  ];
+  for (const [label, accessible, action] of controls) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = action === 'enlarge' ? 'text-button' : 'secondary-button';
+    button.textContent = label;
+    button.setAttribute('aria-label', accessible);
+    button.dataset.fraudDocumentAction = action;
+    button.dataset.fraudDocument = kind;
+    if (!state.fraudSettings.zoomAvailable && action !== 'enlarge') button.hidden = true;
+    button.addEventListener('click', () => {
+      const currentZoom = state.fraudDocumentZooms.get(kind) ?? 1;
+      if (action === 'in') setFraudDocumentZoom(kind, currentZoom + 0.2, article);
+      else if (action === 'out') setFraudDocumentZoom(kind, currentZoom - 0.2, article);
+      else if (action === 'reset') setFraudDocumentZoom(kind, 1, article);
+      else openFraudDocument(kind);
+    });
+    tools.append(button);
+  }
+  if (!state.fraudSettings.zoomAvailable) tools.querySelector('[data-fraud-document-action="enlarge"]').hidden = true;
+  article.append(heading, tools, viewport);
+  setFraudDocumentZoom(kind, state.fraudDocumentZooms.get(kind) ?? 1, article);
+  return article;
+}
+
+function setFraudDocumentZoom(kind, zoom, root = document) {
+  const bounded = Math.max(1, Math.min(2.5, Math.round(zoom * 100) / 100));
+  state.fraudDocumentZooms.set(kind, bounded);
+  const viewport = root.querySelector('[data-fraud-viewport="' + kind + '"]');
+  const svg = viewport?.querySelector('svg');
+  if (svg) svg.style.width = (bounded * 100) + '%';
+}
+
+function renderFraudDocuments(target, challenge, feedback = false) {
+  const check = makeFraudDocumentCard('check', 'CHECK · FRONT AND ENDORSEMENT', renderFraudCheckSvg(challenge, feedback));
+  const identity = makeFraudDocumentCard('id', 'CUSTOMER IDENTIFICATION', renderFraudIdSvg(challenge, feedback));
+  target.replaceChildren(check, identity);
+}
+
+function renderFraudIssueOptions() {
+  const challenge = state.fraudChallenge;
+  refs['fraud-issue-list'].replaceChildren();
+  const choices = challenge.availableIssueOptions.map((category) => [category.id, category.label]);
+  choices.push(['no-issues', 'No Issues Found']);
+  for (const [id, label] of choices) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'fraud-issue-option';
+    button.dataset.issueId = id;
+    button.setAttribute('aria-pressed', 'false');
+    button.textContent = label;
+    button.addEventListener('click', () => toggleFraudIssue(id));
+    refs['fraud-issue-list'].append(button);
+  }
+  updateFraudSelectionStatus();
+}
+
+function toggleFraudIssue(id) {
+  if (state.answerSubmitted) return;
+  if (id === 'no-issues') {
+    state.fraudSelections.clear();
+    state.fraudSelections.add(id);
+  } else {
+    state.fraudSelections.delete('no-issues');
+    if (state.fraudSelections.has(id)) state.fraudSelections.delete(id);
+    else state.fraudSelections.add(id);
+  }
+  updateFraudSelectionStatus();
+}
+
+function updateFraudSelectionStatus() {
+  refs['fraud-issue-list'].querySelectorAll('button[data-issue-id]').forEach((button) => {
+    const pressed = state.fraudSelections.has(button.dataset.issueId);
+    button.setAttribute('aria-pressed', String(pressed));
+  });
+  const count = [...state.fraudSelections].filter((id) => id !== 'no-issues').length;
+  refs['fraud-selection-status'].textContent = state.fraudSelections.has('no-issues')
+    ? 'No Issues Found selected.'
+    : count ? count + ' issue' + (count === 1 ? '' : 's') + ' selected.'
+      : 'Choose one or more issues, or mark No Issues Found.';
+}
+
+function renderFraudInspectionQuestion() {
+  const challenge = state.fraudChallenge;
+  state.fraudSelections = new Set();
+  const level = state.difficulty === 'Custom' ? 'CUSTOM · ' + challenge.caseDifficulty.toUpperCase() : state.difficulty.toUpperCase();
+  refs['fraud-inspection-progress'].textContent = 'Case ' + state.questionNumber + ' of ' + state.questionCount + ' · ' + level;
+  refs['fraud-inspection-timer'].hidden = !state.fraudSettings.showTimer;
+  refs['fraud-policy-note'].textContent = challenge.policy + ' Dates and controls are simulator examples only.';
+  refs['fraud-transaction-strip'].replaceChildren();
+  const facts = [
+    ['Exercise date', challenge.exerciseDateText],
+    ['Customer role', challenge.customerIsMaker ? 'Payee and check maker' : 'Payee only; front signature belongs to another maker'],
+    ['Route control', challenge.check.routingControl],
+    ['Account control', challenge.check.accountControl],
+  ];
+  for (const [label, value] of facts) {
+    const item = document.createElement('div');
+    const term = document.createElement('strong');
+    const description = document.createElement('span');
+    term.textContent = label;
+    description.textContent = value;
+    item.append(term, description);
+    refs['fraud-transaction-strip'].append(item);
+  }
+  renderFraudDocuments(refs['fraud-document-grid'], challenge);
+  renderFraudIssueOptions();
+}
+
+function recordFraudInspectionAttempt(score, timedOut, elapsedSeconds) {
+  const challenge = state.fraudChallenge;
+  const selectedCategories = [...state.fraudSelections].filter((id) => id !== 'no-issues');
+  const expectedIssues = challenge.expectedIssues;
+  const categoryLabels = new Map(FRAUD_INSPECTION_CATEGORIES.map((category) => [category.id, category.label]));
+  return {
+    timestamp: new Date().toISOString(),
+    sessionId: state.sessionId,
+    game: 'fraud-inspection',
+    gameType: 'Check & ID Fraud Inspection',
+    sessionMode: state.fraudSettings.runMode,
+    difficulty: state.difficulty,
+    questionNumber: state.questionNumber,
+    scenario: 'Fictional check and ID inspection',
+    outcome: timedOut ? 'Timed Out' : score.correct ? 'Correct' : 'Incorrect',
+    expectedAnswer: expectedIssues.length ? expectedIssues.map((issue) => issue.label).join(' · ') : 'No issues found.',
+    userAnswer: selectedCategories.length ? selectedCategories.map((id) => categoryLabels.get(id)).join(' · ') : 'No issues found.',
+    timeLimitSeconds: state.fraudSettings.timeLimitSeconds,
+    timeUsedSeconds: Number(elapsedSeconds.toFixed(1)),
+    fraudCaseId: challenge.caseId,
+    fraudCaseDifficulty: challenge.caseDifficulty,
+    fraudRunMode: state.fraudSettings.runMode,
+    fraudTimeLimitSeconds: state.fraudSettings.timeLimitSeconds,
+    fraudTimeUsedSeconds: Number(elapsedSeconds.toFixed(1)),
+    fraudExpectedCategories: expectedIssues.map((issue) => issue.id),
+    fraudExpectedIssues: expectedIssues.map((issue) => ({ id: issue.id, label: issue.label, explanation: issue.explanation, regions: issue.regions })),
+    fraudSelectedCategories: selectedCategories,
+    fraudFoundCategories: score.correctlySelectedIds,
+    fraudMissedCategories: score.missedIssueIds,
+    fraudFalsePositiveCategories: score.falsePositiveIds,
+    fraudFalseNegativeCount: score.missedIssueIds.length,
+    fraudFalsePositiveCount: score.falsePositiveIds.length,
+    fraudSelectableCategoryCount: challenge.enabledCategories.length,
+    fraudClassificationAccuracyPercent: score.accuracyPercent,
+    fraudFalsePositiveRatePercent: score.falsePositiveRatePercent,
+    fraudMissedIssueRatePercent: score.missedIssueRatePercent,
+    fraudCategoryResults: score.categoryResults,
+    fraudCleanCase: score.cleanCase,
+    fraudCorrectlyRecognizedClean: score.correctlyRecognizedClean,
+    fraudCustomerIsMaker: challenge.customerIsMaker,
+    fraudSignatureVariationIsValid: challenge.signatureVariationIsValid,
+    fraudExpiredId: expectedIssues.some((issue) => issue.id === 'id-expired'),
+    fraudRunStoppedEarly: state.fraudStoppedEarly,
+    fraudCurrentStreak: state.fraudCurrentStreak,
+    fraudBestStreak: state.fraudBestStreak,
+    outcomeDetail: timedOut ? 'Time expired' : score.correct ? 'Exact issue set' : 'Review did not match all actual issues',
+  };
+}
+
+function populateFraudInspectionFeedback(record, score) {
+  refs['feedback-kicker'].textContent = record.outcome === 'Timed Out' ? 'Inspection time expired' : 'Inspection result';
+  refs['feedback-heading'].textContent = score.correct ? 'Correct review' : record.outcome === 'Timed Out' ? 'Time expired' : 'Review the documents';
+  refs['feedback-heading'].dataset.result = score.correct ? 'correct' : 'incorrect';
+  refs['feedback-lead'].textContent = score.correct
+    ? 'You found the complete issue set and left valid details alone.'
+    : score.cleanCase ? 'This was a clean case. Review any valid details you marked.'
+      : 'Compare the check and ID again. The highlighted fields show each actual issue.';
+  renderFraudDocuments(refs['fraud-feedback-documents'], state.fraudChallenge, true);
+  refs['fraud-feedback-issues'].replaceChildren();
+  const actualById = new Map(state.fraudChallenge.expectedIssues.map((issue) => [issue.id, issue]));
+  const selected = new Set(state.fraudChallenge.enabledCategories
+    .filter((id) => score.categoryResults[id] === 'found'));
+  const falseFlags = new Set(score.falsePositiveIds);
+  const missed = new Set(score.missedIssueIds);
+  const appendIssueFeedback = (className, symbol, label, explanation) => {
+    const item = document.createElement('li');
+    item.className = className;
+    const marker = document.createElement('strong');
+    const copy = document.createElement('span');
+    marker.textContent = symbol + ' ';
+    copy.textContent = label + (explanation ? ' — ' + explanation : '');
+    item.append(marker, copy);
+    refs['fraud-feedback-issues'].append(item);
+  };
+  for (const id of selected) {
+    const issue = actualById.get(id);
+    appendIssueFeedback('fraud-feedback-correct', '✓ Correct selection:', issue.label, issue.explanation);
+  }
+  for (const id of falseFlags) {
+    const issue = actualById.get(id);
+    const label = FRAUD_INSPECTION_CATEGORIES.find((category) => category.id === id)?.label ?? id;
+    appendIssueFeedback('fraud-feedback-false', '✗ Incorrect selection:', label, 'This detail is valid in this training case.');
+  }
+  for (const id of missed) {
+    const issue = actualById.get(id);
+    appendIssueFeedback('fraud-feedback-missed', '! Missed issue:', issue.label, issue.explanation);
+  }
+  if (!state.fraudChallenge.expectedIssues.length && !falseFlags.size) {
+    appendIssueFeedback('fraud-feedback-correct', '✓', 'No issue — the documents are valid for this scenario.', state.fraudChallenge.validOddity || 'No suspicious features are present.');
+  }
+  refs['fraud-feedback'].hidden = false;
+  refs['feedback-details'].replaceChildren();
+  const details = [
+    ['Actual issues', String(score.expectedCount)],
+    ['Correctly found', String(score.correctlySelectedIds.length)],
+    ['Missed issues', String(score.missedIssueIds.length)],
+    ['False positives', String(score.falsePositiveIds.length)],
+    ['Case accuracy', score.accuracyPercent + '%'],
+    ['Time used', record.timeUsedSeconds.toFixed(1) + ' seconds'],
+    ['Run type', record.fraudRunMode],
+  ];
+  for (const [label, value] of details) {
+    const term = document.createElement('dt');
+    const description = document.createElement('dd');
+    term.textContent = label;
+    description.textContent = value;
+    refs['feedback-details'].append(term, description);
+  }
+}
+
+function submitFraudInspectionAttempt(timedOut = false) {
+  if (state.answerSubmitted || !state.fraudChallenge) return;
+  if (!timedOut && state.fraudSelections.size === 0) {
+    setMessage('Select one or more issues or choose No Issues Found before submitting.');
+    refs['fraud-issue-list'].querySelector('button')?.focus();
+    return;
+  }
+  state.answerSubmitted = true;
+  const elapsedSeconds = Math.min(state.fraudSettings.timeLimitSeconds,
+    Math.max(0, (Date.now() - state.fraudStartedAt) / 1000));
+  stopTimer();
+  const selected = state.fraudSelections.has('no-issues') ? [] : [...state.fraudSelections];
+  const score = scoreFraudInspectionAttempt(state.fraudChallenge, selected, timedOut);
+  state.fraudCurrentStreak = score.correct ? state.fraudCurrentStreak + 1 : 0;
+  state.fraudBestStreak = Math.max(state.fraudBestStreak, state.fraudCurrentStreak);
+  const suddenDeathFailure = state.fraudSettings.runMode === 'sudden-death'
+    && (timedOut || score.missedIssueIds.length > 0 || score.falsePositiveIds.length > 0);
+  if (suddenDeathFailure) state.fraudStoppedEarly = true;
+  const record = recordFraudInspectionAttempt(score, timedOut, elapsedSeconds);
+  state.results.push(record);
+  persistRecord(record);
+  const complete = state.results.length >= state.questionCount || state.fraudStoppedEarly;
+  if (complete) stopContinuousDistractionNoise();
+  const shouldAutoAdvance = state.fraudSettings.automaticNext || state.autoContinue;
+  populateFraudInspectionFeedback(record, score);
+  refs['next-question'].textContent = state.fraudStoppedEarly ? 'View run results' : 'Next case (Enter)';
+  showScreen('feedback');
+  if (shouldAutoAdvance && !state.fraudStoppedEarly) {
+    window.clearTimeout(state.fraudRoundAdvanceTimer);
+    state.fraudRoundAdvanceTimer = window.setTimeout(showNextFraudInspectionCase, state.fraudSettings.instantFeedback ? 1400 : 650);
+  }
+}
+
+function showNextFraudInspectionCase() {
+  window.clearTimeout(state.fraudRoundAdvanceTimer);
+  state.fraudRoundAdvanceTimer = null;
+  if (state.fraudStoppedEarly) {
+    renderSummary();
+    showScreen('summary');
+    return;
+  }
+  state.questionNumber += 1;
+  if (state.questionNumber > state.questionCount) {
+    renderSummary();
+    showScreen('summary');
+    return;
+  }
+  state.fraudChallenge = createFraudInspectionCase(state.difficulty, state.fraudSettings);
+  state.answerSubmitted = false;
+  state.fraudStartedAt = 0;
+  const initialScore = scoreFraudInspectionAttempt(state.fraudChallenge, []);
+  persistUnansweredRound(recordFraudInspectionAttempt(initialScore, false, 0));
+  renderFraudInspectionQuestion();
+  showScreen('fraud-inspection');
+  state.fraudStartedAt = Date.now();
+  startTimer(state.fraudSettings.timeLimitSeconds, refs['fraud-inspection-timer'], () => submitFraudInspectionAttempt(true));
+  startContinuousDistractionNoise();
+}
+
+function startFraudInspection() {
+  state.fraudSettings = resolveFraudInspectionSettings(state.difficulty, state.fraudSettings, state.fraudSettings.runMode);
+  state.questionCount = state.fraudSettings.questionCount;
+  state.timeLimitSeconds = state.fraudSettings.timeLimitSeconds;
+  state.autoContinue = state.fraudSettings.automaticNext || refs['auto-continue-toggle'].checked;
+  state.fraudStoppedEarly = false;
+  state.fraudDocumentZooms = new Map();
+  showNextFraudInspectionCase();
+}
+
+function openFraudDocument(kind) {
+  const challenge = state.fraudChallenge;
+  if (!challenge) return;
+  const markup = kind === 'check' ? renderFraudCheckSvg(challenge) : renderFraudIdSvg(challenge);
+  refs['fraud-document-dialog-heading'].textContent = kind === 'check' ? 'Check front and endorsement' : 'Customer identification';
+  refs['fraud-document-dialog-view'].innerHTML = markup;
+  state.fraudDialogZoom = 1;
+  const svg = refs['fraud-document-dialog-view'].querySelector('svg');
+  if (svg) svg.style.width = '100%';
+  if (!refs['fraud-document-dialog'].open) refs['fraud-document-dialog'].showModal();
+}
+
 function renderTaskInstructions(challenge) {
   refs['task-instruction-list'].replaceChildren(...challenge.steps.map((step) => {
     const item = document.createElement('li');
@@ -2341,6 +2900,20 @@ function showNextTaskQuestion() {
 function makeMetrics(records) {
   const summary = summarizeHistory(records);
   const averageTime = summary.answered ? records.reduce((sum, record) => sum + Number(record.timeUsedSeconds || 0), 0) / summary.answered : 0;
+  if (state.game === 'fraud-inspection') {
+    const fraud = summarizeFraudHistory(records);
+    return [
+      [String(fraud.casesReviewed), 'Cases reviewed'],
+      [fraud.exactSetAccuracyPercent === null ? '—' : fraud.exactSetAccuracyPercent + '%', 'Exact-case accuracy'],
+      [fraud.accuracyPercent === null ? '—' : Math.round(fraud.accuracyPercent) + '%', 'Issue-choice accuracy'],
+      [String(fraud.falsePositiveCount), 'False positives'],
+      [String(fraud.missedIssueCount), 'Missed issues'],
+      [fraud.averageInspectionTimeSeconds === null ? '—' : fraud.averageInspectionTimeSeconds.toFixed(1) + 's', 'Average inspection'],
+      [String(fraud.cleanChecksCorrectlyRecognized), 'Clean cases recognized'],
+      [String(fraud.currentStreak), 'Current perfect streak'],
+      [String(fraud.bestStreak), 'Best perfect streak'],
+    ];
+  }
   if (state.game === 'task') {
     const averageSequenceAccuracy = summary.answered
       ? records.reduce((sum, record) => sum + Number(record.sequenceAccuracyPercent || 0), 0) / summary.answered
@@ -2393,6 +2966,8 @@ function renderSummary() {
       ? 'Your task simulation results'
       : state.game === 'error-detection'
         ? 'Your error detection results'
+        : state.game === 'fraud-inspection'
+          ? 'Your fraud inspection results'
         : 'Your cash results';
   renderMetrics(refs['session-metrics'], makeMetrics(state.results));
   renderPracticeRecommendations(document.getElementById('summary-recommendations'), state.game, state.difficulty);
@@ -3226,6 +3801,82 @@ function renderHistoryRows(records) {
   }
 }
 
+function renderFraudHistory(records) {
+  const visible = historyView.filters.game === 'fraud-inspection';
+  refs['fraud-history-panel'].hidden = !visible;
+  if (!visible) return;
+  const summary = summarizeFraudHistory(records.filter((record) => record.game === 'fraud-inspection'));
+  const rate = (value) => value === null ? 'Not enough data' : value + '%';
+  renderMetrics(refs['fraud-history-metrics'], [
+    [String(summary.casesReviewed), 'Cases reviewed'],
+    [rate(summary.exactSetAccuracyPercent), 'Exact-case accuracy'],
+    [rate(summary.accuracyPercent === null ? null : Math.round(summary.accuracyPercent)), 'Accuracy across issue choices'],
+    [summary.averageInspectionTimeSeconds === null ? '—' : summary.averageInspectionTimeSeconds.toFixed(1) + 's', 'Average inspection time'],
+    [summary.medianInspectionTimeSeconds === null ? '—' : summary.medianInspectionTimeSeconds.toFixed(1) + 's', 'Median inspection time'],
+    [rate(summary.falsePositiveRatePercent), 'False-positive rate'],
+    [rate(summary.missedIssueRatePercent), 'Missed-issue rate'],
+    [String(summary.cleanChecksCorrectlyRecognized), 'Clean checks correctly recognized'],
+    [String(summary.currentStreak), 'Current perfect streak'],
+    [String(summary.bestStreak), 'Best perfect streak'],
+    [summary.mostFrequentlyMissedCategory ? summary.mostFrequentlyMissedCategory.label : 'None recorded', 'Most frequently missed type'],
+  ]);
+  refs['fraud-history-weakness'].textContent = summary.weakestCategory
+    ? 'Weakest area: ' + summary.weakestCategory.label.toLowerCase() + ' (' + summary.weakestCategory.accuracyPercent + '% across ' + summary.weakestCategory.expectedCount + ' examples). ' + summary.recommendedChallenge
+    : summary.recommendedChallenge;
+  refs['fraud-history-categories'].replaceChildren();
+  if (!summary.byCategory.length) {
+    const row = document.createElement('tr');
+    const cell = document.createElement('td');
+    cell.colSpan = 5;
+    cell.textContent = 'Category results will appear after an inspection is submitted.';
+    row.append(cell);
+    refs['fraud-history-categories'].append(row);
+  } else {
+    for (const category of summary.byCategory) {
+      const row = document.createElement('tr');
+      const values = [
+        category.label,
+        String(category.foundCount),
+        String(category.missedCount),
+        String(category.falsePositiveCount),
+        category.expectedCount ? category.accuracyPercent + '% (' + category.foundCount + '/' + category.expectedCount + ')' : '—',
+      ];
+      for (const value of values) {
+        const cell = document.createElement('td');
+        cell.textContent = value;
+        row.append(cell);
+      }
+      refs['fraud-history-categories'].append(row);
+    }
+  }
+  const groups = [
+    ['Performance by case difficulty', summary.byDifficulty.map((group) => group.difficulty + ': '
+      + (group.accuracyPercent === null ? 'no scored cases' : Math.round(group.accuracyPercent) + '% across ' + group.cases + ' cases'))],
+    ['Performance by timer', summary.byTimer.map((group) => group.seconds + ' seconds: '
+      + (group.accuracyPercent === null ? 'no scored cases' : Math.round(group.accuracyPercent) + '% across ' + group.cases + ' cases'))],
+  ];
+  refs['fraud-history-breakdowns'].replaceChildren(...groups.map(([headingText, values]) => {
+    const article = document.createElement('article');
+    article.className = 'fraud-history-breakdown';
+    const heading = document.createElement('h4');
+    heading.textContent = headingText;
+    const list = document.createElement('ul');
+    if (values.length) {
+      for (const value of values) {
+        const item = document.createElement('li');
+        item.textContent = value;
+        list.append(item);
+      }
+    } else {
+      const item = document.createElement('li');
+      item.textContent = 'No cases recorded yet.';
+      list.append(item);
+    }
+    article.append(heading, list);
+    return article;
+  }));
+}
+
 function renderHistory() {
   const history = getHistory();
   const gameOnly = filterHistory(history, { game: historyView.filters.game });
@@ -3238,6 +3889,7 @@ function renderHistory() {
   renderHistoryComparison(history, records);
   renderHistoryCharts(records);
   renderHistoryRows(records);
+  renderFraudHistory(records);
 }
 
 function applyHistoryQuickRange(kind) {
@@ -3293,6 +3945,78 @@ refs['setup-form'].addEventListener('submit', (event) => {
   state.errorDetectionFamilyDeck = [];
   state.errorDetectionStartedAt = 0;
   state.autoContinue = refs['auto-continue-toggle'].checked;
+
+  if (game === 'fraud-inspection') {
+    const runMode = refs['fraud-run-mode'].value;
+    const questionCount = Number(refs['fraud-question-count'].value);
+    const timeLimitSeconds = Number(refs['fraud-time-limit'].value);
+    const custom = difficulty === 'Custom';
+    const enabledCategories = custom
+      ? [...refs['fraud-enabled-categories'].querySelectorAll('input:checked')].map((input) => input.value)
+      : undefined;
+    if (custom && !enabledCategories.length) {
+      setMessage('Enable at least one issue category for Custom inspection.');
+      refs['fraud-enabled-categories'].querySelector('input')?.focus();
+      return;
+    }
+    if (custom && Number(refs['fraud-minimum-errors'].value) > Number(refs['fraud-maximum-errors'].value)) {
+      setMessage('The minimum issue count cannot exceed the maximum.');
+      refs['fraud-minimum-errors'].focus();
+      return;
+    }
+    if (custom && Number(refs['fraud-maximum-errors'].value) === 0 && !refs['fraud-allow-clean'].checked) {
+      setMessage('Allow no-error cases or set a maximum of at least one issue.');
+      refs['fraud-maximum-errors'].focus();
+      return;
+    }
+    if (!['rapid-review', 'endurance'].includes(runMode)
+        && (!Number.isInteger(questionCount) || questionCount < 1 || questionCount > 100)) {
+      setMessage('Choose between 1 and 100 inspection cases.');
+      refs['fraud-question-count'].focus();
+      return;
+    }
+    if (runMode !== 'rapid-review'
+        && (!Number.isInteger(timeLimitSeconds) || timeLimitSeconds < 5 || timeLimitSeconds > 300)) {
+      setMessage('Choose between 5 and 300 seconds per inspection.');
+      refs['fraud-time-limit'].focus();
+      return;
+    }
+    const overrides = {
+      questionCount,
+      timeLimitSeconds,
+      ...(custom ? {
+        minimumErrors: Number(refs['fraud-minimum-errors'].value),
+        maximumErrors: Number(refs['fraud-maximum-errors'].value),
+        allowNoErrorCases: refs['fraud-allow-clean'].checked,
+        signatureDifficulty: refs['fraud-signature-difficulty'].value,
+        handwritingSimilarity: refs['fraud-handwriting-similarity'].value,
+        alterationSubtlety: refs['fraud-alteration-subtlety'].value,
+        dateDifficulty: refs['fraud-date-difficulty'].value,
+        nameMatchDifficulty: refs['fraud-name-difficulty'].value,
+        amountMatchDifficulty: refs['fraud-amount-difficulty'].value,
+        idDifficulty: refs['fraud-id-difficulty'].value,
+        fieldDensity: refs['fraud-field-density'].value,
+        zoomAvailable: refs['fraud-zoom-enabled'].checked,
+        showTimer: refs['fraud-show-timer'].checked,
+        automaticNext: refs['fraud-auto-next'].checked,
+        instantFeedback: refs['fraud-instant-feedback'].checked,
+        randomDifficultyMixing: refs['fraud-mix-difficulty'].checked,
+        enabledCategories,
+      } : {}),
+    };
+    state.fraudSettings = resolveFraudInspectionSettings(difficulty, overrides, runMode);
+    if (state.fraudSettings.minimumErrors > state.fraudSettings.enabledCategories.length) {
+      setMessage('Lower the minimum issues or enable more issue categories.');
+      refs['fraud-minimum-errors'].focus();
+      return;
+    }
+    state.fraudStoppedEarly = false;
+    state.fraudCurrentStreak = 0;
+    state.fraudBestStreak = 0;
+    state.fraudDocumentZooms = new Map();
+    startFraudInspection();
+    return;
+  }
 
   if (game === 'error-detection') {
     const questionCount = Number(refs['error-detection-question-count'].value);
@@ -3352,7 +4076,9 @@ refs['setup-form'].addEventListener('submit', (event) => {
 });
 
 applyTheme(initialTheme());
+renderFraudCategorySettings();
 updateGameSetup();
+updateFraudRunModeControls();
 
 refs['answer-form'].addEventListener('submit', (event) => {
   event.preventDefault();
@@ -3390,6 +4116,7 @@ refs['next-question'].addEventListener('click', () => {
   if (state.game === 'memory') showNextMemoryQuestion();
   else if (state.game === 'task') showNextTaskQuestion();
   else if (state.game === 'error-detection') showNextErrorDetectionQuestion();
+  else if (state.game === 'fraud-inspection') showNextFraudInspectionCase();
   else showNextQuestion();
 });
 document.addEventListener('keydown', (event) => {
@@ -3406,6 +4133,25 @@ refs['memory-answer-now'].addEventListener('click', showMemoryAnswer);
 refs['error-detection-form'].addEventListener('submit', (event) => {
   event.preventDefault();
   submitErrorDetectionAttempt();
+});
+refs['fraud-inspection-form'].addEventListener('submit', (event) => {
+  event.preventDefault();
+  submitFraudInspectionAttempt();
+});
+refs['fraud-run-mode'].addEventListener('change', updateFraudRunModeControls);
+refs['close-fraud-document-dialog'].addEventListener('click', () => refs['fraud-document-dialog'].close());
+refs['fraud-document-dialog'].addEventListener('click', (event) => {
+  if (event.target === refs['fraud-document-dialog']) refs['fraud-document-dialog'].close();
+});
+refs['fraud-document-dialog'].querySelectorAll('[data-fraud-dialog-zoom]').forEach((button) => button.addEventListener('click', () => {
+  state.fraudDialogZoom = Math.max(0.7, Math.min(2.5, Math.round((state.fraudDialogZoom + Number(button.dataset.fraudDialogZoom)) * 100) / 100));
+  const svg = refs['fraud-document-dialog-view'].querySelector('svg');
+  if (svg) svg.style.width = (state.fraudDialogZoom * 100) + '%';
+}));
+refs['fraud-document-dialog'].querySelector('[data-fraud-dialog-reset]').addEventListener('click', () => {
+  state.fraudDialogZoom = 1;
+  const svg = refs['fraud-document-dialog-view'].querySelector('svg');
+  if (svg) svg.style.width = '100%';
 });
 refs['error-detection-start-puzzle'].addEventListener('click', startErrorDetectionPuzzle);
 refs['error-detection-no-errors'].addEventListener('change', () => {

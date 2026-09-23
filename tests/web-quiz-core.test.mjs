@@ -581,7 +581,7 @@ test('offers one optional auto-continue setting for answers and timeouts', async
 
   assert.match(html, /id="auto-continue-toggle"/);
   assert.match(html, /Auto-continue after answering or timeout/);
-  assert.match(html, /all four modes/);
+  assert.match(html, /Each game keeps its usual transition/);
   assert.match(app, /autoContinue: false,/);
   assert.match(app, /state\.autoContinue = refs\['auto-continue-toggle'\]\.checked;/);
 });
