@@ -6,12 +6,12 @@ import {
   resolveFraudInspectionSettings,
   scoreFraudInspectionAttempt,
   summarizeFraudHistory,
-} from './fraud-inspection.mjs?v=20260922-fraud-inspection';
+} from './fraud-inspection.mjs?v=20260922-signature-portrait';
 import { PRACTICE_GAMES, rankPracticeCandidates, recommendPractice, practiceSettings } from './adaptive-practice.mjs?v=20260918-progress';
 import {
   buildChartSpecs, buildGameFilters, buildProgressModel, comparePeriods,
   filterHistory, recommendNextChallenge,
-} from './progress-analytics.mjs?v=20260922-fraud-inspection';
+} from './progress-analytics.mjs?v=20260922-signature-portrait';
 import {
   DENOMINATIONS,
   DIFFICULTY_CONFIG,
@@ -1743,7 +1743,7 @@ function svgField(challenge, region, x, y, width, label, value, options = {}) {
     ? 'font-family="cursive" font-style="italic" font-weight="750"'
     : '';
   const text = options.signature
-    ? signatureSvgText(value, options.variation, x + 12, y + height - 12, options.ink ?? accent)
+    ? signatureSvgText(value, options.variation, x + 12, y + height - 12, options.ink ?? accent, width - 24)
     : svgText(x + 12, y + height - 13, value, options.valueSize ?? 17, options.weight ?? 650,
       region === 'check-memo' ? memoColor : ink, region === 'check-memo' ? memoStyle : '');
   const alteration = challenge.check.alterationMarks.find((item) =>
@@ -1767,12 +1767,111 @@ function svgField(challenge, region, x, y, width, label, value, options = {}) {
     + patch + idPatch + text + '</g>';
 }
 
-function signatureSvgText(value, variation, x, y, color) {
+const SIGNATURE_GLYPHS = {
+  A: [27, 'M0 1 C6-2 8-23 16-29 C24-35 26-22 19-12 C13-4 7-1 7 3 C8 6 19 2 27-3 M8-13 Q15-11 22-10'],
+  B: [25, 'M0 1 C7-1 6-17 7-28 C8-35 14-34 19-29 C24-23 14-17 8-14 C5-12 9-12 14-12 C25-12 25-4 19 1 C13 5 5 3 0 1'],
+  C: [27, 'M1 0 C8-2 20-4 24-17 C28-29 18-33 11-26 C4-19 3-4 10 1 C16 5 22 1 27-3'],
+  D: [27, 'M0 1 C7-1 7-16 7-28 C8-34 15-34 21-28 C30-19 23-4 15 1 C10 4 4 3 0 1'],
+  E: [24, 'M1 1 C8-1 8-17 9-28 C10-34 15-32 19-29 C22-27 18-23 14-22 C10-21 7-19 9-16 C11-13 18-15 21-12 C24-9 17-8 13-7 C7-5 6 1 12 2 C17 3 21 0 24-2'],
+  F: [24, 'M0 1 C7-1 8-19 9-29 C10-35 16-34 20-30 C23-27 18-24 14-22 C10-20 8-18 9-15 C12-11 18-15 22-13 M7-15 Q14-14 22-12'],
+  G: [28, 'M2 0 C9-2 20-3 24-17 C28-29 18-33 11-26 C4-19 3-4 10 1 C16 5 24 1 27-4 C29-7 24-9 20-8 C17-7 19-3 25-2'],
+  H: [29, 'M0 1 C7-1 7-17 8-29 C9-35 14-34 15-28 C15-21 11-8 10-1 C10 4 16 2 21-3 C25-7 24-13 25-22 C26-31 31-32 31-24 C31-14 26-5 22 0 C18 5 13 3 10-1'],
+  I: [17, 'M1 1 C7-3 8-17 9-27 C10-34 15-33 14-26 C13-16 9-3 12 1 C13 3 16 1 18-1'],
+  J: [21, 'M4-3 C7-10 9-23 10-30 C11-36 16-34 15-27 C14-17 11-4 7 4 C3 12-5 11-6 6 C-7 2-3 0 1 1'],
+  K: [27, 'M0 1 C7-1 7-17 8-29 C9-35 14-34 14-27 C14-20 10-7 10-1 C10 3 18-4 23-11 C27-17 23-19 19-15 C15-11 20-3 28 1'],
+  L: [21, 'M1 1 C7-1 8-18 9-29 C10-36 15-34 14-26 C13-15 8-3 11 1 C13 4 18 0 22-3'],
+  M: [35, 'M0 1 C6-1 6-17 7-27 C8-34 13-34 15-27 C17-19 16-10 17-8 C18-8 22-26 26-30 C30-34 33-29 31-22 C28-11 25-2 28 1 C30 3 35-1 38-4'],
+  N: [30, 'M0 1 C7-1 7-17 8-28 C9-35 14-34 16-27 C18-20 15-9 16-7 C18-7 23-26 28-30 C32-33 35-29 32-21 C29-12 25-3 28 1 C30 3 34 0 37-3'],
+  O: [29, 'M1 0 C6-6 7-20 13-28 C19-35 27-31 26-22 C24-11 15 1 8 3 C2 4-2-1 1-7'],
+  P: [25, 'M0 1 C7-1 7-17 8-29 C9-35 14-34 19-30 C25-25 20-17 13-13 C9-11 7-10 8-7'],
+  Q: [30, 'M1 0 C6-6 7-20 13-28 C19-35 27-31 26-22 C24-11 15 1 8 3 C2 4-2-1 1-7 M18-5 C21 0 26 4 31 5'],
+  R: [27, 'M0 1 C7-1 7-17 8-29 C9-35 14-34 19-30 C25-25 20-17 13-13 C9-11 7-10 8-7 C10-2 18-7 25 1'],
+  S: [25, 'M22-28 C16-34 8-29 9-23 C10-18 21-15 21-9 C21-2 12 4 5 2 C1 1 0-2 2-4'],
+  T: [24, 'M1-15 Q11-17 23-14 M3 1 C10-2 10-18 11-29 C12-35 17-34 16-27 C15-16 12-3 15 1 C17 4 22 0 25-3'],
+  U: [29, 'M5-28 C7-34 12-33 12-26 C12-15 7-1 13 2 C18 5 23-5 25-17 C26-25 26-32 31-31 C36-30 31-14 27-4 C24 4 17 7 12 2'],
+  V: [29, 'M3-28 C5-34 10-33 10-26 C10-16 8-2 13 1 C17 4 22-10 25-22 C27-31 32-32 32-25 C31-15 25-2 19 2 C12 7 8 2 8-7'],
+  W: [38, 'M2-28 C4-34 9-33 9-26 C9-16 7-2 12 1 C16 4 20-9 22-17 C23-22 27-21 27-16 C26-7 23-1 27 1 C31 4 35-11 38-23 C40-31 45-31 44-23 C42-12 36 1 29 3 C23 5 21 0 22-7'],
+  X: [27, 'M2-28 C4-34 9-32 10-26 C12-16 17-6 22 0 C25 4 30 1 31-4 M27-30 C24-21 17-12 10-5 C5 0 2 3-2 2'],
+  Y: [29, 'M3-28 C5-34 10-33 10-26 C10-17 8-6 12-5 C17-4 21-15 24-25 C26-33 31-32 31-25 C30-17 23 0 17 9 C12 17 4 15 4 9 C4 5 9 3 14 5'],
+  Z: [27, 'M3-27 C9-32 20-32 25-29 C28-27 23-21 18-16 C12-10 6-4 7-1 C8 3 20 0 27-4'],
+  a: [22, 'M0 0 C3-1 5-12 10-13 C17-14 16-3 11 0 C6 3 4-6 9-9 C14-12 18-3 22 0'],
+  b: [21, 'M0 0 C5-1 5-17 6-28 C7-34 12-33 13-28 C14-21 8-13 4-8 C1-4 3 1 8 1 C14 1 17-4 21-1'],
+  c: [20, 'M0 0 C4-1 6-10 12-12 C17-14 20-10 16-8 C10-5 4-5 4 0 C5 3 13 2 20-1'],
+  d: [22, 'M0 0 C4-1 5-10 10-12 C16-14 16-4 11 0 C6 3 4-6 10-9 C15-12 19-5 18-1 C17-12 19-25 20-31 C21-36 26-34 24-27 C22-16 19-4 22 0'],
+  e: [20, 'M0 0 C4-1 6-10 11-12 C16-14 18-10 14-8 C10-6 5-6 5-2 C5 3 13 2 20-2'],
+  f: [18, 'M0 1 C6-2 9-14 11-26 C12-34 17-35 16-29 C14-18 9-2 12 7 C14 13 20 8 22 3 M4-12 Q12-14 21-12'],
+  g: [22, 'M0 0 C4-1 5-10 10-12 C16-14 16-4 11 0 C6 3 4-6 10-9 C15-12 19-5 17 2 C15 10 9 16 4 13 C0 11 3 7 9 7 C15 7 19 3 22-1'],
+  h: [22, 'M0 0 C5-1 6-17 7-28 C8-34 13-33 13-27 C12-17 8-5 9-1 C10 3 15-9 19-11 C23-13 24-7 22-2 C21 2 24 2 27-1'],
+  i: [12, 'M0 0 C4-1 5-7 7-12 C9-16 13-14 11-9 C9-4 8-1 11 0 C13 1 15-1 17-3 M8-22 Q9-24 10-22'],
+  j: [14, 'M1 0 C5-2 7-9 9-13 C11-17 15-15 13-10 C11-5 9 2 6 9 C3 16-4 15-4 10 C-4 7 0 5 4 6 M10-22 Q11-24 12-22'],
+  k: [21, 'M0 0 C5-1 6-17 7-28 C8-34 13-33 13-27 C12-17 8-4 9-1 C10 3 17-11 21-12 C24-12 21-7 17-4 C13-1 16 1 22 1'],
+  l: [13, 'M0 0 C6-2 8-18 9-29 C10-36 15-34 14-27 C13-16 9-4 12-1 C14 1 17-1 19-3'],
+  m: [31, 'M0 0 C4-1 5-7 8-12 C11-16 15-12 13-7 C12-3 10 1 13 1 C16 1 19-10 23-12 C27-14 28-8 26-3 C25 1 27 2 30-1 C33-5 36-12 40-12 C44-12 42-5 40-1 C39 2 42 2 45-1'],
+  n: [22, 'M0 0 C4-1 5-7 8-12 C11-16 15-12 13-7 C12-3 10 1 13 1 C17 1 20-10 24-12 C28-14 28-7 26-2 C25 2 28 2 31-1'],
+  o: [21, 'M1 0 C5-2 7-11 13-13 C18-14 19-9 16-5 C12 0 5 4 2 1 C-1-2 4-9 10-12 C15-14 19-5 23 0'],
+  p: [21, 'M0 0 C4-1 5-8 8-12 C11-16 16-13 14-8 C12-3 6 0 5 2 C4 8 3 15 2 20 C1 26-4 27-4 21 C-3 13 1 2 4-6'],
+  q: [22, 'M0 0 C4-1 5-8 9-12 C13-16 17-12 14-7 C11-2 6 1 4-1 C0-4 6-11 11-13 C17-15 20-5 18 5 C17 12 15 20 14 25 C13 30 8 30 9 24 C10 16 14 5 18-4'],
+  r: [17, 'M0 0 C4-1 5-8 8-12 C11-16 15-12 13-8 C12-5 10-2 13-3 C17-5 18-11 23-12 C27-13 27-7 24-4'],
+  s: [18, 'M15-12 C9-16 3-10 7-6 C11-2 18-3 16 2 C14 7 4 4 1 1'],
+  t: [17, 'M0 0 C5-1 7-13 9-25 C10-32 15-32 14-25 C13-16 9-3 13 0 C15 2 18 0 21-3 M4-11 Q12-13 20-11'],
+  u: [22, 'M0 0 C4-2 7-11 10-13 C14-15 16-10 13-5 C10 0 9 3 13 1 C17-1 20-11 24-12 C28-13 26-5 25-1 C24 2 27 2 30-1'],
+  v: [21, 'M0 0 C4-2 7-11 10-13 C14-15 15-9 12-4 C10 0 12 2 16-1 C21-6 22-14 27-13 C32-12 27-3 24 0'],
+  w: [30, 'M0 0 C4-2 7-11 10-13 C14-15 15-9 12-4 C10 0 12 2 16-1 C20-5 22-14 26-13 C30-12 26-4 25-1 C24 2 27 2 31-2 C35-7 36-14 40-13 C44-12 39-2 36 1'],
+  x: [20, 'M0 0 C5-4 13-11 18-13 C21-14 19-9 15-6 C10-2 6 1 9 2 C12 3 17-2 22-5 M4-12 C8-6 14-1 19 1'],
+  y: [21, 'M0 0 C4-2 7-11 10-13 C14-15 15-9 12-4 C10 0 12 2 16-1 C21-6 22-14 27-13 C32-12 26 3 20 12 C16 18 9 16 10 11 C11 7 17 5 23 5'],
+  z: [19, 'M2-11 C7-14 14-14 18-12 C20-11 16-7 12-4 C7 0 5 2 9 2 C13 2 18-1 22-4'],
+  '.': [8, 'M2 1 Q3 2 4 1'],
+  "'": [7, 'M3-23 Q5-27 6-29'],
+  '-': [12, 'M2-6 Q8-8 14-7'],
+};
+
+function signatureSvgText(value, variation, x, y, color, maxWidth = 480) {
   const style = variation ?? { style: 1, size: 24, slant: -2, spacing: 0 };
-  const family = ['Brush Script MT, Segoe Script, cursive', 'Segoe Script, Brush Script MT, cursive', 'cursive'][style.style % 3];
-  return '<text x="' + x + '" y="' + y + '" font-family="' + family + '" font-size="' + style.size
-    + '" letter-spacing="' + style.spacing + '" fill="' + escapeSvgText(color) + '" transform="skewX(' + (-style.slant)
-    + ')" class="fraud-signature">' + escapeSvgText(value) + '</text>';
+  const text = String(value ?? '').trim();
+  const spacing = Number(style.spacing) || 0;
+  const letters = [];
+  let naturalWidth = 0;
+  for (const [index, character] of Array.from(text).entries()) {
+    if (character === ' ') {
+      letters.push({ space: true, index });
+      naturalWidth += 11 + spacing;
+      continue;
+    }
+    const [advance, path] = SIGNATURE_GLYPHS[character] ?? SIGNATURE_GLYPHS[character.toLowerCase()] ?? SIGNATURE_GLYPHS.n;
+    letters.push({ character, advance, path, index, x: naturalWidth });
+    naturalWidth += advance + spacing;
+  }
+  const flourish = style.style % 2 === 0;
+  const flourishWidth = flourish ? 25 : 0;
+  const scale = Math.min((Number(style.size) || 24) / 27, maxWidth / Math.max(1, naturalWidth + flourishWidth));
+  const skew = Math.max(-9, Math.min(2, -4 - (Number(style.slant) || 0) * 0.45));
+  const stroke = (2.05 + (style.style % 3) * 0.16).toFixed(2);
+  let previous = null;
+  const strokes = letters.map((letter) => {
+    if (letter.space) {
+      previous = null;
+      return '';
+    }
+    const jitter = ((style.style + letter.index * 3) % 5 - 2) * 0.65;
+    const rotation = ((style.style * 5 + letter.index * 7) % 5 - 2) * 0.65;
+    const connector = previous
+      ? '<path d="M' + (previous.x + previous.advance - 1) + ' ' + previous.jitter
+        + ' Q' + (previous.x + previous.advance + 2) + ' ' + (previous.jitter - 1) + ' ' + letter.x + ' ' + jitter + '"/>'
+      : '';
+    previous = { x: letter.x, advance: letter.advance, jitter };
+    return connector + '<path d="' + letter.path + '" transform="translate(' + letter.x + ' ' + jitter
+      + ') rotate(' + rotation + ')"/>';
+  }).join('');
+  const flourishStroke = flourish
+    ? '<path d="M' + (naturalWidth - spacing - 2) + ' 1 C' + (naturalWidth + 4) + ' 8 ' + (naturalWidth + 13)
+      + ' -8 ' + (naturalWidth + 20) + ' -5 C' + (naturalWidth + 16) + ' 3 ' + (naturalWidth + 9) + ' 5 '
+      + (naturalWidth + 25) + ' 1"/>'
+    : '';
+  return '<g class="fraud-signature" aria-label="Handwritten signature for ' + escapeSvgText(text)
+    + '" transform="translate(' + x + ' ' + y + ') scale(' + scale.toFixed(3) + ') skewX(' + skew + ')"'
+    + ' fill="none" stroke="' + escapeSvgText(color) + '" stroke-width="' + stroke
+    + '" stroke-linecap="round" stroke-linejoin="round" opacity=".94">'
+    + strokes + flourishStroke + '</g>';
 }
 
 function renderFraudCheckSvg(challenge, feedback = false) {
@@ -1816,7 +1915,7 @@ function renderFraudCheckSvg(challenge, feedback = false) {
     '<g class="fraud-doc-field ' + (feedback && markedRegion(challenge, 'check-endorsement') ? 'fraud-marked' : '') + '" data-region="check-endorsement">',
     '<path d="M30 641 H820" stroke="' + palette.rule + '" stroke-width="2"/>',
     check.endorsementSignature
-      ? signatureSvgText(check.endorsementSignature, check.endorsementVariation, 42, 630, palette.accent)
+      ? signatureSvgText(check.endorsementSignature, check.endorsementVariation, 42, 630, palette.accent, 755)
       : svgText(42, 626, '', 22, 500, palette.ink),
     '</g>',
     svgText(30, 663, 'TRAINING EXAMPLE ONLY · endorsement comparison uses the customer ID shown beside it', 10, 550, '#536569'),
@@ -1838,11 +1937,13 @@ function renderFraudIdSvg(challenge, feedback = false) {
     '<rect x="8" y="8" width="844" height="92" rx="18" fill="' + palette.accent + '"/>',
     svgText(34, 47, 'STATE OF ' + identity.issuingState + ' · RESIDENT IDENTIFICATION', 18, 800, '#ffffff', 'letter-spacing=".5"'),
     svgText(34, 76, 'FICTIONAL TRAINING CARD · NOT A REAL ID', 11, 700, '#ffffff', 'letter-spacing="1"'),
-    '<rect x="37" y="129" width="208" height="256" rx="9" fill="#dfe8e3" stroke="' + palette.rule + '" stroke-width="2"/>',
-    '<circle cx="141" cy="211" r="52" fill="' + palette.accent + '" opacity=".16"/>',
-    '<path d="M73 358c12-67 121-67 136 0" fill="' + palette.accent + '" opacity=".28"/>',
     '<g class="fraud-doc-field ' + (feedback && markedRegion(challenge, 'id-photo') ? 'fraud-marked' : '') + '" data-region="id-photo">',
-    svgText(91, 230, identity.avatarInitials, 34, 850, palette.accent, 'text-anchor="middle"'),
+    '<image href="assets/fraud/id-portrait-' + (identity.portrait === 'female' ? 'female' : 'male')
+      + '-20260922.jpg" x="44" y="136" width="194" height="242" preserveAspectRatio="xMidYMid slice" aria-label="Fictional training portrait"/>',
+    identity.photoObscured
+      ? '<path d="M45 244 C88 230 136 254 237 237 L237 271 C172 286 101 260 45 280 Z" fill="#fffef8" fill-opacity=".77" stroke="#9c866b" stroke-width="1.2"/><path d="M52 252 Q130 250 231 246 M49 269 Q133 266 231 257" fill="none" stroke="#aa9476" stroke-width="1" opacity=".75"/>'
+      : '',
+    '<rect class="fraud-photo-frame" x="37" y="129" width="208" height="256" rx="9" fill="none" stroke="' + palette.rule + '" stroke-width="2"/>',
     '</g>',
     svgField(challenge, 'id-name', 278, 129, 542, 'FULL LEGAL NAME', identity.legalName, { valueSize: 23 }),
     svgField(challenge, 'id-number', 278, 202, 248, 'ID NUMBER · FICTIONAL', identity.idNumber, { valueSize: 15 }),
@@ -1852,7 +1953,7 @@ function renderFraudIdSvg(challenge, feedback = false) {
     svgField(challenge, 'id-issue-date', 540, 348, 280, 'ISSUED', new Date(identity.issueDate + 'T00:00:00Z').toLocaleDateString('en-US'), { valueSize: 17 }),
     '<g class="fraud-doc-field ' + (feedback && markedRegion(challenge, 'id-signature') ? 'fraud-marked' : '') + '" data-region="id-signature">',
     '<path d="M278 461h490" stroke="' + palette.rule + '" stroke-width="2"/>',
-    signatureSvgText(identity.signature, identity.signatureVariation, 290, 450, palette.accent),
+    signatureSvgText(identity.signature, identity.signatureVariation, 290, 450, palette.accent, 468),
     '</g>',
     svgText(278, 486, 'CUSTOMER SIGNATURE', 10, 750, palette.accent, 'letter-spacing="1"'),
     '<g transform="rotate(-17 420 260)" opacity=".11">',

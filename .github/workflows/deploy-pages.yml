@@ -43,6 +43,8 @@ jobs:
         run: |
           mkdir -p _site
           cp index.html style.css app.js quiz-core.mjs pattern-games.mjs distraction-sounds.mjs adaptive-practice.mjs progress-analytics.mjs fraud-inspection.mjs _site/
+          mkdir -p _site/assets/fraud
+          cp assets/fraud/id-portrait-female-20260922.jpg assets/fraud/id-portrait-male-20260922.jpg _site/assets/fraud/
       - name: Upload the static site
         uses: actions/upload-pages-artifact@v4
         with:

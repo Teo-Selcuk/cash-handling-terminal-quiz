@@ -12,7 +12,7 @@ export const FRAUD_INSPECTION_CATEGORIES = Object.freeze([
   { id: 'routing-issue', label: 'Routing control does not match the exercise details', group: 'Check and account details' },
   { id: 'account-information-issue', label: 'Account control does not match the exercise details', group: 'Check and account details' },
   { id: 'id-expired', label: 'Customer ID is expired', group: 'Customer ID' },
-  { id: 'id-information-inconsistent', label: 'ID details or image initials are inconsistent', group: 'Customer ID' },
+  { id: 'id-information-inconsistent', label: 'Printed ID details or dates are inconsistent', group: 'Customer ID' },
   { id: 'id-altered', label: 'Customer ID shows a possible alteration', group: 'Customer ID' },
 ]);
 
@@ -51,6 +51,11 @@ export const FRAUD_INSPECTION_RUN_MODES = Object.freeze([
 ]);
 
 const FIRST_NAMES = ['Avery', 'Jordan', 'Sofia', 'Marcus', 'Nia', 'Ethan', 'Maya', 'Julian', 'Imani', 'Noah', 'Leila', 'Caleb', 'Rosa', 'Devon', 'Priya', 'Mateo'];
+const ID_PORTRAIT_BY_FIRST_NAME = {
+  Avery: 'male', Jordan: 'female', Sofia: 'female', Marcus: 'male', Nia: 'female', Ethan: 'male',
+  Maya: 'female', Julian: 'male', Imani: 'female', Noah: 'male', Leila: 'female', Caleb: 'male',
+  Rosa: 'female', Devon: 'male', Priya: 'female', Mateo: 'male',
+};
 const LAST_NAMES = ['Bennett', 'Patel', 'Rodriguez', 'Chen', 'Johnson', 'Kim', 'Okafor', 'Rivera', 'Foster', 'Nguyen', 'Miller', 'Brooks', 'Garcia', 'Reed', 'Alvarez', 'Carter'];
 const STREETS = ['Maple Row', 'Harbor Lane', 'Juniper Street', 'Cedar Walk', 'Orchard Avenue', 'Lakeview Drive', 'Willow Court', 'Beacon Road'];
 const CITIES = ['Fairview', 'Lakehurst', 'Brookdale', 'Northfield', 'Millhaven', 'Cedar Point'];
@@ -241,7 +246,7 @@ function baseCase(difficulty, settings, random, exerciseDate) {
       expirationText: compactDate(idExpiration),
       signature: person.name,
       signatureVariation: variation,
-      avatarInitials: person.first.slice(0, 1) + person.last.slice(0, 1),
+      portrait: ID_PORTRAIT_BY_FIRST_NAME[person.first] ?? 'male',
       issueDate: isoDate(addDays(today, -365 * randomInteger(1, 4, random))),
       alterationMarks: [],
     },
@@ -368,23 +373,28 @@ function applyIssue(challenge, id, settings, random) {
     issue.explanation = 'The ID expiration date ' + identity.expirationText + ' is before the exercise date.';
   } else if (id === 'id-information-inconsistent') {
     const variant = settings.idDifficulty === 'easy' ? 'future-birth-date'
-      : settings.idDifficulty === 'hard' ? 'avatar-initials'
-        : choice(['future-birth-date', 'avatar-initials'], random);
+      : choice(['future-birth-date', 'issue-after-expiration'], random);
     issue.variant = variant;
     if (variant === 'future-birth-date') {
       identity.dateOfBirth = compactDate(addDays(new Date(challenge.exerciseDate + 'T00:00:00Z'), 30));
       issue.regions = ['id-birth-date'];
       issue.explanation = 'The birth date is in the future relative to the exercise date.';
     } else {
-      identity.avatarInitials = 'QZ';
-      issue.regions = ['id-photo', 'id-name'];
-      issue.explanation = 'The training portrait initials QZ do not match the name ' + identity.legalName + '.';
+      identity.issueDate = isoDate(addDays(new Date(identity.expirationDate + 'T00:00:00Z'), 20));
+      issue.regions = ['id-issue-date', 'id-expiration'];
+      issue.explanation = 'The printed issue date is after the ID expiration date.';
     }
   } else if (id === 'id-altered') {
-    identity.address = identity.address.replace(/, [A-Z]{2} /, ' Apt 6, XX ');
-    identity.alterationMarks.push({ field: 'address', kind: settings.alterationSubtlety === 'hard' ? 'fine-overwrite' : 'erasure' });
-    issue.regions = ['id-address'];
-    issue.explanation = 'The ID address has a white-out-like patch and altered lettering.';
+    if (settings.idDifficulty === 'hard' && random() < 0.35) {
+      identity.photoObscured = true;
+      issue.regions = ['id-photo'];
+      issue.explanation = 'A correction-like smear covers part of the ID portrait.';
+    } else {
+      identity.address = identity.address.replace(/, [A-Z]{2} /, ' Apt 6, XX ');
+      identity.alterationMarks.push({ field: 'address', kind: settings.alterationSubtlety === 'hard' ? 'fine-overwrite' : 'erasure' });
+      issue.regions = ['id-address'];
+      issue.explanation = 'The ID address has a white-out-like patch and altered lettering.';
+    }
   }
   issue.description = issue.explanation;
   return issue;
