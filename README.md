@@ -10,7 +10,7 @@ Select the mode in browser setup, or choose G/T in PowerShell cash setup. Browse
 guided practice is untimed; PowerShell provides an untimed walkthrough before the
 configured answer timer. History labels the mode. See [mode details](docs/cash-session-modes.md).
 
-The [browser edition](https://teo-selcuk.github.io/cash-handling-terminal-quiz/) also includes Number Memory, Task Simulation, 15 rotating Error Detection games, and Check & ID Fraud Inspection. Fraud Inspection generates fictional check and ID documents with selectable Easy, Medium, Hard, and Custom settings, zoomable SVG previews, exact-set scoring, clean cases, speed modes, local category history, and issue-by-issue feedback. Its documents use invented training values and do not make authenticity decisions.
+The [browser edition](https://teo-selcuk.github.io/cash-handling-terminal-quiz/) also includes Number Memory, Task Simulation, 15 rotating Error Detection games, and Check & ID Fraud Inspection. Fraud Inspection generates fictional check and ID documents with selectable Easy, Medium, Hard, and Custom settings, zoomable SVG previews, exact-set scoring, clean cases, speed modes, local category history, and issue-by-issue feedback. During inspection, document fields have no answer-revealing highlights; learners inspect the details and select one or more issue labels or No Issues Found. After submission, feedback marks the actual issue fields. Its documents use invented training values and do not make authenticity decisions.
 
 - Easy, Medium, and Hard difficulty levels
 - Random customer totals and random cash combinations

@@ -1793,7 +1793,7 @@ function svgField(challenge, region, x, y, width, label, value, options = {}) {
   const height = options.height ?? 58;
   const ink = challenge.document.palette.ink;
   const accent = challenge.document.palette.accent;
-  const groupClass = markedRegion(challenge, region);
+  const groupClass = options.feedback ? markedRegion(challenge, region) : '';
   const memoColor = challenge.check.memoInk === 'blue-bold' ? '#245f94'
     : challenge.check.memoInk === 'violet-fine' ? '#665085' : ink;
   const memoStyle = challenge.check.memoHandwriting
@@ -1948,13 +1948,13 @@ function renderFraudCheckSvg(challenge, feedback = false) {
     svgText(30, 43, challenge.document.olderDesign ? 'CEDARLINE SAVINGS · TRAINING DRAFT' : 'CEDARLINE COMMUNITY COOPERATIVE', 20, 800, '#ffffff'),
     svgText(668, 39, 'TRAINING SAMPLE', 12, 800, '#ffffff', 'letter-spacing="1"'),
     svgText(728, 91, 'NO REAL VALUE', 10, 800, palette.accent, 'letter-spacing="1"'),
-    svgField(challenge, 'check-number', 29, 78, 160, 'CHECK NO.', check.checkNumber, { valueSize: 22 }),
-    svgField(challenge, 'check-date', 671, 78, 157, 'DATE', check.dateText, { valueSize: 15 }),
-    svgField(challenge, 'check-payee', 29, 151, 519, 'PAY TO THE ORDER OF', check.payeeName, { valueSize: 20 }),
-    svgField(challenge, 'check-numeric-amount', 565, 151, 263, 'AMOUNT', check.numericAmount, { valueSize: 21 }),
-    svgField(challenge, 'check-written-amount', 29, 223, 799, 'AMOUNT IN WORDS', check.writtenAmount, { valueSize: 16 }),
-    svgField(challenge, 'check-maker-signature', 463, 302, 365, 'AUTHORIZED MAKER SIGNATURE', check.makerSignature || '', { signature: true, variation: check.makerSignatureVariation }),
-    svgField(challenge, 'check-memo', 29, 302, 406, 'MEMO / NOTE', check.memoText, { valueSize: 16 }),
+    svgField(challenge, 'check-number', 29, 78, 160, 'CHECK NO.', check.checkNumber, { valueSize: 22, feedback }),
+    svgField(challenge, 'check-date', 671, 78, 157, 'DATE', check.dateText, { valueSize: 15, feedback }),
+    svgField(challenge, 'check-payee', 29, 151, 519, 'PAY TO THE ORDER OF', check.payeeName, { valueSize: 20, feedback }),
+    svgField(challenge, 'check-numeric-amount', 565, 151, 263, 'AMOUNT', check.numericAmount, { valueSize: 21, feedback }),
+    svgField(challenge, 'check-written-amount', 29, 223, 799, 'AMOUNT IN WORDS', check.writtenAmount, { valueSize: 16, feedback }),
+    svgField(challenge, 'check-maker-signature', 463, 302, 365, 'AUTHORIZED MAKER SIGNATURE', check.makerSignature || '', { signature: true, variation: check.makerSignatureVariation, feedback }),
+    svgField(challenge, 'check-memo', 29, 302, 406, 'MEMO / NOTE', check.memoText, { valueSize: 16, feedback }),
     svgText(32, 391, check.makerName, 13, 650, palette.ink),
     svgText(32, 412, 'Fictional drawer · invented training fields', 10, 500, '#536569'),
     challenge.settings.fieldDensity === 'low' ? '' : svgText(519, 121, 'Ref. ' + check.referenceNumber, 10, 550, '#536569'),
@@ -2002,12 +2002,12 @@ function renderFraudIdSvg(challenge, feedback = false) {
       : '',
     '<rect class="fraud-photo-frame" x="37" y="129" width="208" height="256" rx="9" fill="none" stroke="' + palette.rule + '" stroke-width="2"/>',
     '</g>',
-    svgField(challenge, 'id-name', 278, 129, 542, 'FULL LEGAL NAME', identity.legalName, { valueSize: 23 }),
-    svgField(challenge, 'id-number', 278, 202, 248, 'ID NUMBER · FICTIONAL', identity.idNumber, { valueSize: 15 }),
-    svgField(challenge, 'id-birth-date', 540, 202, 280, 'DATE OF BIRTH', identity.dateOfBirth, { valueSize: 17 }),
-    svgField(challenge, 'id-address', 278, 275, 542, 'RESIDENCE ADDRESS', identity.address, { valueSize: 14 }),
-    svgField(challenge, 'id-expiration', 278, 348, 248, 'EXPIRES', identity.expirationText, { valueSize: 18 }),
-    svgField(challenge, 'id-issue-date', 540, 348, 280, 'ISSUED', new Date(identity.issueDate + 'T00:00:00Z').toLocaleDateString('en-US'), { valueSize: 17 }),
+    svgField(challenge, 'id-name', 278, 129, 542, 'FULL LEGAL NAME', identity.legalName, { valueSize: 23, feedback }),
+    svgField(challenge, 'id-number', 278, 202, 248, 'ID NUMBER · FICTIONAL', identity.idNumber, { valueSize: 15, feedback }),
+    svgField(challenge, 'id-birth-date', 540, 202, 280, 'DATE OF BIRTH', identity.dateOfBirth, { valueSize: 17, feedback }),
+    svgField(challenge, 'id-address', 278, 275, 542, 'RESIDENCE ADDRESS', identity.address, { valueSize: 14, feedback }),
+    svgField(challenge, 'id-expiration', 278, 348, 248, 'EXPIRES', identity.expirationText, { valueSize: 18, feedback }),
+    svgField(challenge, 'id-issue-date', 540, 348, 280, 'ISSUED', new Date(identity.issueDate + 'T00:00:00Z').toLocaleDateString('en-US'), { valueSize: 17, feedback }),
     '<g class="fraud-doc-field ' + (feedback && markedRegion(challenge, 'id-signature') ? 'fraud-marked' : '') + '" data-region="id-signature">',
     '<path d="M278 461h490" stroke="' + palette.rule + '" stroke-width="2"/>',
     signatureSvgText(identity.signature, identity.signatureVariation, 290, 450, palette.accent, 468),
