@@ -1804,7 +1804,7 @@ function svgField(challenge, region, x, y, width, label, value, options = {}) {
   const height = options.height ?? 58;
   const ink = challenge.document.palette.ink;
   const accent = challenge.document.palette.accent;
-  const groupClass = markedRegion(challenge, region);
+  const groupClass = options.feedback ? markedRegion(challenge, region) : '';
   const memoColor = challenge.check.memoInk === 'blue-bold' ? '#245f94'
     : challenge.check.memoInk === 'violet-fine' ? '#665085' : ink;
   const memoStyle = challenge.check.memoHandwriting
@@ -1959,13 +1959,13 @@ function renderFraudCheckSvg(challenge, feedback = false) {
     svgText(30, 43, challenge.document.olderDesign ? 'CEDARLINE SAVINGS · TRAINING DRAFT' : 'CEDARLINE COMMUNITY COOPERATIVE', 20, 800, '#ffffff'),
     svgText(668, 39, 'TRAINING SAMPLE', 12, 800, '#ffffff', 'letter-spacing="1"'),
     svgText(728, 91, 'NO REAL VALUE', 10, 800, palette.accent, 'letter-spacing="1"'),
-    svgField(challenge, 'check-number', 29, 78, 160, 'CHECK NO.', check.checkNumber, { valueSize: 22 }),
-    svgField(challenge, 'check-date', 671, 78, 157, 'DATE', check.dateText, { valueSize: 15 }),
-    svgField(challenge, 'check-payee', 29, 151, 519, 'PAY TO THE ORDER OF', check.payeeName, { valueSize: 20 }),
-    svgField(challenge, 'check-numeric-amount', 565, 151, 263, 'AMOUNT', check.numericAmount, { valueSize: 21 }),
-    svgField(challenge, 'check-written-amount', 29, 223, 799, 'AMOUNT IN WORDS', check.writtenAmount, { valueSize: 16 }),
-    svgField(challenge, 'check-maker-signature', 463, 302, 365, 'AUTHORIZED MAKER SIGNATURE', check.makerSignature || '', { signature: true, variation: check.makerSignatureVariation }),
-    svgField(challenge, 'check-memo', 29, 302, 406, 'MEMO / NOTE', check.memoText, { valueSize: 16 }),
+    svgField(challenge, 'check-number', 29, 78, 160, 'CHECK NO.', check.checkNumber, { valueSize: 22, feedback }),
+    svgField(challenge, 'check-date', 671, 78, 157, 'DATE', check.dateText, { valueSize: 15, feedback }),
+    svgField(challenge, 'check-payee', 29, 151, 519, 'PAY TO THE ORDER OF', check.payeeName, { valueSize: 20, feedback }),
+    svgField(challenge, 'check-numeric-amount', 565, 151, 263, 'AMOUNT', check.numericAmount, { valueSize: 21, feedback }),
+    svgField(challenge, 'check-written-amount', 29, 223, 799, 'AMOUNT IN WORDS', check.writtenAmount, { valueSize: 16, feedback }),
+    svgField(challenge, 'check-maker-signature', 463, 302, 365, 'AUTHORIZED MAKER SIGNATURE', check.makerSignature || '', { signature: true, variation: check.makerSignatureVariation, feedback }),
+    svgField(challenge, 'check-memo', 29, 302, 406, 'MEMO / NOTE', check.memoText, { valueSize: 16, feedback }),
     svgText(32, 391, check.makerName, 13, 650, palette.ink),
     svgText(32, 412, 'Fictional drawer · invented training fields', 10, 500, '#536569'),
     challenge.settings.fieldDensity === 'low' ? '' : svgText(519, 121, 'Ref. ' + check.referenceNumber, 10, 550, '#536569'),
@@ -2013,12 +2013,12 @@ function renderFraudIdSvg(challenge, feedback = false) {
       : '',
     '<rect class="fraud-photo-frame" x="37" y="129" width="208" height="256" rx="9" fill="none" stroke="' + palette.rule + '" stroke-width="2"/>',
     '</g>',
-    svgField(challenge, 'id-name', 278, 129, 542, 'FULL LEGAL NAME', identity.legalName, { valueSize: 23 }),
-    svgField(challenge, 'id-number', 278, 202, 248, 'ID NUMBER · FICTIONAL', identity.idNumber, { valueSize: 15 }),
-    svgField(challenge, 'id-birth-date', 540, 202, 280, 'DATE OF BIRTH', identity.dateOfBirth, { valueSize: 17 }),
-    svgField(challenge, 'id-address', 278, 275, 542, 'RESIDENCE ADDRESS', identity.address, { valueSize: 14 }),
-    svgField(challenge, 'id-expiration', 278, 348, 248, 'EXPIRES', identity.expirationText, { valueSize: 18 }),
-    svgField(challenge, 'id-issue-date', 540, 348, 280, 'ISSUED', new Date(identity.issueDate + 'T00:00:00Z').toLocaleDateString('en-US'), { valueSize: 17 }),
+    svgField(challenge, 'id-name', 278, 129, 542, 'FULL LEGAL NAME', identity.legalName, { valueSize: 23, feedback }),
+    svgField(challenge, 'id-number', 278, 202, 248, 'ID NUMBER · FICTIONAL', identity.idNumber, { valueSize: 15, feedback }),
+    svgField(challenge, 'id-birth-date', 540, 202, 280, 'DATE OF BIRTH', identity.dateOfBirth, { valueSize: 17, feedback }),
+    svgField(challenge, 'id-address', 278, 275, 542, 'RESIDENCE ADDRESS', identity.address, { valueSize: 14, feedback }),
+    svgField(challenge, 'id-expiration', 278, 348, 248, 'EXPIRES', identity.expirationText, { valueSize: 18, feedback }),
+    svgField(challenge, 'id-issue-date', 540, 348, 280, 'ISSUED', new Date(identity.issueDate + 'T00:00:00Z').toLocaleDateString('en-US'), { valueSize: 17, feedback }),
     '<g class="fraud-doc-field ' + (feedback && markedRegion(challenge, 'id-signature') ? 'fraud-marked' : '') + '" data-region="id-signature">',
     '<path d="M278 461h490" stroke="' + palette.rule + '" stroke-width="2"/>',
     signatureSvgText(identity.signature, identity.signatureVariation, 290, 450, palette.accent, 468),
@@ -3240,10 +3240,21 @@ function renderHistoryVisuals(summary) {
   accuracyAxis.className = 'bar-chart-axis';
   const category = document.createElement('span');
   category.textContent = 'Difficulty';
-  const scale = document.createElement('span');
-  scale.textContent = 'Accuracy (%)  0%   20%   40%   60%   80%   100%';
+  const scale = document.createElement('div');
+  scale.className = 'bar-chart-ticks';
+  scale.setAttribute('aria-label', 'Accuracy (%) from 0% to 100%');
+  for (let tick = 0; tick <= 100; tick += 20) {
+    const label = document.createElement('span');
+    label.textContent = `${tick}%`;
+    scale.append(label);
+  }
+  const axisTitle = document.createElement('span');
+  axisTitle.className = 'bar-chart-axis-title';
+  axisTitle.textContent = 'Accuracy (%)';
   accuracyAxis.append(category, scale);
-  refs['history-accuracy-chart'].replaceChildren(accuracyAxis, ...summary.byDifficulty.map((level) => {
+  const plot = document.createElement('div');
+  plot.className = 'summary-chart-plot';
+  plot.append(axisTitle, accuracyAxis, ...summary.byDifficulty.map((level) => {
     const row = document.createElement('div');
     row.className = 'bar-chart-row';
     const label = document.createElement('span');
@@ -3255,6 +3266,7 @@ function renderHistoryVisuals(summary) {
     const fill = document.createElement('span');
     fill.className = `bar-chart-fill ${chartColorClass({ id: 'accuracy-by-difficulty', kind: 'bar', series: [{ metric: 'accuracy' }] }, { key: level.level, value: level.accuracyPercent }, 0)}`;
     fill.style.setProperty('--bar-size', `${level.accuracyPercent}%`);
+    fill.style.setProperty('--chart-color', chartHueColor(level.accuracyPercent, 0, 100, 'accuracy'));
     track.append(fill);
     const value = document.createElement('span');
     value.className = 'bar-chart-value';
@@ -3262,6 +3274,11 @@ function renderHistoryVisuals(summary) {
     row.append(label, track, value);
     return row;
   }));
+  const layout = document.createElement('div');
+  layout.className = 'chart-plot-layout summary-chart-layout';
+  layout.append(plot);
+  if (summary.byDifficulty.length) layout.append(renderChartHueLegend({ axisLabel: 'Accuracy (%)' }, summary.byDifficulty.map((level) => ({ value: level.accuracyPercent })), 'accuracy'));
+  refs['history-accuracy-chart'].replaceChildren(layout);
 }
 
 function historyPresetMap() {
@@ -3551,15 +3568,17 @@ function chartValue(point, metric) {
 function chartHueColor(value, minimum, maximum, metric) {
   const ratio = maximum === minimum ? 0.5 : Math.max(0, Math.min(1, (value - minimum) / (maximum - minimum)));
   const errorMetric = metric === 'error-rate' || metric === 'percentage-error';
-  const hue = metric === 'accuracy' ? 7 + 128 * ratio : errorMetric ? 135 - 128 * ratio : 214 - 170 * ratio;
-  return `hsl(${hue.toFixed(2)} 68% 43%)`;
+  const hue = metric === 'accuracy'
+    ? ratio < 0.6 ? 7 + 38 * ratio / 0.6 : ratio < 0.85 ? 45 + 80 * (ratio - 0.6) / 0.25 : 125 + 30 * (ratio - 0.85) / 0.15
+    : errorMetric ? 135 - 128 * ratio : 214 - 170 * ratio;
+  return `hsl(${hue.toFixed(2)} 68% var(--chart-hue-lightness))`;
 }
 
 function renderChartHueLegend(spec, points, metric) {
-  const values = points.map((point) => Number(point.y)).filter(Number.isFinite);
+  const values = points.map((point) => Number(point.y ?? point.value)).filter(Number.isFinite);
   if (!values.length) return null;
-  const minimum = Math.min(...values);
-  const maximum = Math.max(...values);
+  const minimum = 0;
+  const maximum = metric === 'accuracy' ? 100 : chartScale(values, metric).max;
   const legend = document.createElement('aside');
   legend.className = 'chart-hue-legend';
   legend.setAttribute('aria-label', `Color scale for ${spec.axisLabel ?? chartAxisLabel(metric)}`);
@@ -3597,10 +3616,14 @@ function renderChartCategoryLegend(spec, points) {
   if (spec.kind !== 'bar' || points.length > 12) return null;
   const legend = document.createElement('ul');
   legend.className = 'chart-category-legend';
+  const metric = spec.series[0].metric;
+  const values = spec.series[0].points.map((point) => Number(point.value)).filter(Number.isFinite);
+  const maximum = metric === 'accuracy' ? 100 : chartScale(values, metric).max;
   points.forEach((point, index) => {
     const item = document.createElement('li');
     const swatch = document.createElement('span');
     swatch.className = `chart-category-swatch ${chartColorClass(spec, point, index)}`;
+    swatch.style.setProperty('--chart-color', chartHueColor(Number(point.value), 0, maximum, metric));
     swatch.setAttribute('aria-hidden', 'true');
     const text = document.createElement('span');
     text.textContent = point.label;
@@ -3811,16 +3834,22 @@ function renderChartCard(spec, records) {
   const metric = series.metric;
   const values = points.map((point) => Number(spec.kind === 'scatter' ? point.y : point.value)).filter(Number.isFinite);
   const scale = chartScale(values, metric);
-  const hueValues = allPoints.map((point) => Number(point.y)).filter(Number.isFinite);
-  const hueMinimum = hueValues.length ? Math.min(...hueValues) : 0;
-  const hueMaximum = hueValues.length ? Math.max(...hueValues) : 0;
+  const hueValues = allPoints.map((point) => Number(isScatter ? point.y : point.value)).filter(Number.isFinite);
+  const hueMinimum = 0;
+  const hueMaximum = metric === 'accuracy' ? 100 : chartScale(hueValues, metric).max;
   const yFor = (value) => plot.bottom - (Number(value) / scale.max * plotHeight);
   const xScale = spec.kind === 'scatter' ? { min: view.xMin, max: view.xMax,
     ticks: (() => { const step = chartTickStep(view.xMax - view.xMin, 'time'); const ticks = [];
       for (let tick = Math.ceil(view.xMin / step) * step; tick <= view.xMax + step / 100; tick += step) ticks.push(Number(tick.toFixed(8)));
       return ticks; })() } : null;
+  const isDateSeries = spec.kind === 'line' && points.every((point) => /^\d{4}-\d{2}-\d{2}$/.test(point.label));
+  const dates = isDateSeries ? points.map((point) => Date.parse(`${point.label}T00:00:00Z`)) : [];
+  const firstDate = dates[0];
+  const dateSpan = dates.at(-1) - firstDate;
   const xFor = (point, index) => spec.kind === 'scatter'
     ? plot.left + ((Number(point.x) - xScale.min) / (xScale.max - xScale.min) * plotWidth)
+    : isDateSeries && dateSpan > 0
+      ? plot.left + 12 + ((dates[index] - firstDate) / dateSpan * (plotWidth - 24))
     : plot.left + ((index + 0.5) / Math.max(points.length, 1) * plotWidth);
   if (isScatter) points = mergeCoincidentScatterPoints(points, (point) => xFor(point, 0), (value) => yFor(value));
   const yAxis = chartSvgElement('g', { class: 'chart-axis chart-y-axis' });
@@ -3849,7 +3878,7 @@ function renderChartCard(spec, records) {
   } else tickIndexes.forEach((index) => {
     const x = xFor(points[index], index);
     xAxis.append(chartSvgElement('line', { class: 'chart-axis-line', x1: x, y1: plot.bottom, x2: x, y2: plot.bottom + 5 }));
-    const label = chartSvgElement('text', { class: 'chart-x-tick', x, y: plot.bottom + 19, 'text-anchor': 'middle' });
+    const label = chartSvgElement('text', { class: 'chart-x-tick', x, y: plot.bottom + 19, 'text-anchor': isDateSeries && index === 0 ? 'start' : isDateSeries && index === points.length - 1 ? 'end' : 'middle' });
     label.textContent = points[index].label.length > 12 ? `${points[index].label.slice(0, 11)}…` : points[index].label;
     xAxis.append(label);
   });
@@ -3868,20 +3897,18 @@ function renderChartCard(spec, records) {
     const y = yFor(value);
     const width = plotWidth / Math.max(points.length, 1);
     const height = Math.max(2, plot.bottom - y);
-    if (spec.kind === 'line') {
-      if (index > 0) {
-        const previous = points[index - 1];
-        const isDateSeries = /^\d{4}-\d{2}-\d{2}$/.test(previous.label) && /^\d{4}-\d{2}-\d{2}$/.test(point.label);
-        const daysApart = isDateSeries ? (Date.parse(`${point.label}T00:00:00Z`) - Date.parse(`${previous.label}T00:00:00Z`)) / 86400000 : 1;
-        if (daysApart === 1) lineSegments.push({ x1: xFor(previous, index - 1), y1: yFor(Number(previous.value)), x2: x, y2: y });
-      }
+    if (spec.kind === 'line' && index > 0) {
+      const previous = points[index - 1];
+      const isDateSeries = /^\d{4}-\d{2}-\d{2}$/.test(previous.label) && /^\d{4}-\d{2}-\d{2}$/.test(point.label);
+      const daysApart = isDateSeries ? (Date.parse(`${point.label}T00:00:00Z`) - Date.parse(`${previous.label}T00:00:00Z`)) / 86400000 : 1;
+      if (!isDateSeries || daysApart === 1) lineSegments.push({ x1: xFor(previous, index - 1), y1: yFor(Number(previous.value)), x2: x, y2: y });
     }
     const colorClass = chartColorClass(spec, point, index);
     const evidence = Number.isFinite(point.opportunities) && Number.isFinite(point.errors)
       ? `${point.errors} of ${point.opportunities} error opportunities across ${point.attemptCount ?? point.attemptIds.length} attempts`
       : `from ${point.attemptIds.length} attempt${point.attemptIds.length === 1 ? '' : 's'}`;
     const mark = chartSvgElement('g', { class: `analytics-mark ${colorClass}`, role: 'button', tabindex: '0', 'aria-label': `${point.label}: ${chartValue(point, series.metric)} ${evidence}` });
-    if (isScatter) mark.style.setProperty('--chart-color', chartHueColor(Number(point.y), hueMinimum, hueMaximum, series.metric));
+    mark.style.setProperty('--chart-color', chartHueColor(value, hueMinimum, hueMaximum, series.metric));
     const shape = chartSvgElement(spec.kind === 'line' || spec.kind === 'scatter' ? 'circle' : 'rect', spec.kind === 'line' || spec.kind === 'scatter'
       ? { cx: x, cy: y, r: Math.max(4, Math.min(8, width * 0.18)) }
       : { x: x - Math.max(3, width * 0.32), y, width: Math.max(5, width * 0.64), height, rx: 2 });
@@ -3906,7 +3933,18 @@ function renderChartCard(spec, records) {
     svg.append(mark);
   });
   if (lineSegments.length && spec.kind === 'line') {
-    const path = chartSvgElement('path', { class: 'chart-series-line', d: lineSegments.map((segment) => `M ${segment.x1} ${segment.y1} L ${segment.x2} ${segment.y2}`).join(' '), fill: 'none' });
+    const gradientId = `chart-line-${spec.id}`;
+    const defs = chartSvgElement('defs');
+    const gradient = chartSvgElement('linearGradient', { id: gradientId, x1: '0%', x2: '100%', y1: '0%', y2: '0%' });
+    points.forEach((point, index) => {
+      const stop = chartSvgElement('stop', { offset: `${(xFor(point, index) - xFor(points[0], 0)) / (xFor(points.at(-1), points.length - 1) - xFor(points[0], 0)) * 100}%` });
+      stop.style.stopColor = chartHueColor(Number(point.value), hueMinimum, hueMaximum, metric);
+      gradient.append(stop);
+    });
+    defs.append(gradient);
+    svg.insertBefore(defs, svg.firstChild);
+    const path = chartSvgElement('path', { class: 'chart-series-line', d: `M ${lineSegments[0].x1} ${lineSegments[0].y1} ${lineSegments.map((segment) => `L ${segment.x2} ${segment.y2}`).join(' ')}`, fill: 'none' });
+    path.style.stroke = `url(#${gradientId})`;
     svg.insertBefore(path, svg.querySelector('.analytics-mark'));
   }
   if (lineSegments.length && spec.kind !== 'line') lineSegments.forEach((segment) => svg.insertBefore(chartSvgElement('line', { class: `chart-series-segment ${segment.color}`, x1: segment.x1, y1: segment.y1, x2: segment.x2, y2: segment.y2 }), svg.querySelector('.analytics-mark')));
@@ -3975,10 +4013,8 @@ function renderChartCard(spec, records) {
   const plotLayout = document.createElement('div');
   plotLayout.className = 'chart-plot-layout';
   plotLayout.append(svg);
-  if (isScatter) {
-    const legend = renderChartHueLegend(spec, allPoints, series.metric);
-    if (legend) plotLayout.append(legend);
-  }
+  const legend = renderChartHueLegend(spec, allPoints, series.metric);
+  if (legend) plotLayout.append(legend);
   card.append(plotLayout);
   const categoryLegend = renderChartCategoryLegend(spec, points);
   if (categoryLegend) card.append(categoryLegend);
@@ -4343,7 +4379,11 @@ function renderHistoryInsights(records, errorAnalytics = buildErrorAnalytics(rec
     }
     groups.forEach((group) => {
       const item = document.createElement('li');
-      item.textContent = `${group.label}: ${group.value}% (${group.correct}/${group.count}, 95% interval ${group.interval[0]}–${group.interval[1]}%); ${group.gapPoints >= 0 ? '+' : ''}${group.gapPoints} points versus ${group.baselinePercent}% for comparable difficulty and mode (${group.comparableCount} attempts). ${group.evidence}.`;
+      const direction = group.gapPoints >= 0 ? 'higher' : 'lower';
+      item.textContent = `${group.label}: ${group.value}% correct (${group.correct} of ${group.count} attempts). `
+        + `That is ${Math.abs(group.gapPoints)} percentage points ${direction} than the ${group.baselinePercent}% result `
+        + `for the same difficulty and mode (${group.comparableCount} comparable attempts). `
+        + `The estimated 95% range for this accuracy is ${group.interval[0]}–${group.interval[1]}% (Wilson interval). ${group.evidence}.`;
       list.append(item);
     });
     const detailedSkills = title === 'Strengths' ? errorAnalytics.strengths : errorAnalytics.weaknesses;

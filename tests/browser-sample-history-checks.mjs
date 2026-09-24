@@ -86,11 +86,29 @@ export async function checkSampleHistory(browser, site) {
     await page.locator('#history-game-tabs button[data-history-game="all"]').click();
     const daily = page.locator('#history-charts .interactive-chart[data-chart-kind="line"]').filter({ has: page.getByRole('heading', { name: 'Accuracy over time' }) });
     const path = await daily.locator('.chart-series-line').getAttribute('d');
-    assert.ok((path?.match(/M /g) ?? []).length >= 2, 'line charts stop at missing-day gaps instead of joining unrelated dates');
+    assert.equal((path?.match(/M /g) ?? []).length, 1, 'line connects consecutive observed dates');
+    const datePositions = await daily.locator('.analytics-mark circle').evaluateAll((marks) => marks.map((mark) => Number(mark.getAttribute('cx'))));
+    assert.ok(datePositions.every((position, index) => index === 0 || position > datePositions[index - 1]), 'date marks run left to right');
+    const dateLabels = await daily.locator('.analytics-mark').evaluateAll((marks) => marks.map((mark) => mark.getAttribute('aria-label').slice(0, 10)));
+    const gaps = dateLabels.slice(1).map((date, index) => (Date.parse(date) - Date.parse(dateLabels[index])) / 86400000);
+    const pixels = datePositions.slice(1).map((position, index) => position - datePositions[index]);
+    assert.ok(gaps.every((gap, index) => Math.abs(pixels[index] / gap - pixels[0] / gaps[0]) < 0.1), 'date spacing follows elapsed calendar days');
+    const lineHue = await daily.evaluate((card) => ({
+      stroke: getComputedStyle(card.querySelector('.chart-series-line')).stroke,
+      stops: [...card.querySelectorAll('linearGradient stop')].map((stop) => getComputedStyle(stop).stopColor),
+    }));
+    assert.match(lineHue.stroke, /url\(/, 'date line uses the value hue gradient');
+    assert.ok(new Set(lineHue.stops).size > 1, 'line gradient changes hue as values change');
     const renderedColors = await page.locator('#history-charts .analytics-mark').evaluateAll((marks) => marks.map((mark) => getComputedStyle(mark).fill));
     assert.ok(renderedColors.length > 0 && renderedColors.every((color) => color && color !== 'none' && color !== 'transparent'), 'all plotted marks have a visible color');
+    const chartHueCounts = await page.locator('#history-charts .interactive-chart').evaluateAll((cards) => cards.filter((card) => card.querySelector('.analytics-mark')).map((card) => card.querySelectorAll('.chart-hue-legend').length));
+    assert.ok(chartHueCounts.length > 0 && chartHueCounts.every((count) => count === 1), 'each populated chart has one value hue scale');
+    const difficultyHues = await page.locator('#history-accuracy-chart .bar-chart-fill').evaluateAll((bars) => bars.map((bar) => getComputedStyle(bar).backgroundColor));
+    assert.equal(new Set(difficultyHues).size, difficultyHues.length, 'difficulty bars use different value hues');
+    assert.equal(await page.locator('#history-accuracy-chart .chart-hue-legend').count(), 1, 'difficulty summary has a right-side value hue scale');
     assert.ok(await page.locator('#history-charts .chart-category-legend').count() > 0, 'categorical bars show category swatches');
     const scatter = page.locator('#history-charts .interactive-chart[data-chart-kind="scatter"]').first();
+    assert.equal(await scatter.evaluate((card) => getComputedStyle(card).gridColumnEnd), 'auto', 'speed versus accuracy uses the same grid width as other cards');
     assert.ok(await scatter.locator('.analytics-mark').count() >= 3, 'scatter plot renders value-bearing points');
     if (await scatter.locator('.analytics-mark').count() < 4) assert.match(await scatter.locator('.analytics-mark[aria-label*="overlapping"]').first().getAttribute('aria-label'), /overlapping/, 'coincident data points remain visible as one drillable point');
     assert.ok(await scatter.locator('.chart-hue-legend').count() === 1, 'scatter plot has a right-side continuous color scale');
@@ -101,9 +119,9 @@ export async function checkSampleHistory(browser, site) {
       const marks = [...card.querySelectorAll('.analytics-mark')];
       const hue = card.querySelector('.chart-hue-legend');
       const values = marks.map((mark) => Number(mark.getAttribute('aria-label').match(/: ([\d.]+)% from/)?.[1]));
-      const low = Math.min(...values); const high = Math.max(...values);
-      const ratio = high === low ? 0.5 : (values[0] - low) / (high - low);
-      const expectedHue = 7 + 128 * ratio;
+      const low = 0; const high = 100;
+      const ratio = values[0] / 100;
+      const expectedHue = ratio < 0.6 ? 7 + 38 * ratio / 0.6 : ratio < 0.85 ? 45 + 80 * (ratio - 0.6) / 0.25 : 125 + 30 * (ratio - 0.85) / 0.15;
       const actualHue = Number(marks[0].style.getPropertyValue('--chart-color').match(/hsl\(([\d.]+)/)?.[1]);
       const ticks = [...hue.querySelectorAll('.chart-hue-ticks span')].map((tick) => Number(tick.textContent.replace('%', '')));
       return { values, low, high, expectedHue, actualHue, ticks };

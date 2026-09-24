@@ -29,9 +29,11 @@ export async function checkFraudInspection(browser, base) {
     assert.match(await page.locator('#fraud-document-grid').textContent(), /TRAINING SAMPLE/);
     assert.match(await page.locator('#fraud-document-grid').textContent(), /FICTIONAL TRAINING CARD/);
     assert.equal(await page.locator('#fraud-inspection-timer').textContent(), '2:00');
+    assert.equal(await page.locator('#fraud-document-grid .fraud-marked').count(), 0, 'inspection documents do not reveal actual issue locations');
 
     await page.locator('[data-fraud-document-action="enlarge"][data-fraud-document="check"]').click();
     await page.locator('#fraud-document-dialog').waitFor({ state: 'visible' });
+    assert.equal(await page.locator('#fraud-document-dialog-view .fraud-marked').count(), 0, 'enlarged document does not reveal actual issue locations');
     await page.locator('[data-fraud-dialog-zoom="0.15"]').click();
     assert.match(await page.locator('#fraud-document-dialog-view svg').getAttribute('style'), /115%/);
     await page.locator('#close-fraud-document-dialog').click();
@@ -45,11 +47,13 @@ export async function checkFraudInspection(browser, base) {
     await page.screenshot({ path: (process.env.TEMP || '/tmp') + '/fraud-inspection-desktop.png', fullPage: true });
 
     await page.locator('[data-issue-id="payee-mismatch"]').click();
+    assert.equal(await page.locator('[data-issue-id="payee-mismatch"]').getAttribute('aria-pressed'), 'true', 'learner can label a suspected issue');
+    assert.equal(await page.locator('#fraud-document-grid .fraud-marked').count(), 0, 'selecting an issue does not expose the answer before submission');
     await page.locator('#submit-fraud-inspection').click();
     await page.locator('#feedback-screen').waitFor({ state: 'visible' });
     assert.equal(await page.locator('#feedback-heading').textContent(), 'Correct review');
     assert.match(await page.locator('#fraud-feedback-issues').textContent(), /Correct selection/);
-    assert.ok(await page.locator('#fraud-feedback-documents .fraud-marked').count() >= 1);
+    assert.ok(await page.locator('#fraud-feedback-documents .fraud-marked').count() >= 1, 'review feedback marks the actual issue after submission');
     assert.ok(await page.evaluate(() => JSON.parse(localStorage.getItem('cash-handling-terminal-quiz-history-v1') || '[]')
       .some((record) => record.game === 'fraud-inspection' && record.fraudExpectedCategories?.includes('payee-mismatch'))));
 

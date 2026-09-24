@@ -105,7 +105,7 @@ export async function checkProgress(browser, site) {
     assert.ok(await chart.locator('.chart-y-tick').count() >= 3, 'charts show numeric Y-axis ticks');
     assert.equal(await chart.locator('.chart-series-line').count(), 1, 'time-series points are connected');
     assert.ok(await page.locator('#history-charts .interactive-chart').locator('.chart-value-label').count(), 'bar chart values are visible');
-    assert.match(await page.locator('#history-accuracy-chart .bar-chart-axis').innerText(), /Difficulty.*Accuracy.*0%.*100%/s, 'summary bar chart labels its category and numeric axis');
+    assert.match(await page.locator('#history-accuracy-chart').innerText(), /Accuracy.*Difficulty.*0%.*100%/s, 'summary bar chart labels its category and aligned numeric axis');
     await chart.getByRole('button', { name: 'Hide data' }).click();
     await chart.getByRole('button', { name: 'Show data' }).click();
     await chart.getByRole('button', { name: 'Zoom in' }).click();
