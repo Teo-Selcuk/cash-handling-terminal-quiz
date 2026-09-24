@@ -539,6 +539,19 @@
           </div>
           <button class="text-button" id="back-to-setup" type="button">Back to setup</button>
         </div>
+        <fieldset class="history-data-source" id="history-data-source">
+          <legend>Data Source</legend>
+          <label><input type="radio" name="historyDataSource" value="real" checked> Real Data</label>
+          <label><input type="radio" name="historyDataSource" value="sample"> Sample Data</label>
+        </fieldset>
+        <div class="history-sample-banner" id="history-sample-banner" role="status" hidden>
+          <div><strong>SAMPLE DATA MODE</strong><span>Viewing generated history. It is isolated from saved gameplay and will not change your real progress.</span></div>
+          <button class="secondary-button" id="history-regenerate-sample" type="button">Regenerate Sample Data</button>
+        </div>
+        <div class="history-empty-real" id="history-empty-real" role="status" hidden>
+          <div><strong>No real history yet.</strong><span>Explore the analytics with a generated sample history.</span></div>
+          <button class="secondary-button" id="history-view-sample" type="button">View Sample Data</button>
+        </div>
         <nav class="history-tabs" id="history-game-tabs" aria-label="Game history">
           <button type="button" data-history-game="all" aria-pressed="true">All games</button>
           <button type="button" data-history-game="cash" aria-pressed="false">Cash Handling</button>
@@ -646,6 +659,7 @@
             <tbody id="history-rows"></tbody>
           </table>
         </div>
+        <p class="chart-note" id="history-attempt-summary"></p>
       </section>
     </main>
 

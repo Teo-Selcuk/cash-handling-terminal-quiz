@@ -12,6 +12,7 @@ import {
   buildChartSpecs, buildConditionalReport, buildGameFilters, buildProgressModel, comparePeriods,
   filterHistory, recommendNextChallenge,
 } from './progress-analytics.mjs?v=20260923-performance-insights';
+import { generateSampleHistory } from './sample-history.mjs?v=20260923-sample-history';
 import {
   DENOMINATIONS,
   DIFFICULTY_CONFIG,
@@ -47,6 +48,7 @@ const HISTORY_KEY = 'cash-handling-terminal-quiz-history-v1';
 const THEME_KEY = 'cash-handling-terminal-quiz-theme-v1';
 const PRESET_KEY = 'cash-handling-terminal-quiz-presets-v1';
 const CURRENT_CHALLENGE_KEY = 'cash-handling-terminal-quiz-current-challenge-v1';
+const SAMPLE_HISTORY_KEY = 'cash-handling-terminal-quiz-sample-history-v1';
 const screens = ['setup', 'quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'error-detection-briefing', 'error-detection', 'fraud-inspection', 'feedback', 'summary', 'history'];
 const refs = Object.fromEntries([
   'setup-form', 'setup-screen', 'quiz-screen', 'feedback-screen', 'summary-screen', 'history-screen',
@@ -58,8 +60,9 @@ const refs = Object.fromEntries([
   'start-another', 'summary-history', 'open-history', 'back-to-setup', 'history-metrics',
   'history-outcome-diagram', 'history-outcome-legend', 'history-outcomes-summary', 'history-accuracy-chart',
   'history-rows', 'download-csv', 'clear-history', 'message', 'submit-answer', 'theme-toggle',
+  'history-data-source', 'history-sample-banner', 'history-regenerate-sample', 'history-empty-real', 'history-view-sample',
   'history-game-tabs', 'history-quick-ranges', 'history-common-filters', 'history-game-filters', 'clear-history-filters',
-  'history-charts', 'history-insights', 'history-comparison', 'history-recommendations', 'previous-challenges',
+  'history-charts', 'history-insights', 'history-comparison', 'history-recommendations', 'previous-challenges', 'history-attempt-summary',
   'attempt-detail-dialog', 'attempt-detail-summary', 'attempt-detail-content', 'close-attempt-detail',
   'memory-question-count', 'memory-read-progress', 'memory-read-timer', 'memory-number', 'memory-read-hint', 'memory-answer-now',
   'memory-answer-form', 'memory-answer-list', 'memory-answer-progress', 'memory-answer-timer', 'memory-answer-heading', 'summary-heading',
@@ -82,7 +85,7 @@ const refs = Object.fromEntries([
 ].map((id) => [id, document.getElementById(id)]));
 
 const savedPresetState = loadPresetState();
-const historyView = { filters: { game: 'all' }, activeRange: 'all', charts: new Map(), conditions: [] };
+const historyView = { filters: { game: 'all' }, activeRange: 'all', charts: new Map(), conditions: [], dataSource: 'real', sampleRecords: null };
 
 const state = {
   activeScreen: 'setup',
@@ -424,6 +427,46 @@ function getHistory(strict = false) {
     if (strict) throw error;
     return [];
   }
+}
+
+function ensureSampleHistory(regenerate = false) {
+  if (!regenerate && historyView.sampleRecords) return historyView.sampleRecords;
+  if (!regenerate) {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(SAMPLE_HISTORY_KEY) ?? 'null');
+      if (Array.isArray(saved) && saved.length && saved.every((record) => record?.isSample === true)) {
+        historyView.sampleRecords = saved;
+        return saved;
+      }
+    } catch { /* Session storage can be disabled; the in-memory sample still works. */ }
+  }
+  historyView.sampleRecords = generateSampleHistory({ seed: Math.floor(Math.random() * 0xFFFFFFFF) });
+  try { sessionStorage.setItem(SAMPLE_HISTORY_KEY, JSON.stringify(historyView.sampleRecords)); } catch { /* Keep this dataset in memory only. */ }
+  return historyView.sampleRecords;
+}
+
+function setHistoryDataSource(source) {
+  historyView.dataSource = source === 'sample' ? 'sample' : 'real';
+  historyView.filters = { game: 'all' };
+  historyView.activeRange = 'all';
+  historyView.conditions = [];
+  historyView.charts.clear();
+  renderHistory();
+}
+
+function historyRecordsForView() {
+  return historyView.dataSource === 'sample' ? ensureSampleHistory() : getHistory();
+}
+
+function renderHistoryDataSource(records) {
+  refs['history-data-source'].querySelectorAll('input[name="historyDataSource"]').forEach((input) => {
+    input.checked = input.value === historyView.dataSource;
+  });
+  refs['history-sample-banner'].hidden = historyView.dataSource !== 'sample';
+  refs['history-empty-real'].hidden = historyView.dataSource !== 'real' || records.length > 0;
+  refs['clear-history'].disabled = historyView.dataSource === 'sample';
+  refs['clear-history'].setAttribute('aria-label', historyView.dataSource === 'sample' ? 'Clear history is unavailable in Sample Data mode' : 'Clear real history');
+  refs['download-csv'].textContent = historyView.dataSource === 'sample' ? 'Download sample CSV' : 'Download CSV';
 }
 
 function loadCurrentChallenge() {
@@ -3436,6 +3479,89 @@ function chartValue(point, metric) {
   return `${point.value}%`;
 }
 
+function chartHueColor(value, minimum, maximum, metric) {
+  const ratio = maximum === minimum ? 0.5 : Math.max(0, Math.min(1, (value - minimum) / (maximum - minimum)));
+  const hue = metric === 'accuracy' ? 7 + 128 * ratio : 214 - 170 * ratio;
+  return `hsl(${hue.toFixed(2)} 68% 43%)`;
+}
+
+function renderChartHueLegend(spec, points, metric) {
+  const values = points.map((point) => Number(point.y)).filter(Number.isFinite);
+  if (!values.length) return null;
+  const minimum = Math.min(...values);
+  const maximum = Math.max(...values);
+  const legend = document.createElement('aside');
+  legend.className = 'chart-hue-legend';
+  legend.setAttribute('aria-label', `Color scale for ${spec.axisLabel ?? chartAxisLabel(metric)}`);
+  const title = document.createElement('strong');
+  title.className = 'chart-hue-title';
+  title.textContent = spec.axisLabel ?? chartAxisLabel(metric);
+  const gradient = document.createElement('div');
+  gradient.className = 'chart-hue-gradient';
+  gradient.setAttribute('role', 'img');
+  gradient.setAttribute('aria-label', `Continuous color scale from ${chartValue({ value: minimum }, metric)} to ${chartValue({ value: maximum }, metric)}`);
+  const steps = 101;
+  for (let index = 0; index < steps; index += 1) {
+    const ratio = index / (steps - 1);
+    const sampleValue = minimum + (maximum - minimum) * ratio;
+    const swatch = document.createElement('span');
+    swatch.style.backgroundColor = chartHueColor(sampleValue, minimum, maximum, metric);
+    gradient.append(swatch);
+  }
+  const tickList = document.createElement('div');
+  tickList.className = 'chart-hue-ticks';
+  for (let step = 4; step >= 0; step -= 1) {
+    const value = minimum + (maximum - minimum) * step / 4;
+    const tick = document.createElement('span');
+    tick.textContent = chartValue({ value }, metric);
+    tickList.append(tick);
+  }
+  const unit = document.createElement('span');
+  unit.className = 'chart-hue-unit';
+  unit.textContent = metric === 'time' ? 'seconds' : metric === 'accuracy' ? 'percent' : metric;
+  legend.append(title, gradient, tickList, unit);
+  return legend;
+}
+
+function renderChartCategoryLegend(spec, points) {
+  if (spec.kind !== 'bar' || points.length > 12) return null;
+  const legend = document.createElement('ul');
+  legend.className = 'chart-category-legend';
+  points.forEach((point, index) => {
+    const item = document.createElement('li');
+    const swatch = document.createElement('span');
+    swatch.className = `chart-category-swatch ${chartColorClass(spec, point, index)}`;
+    swatch.setAttribute('aria-hidden', 'true');
+    const text = document.createElement('span');
+    text.textContent = point.label;
+    item.append(swatch, text);
+    legend.append(item);
+  });
+  return legend;
+}
+
+function mergeCoincidentScatterPoints(points, xFor, yFor) {
+  const groups = [];
+  for (const point of points) {
+    const overlapping = groups.find((group) => {
+      const horizontal = xFor(point) - xFor(group);
+      const vertical = yFor(Number(point.y)) - yFor(Number(group.y));
+      return horizontal * horizontal + vertical * vertical < 16 * 16;
+    });
+    if (!overlapping) {
+      groups.push({ ...point, overlappingLabels: [point.label], attemptIds: [...point.attemptIds] });
+      continue;
+    }
+    if (!overlapping.overlappingLabels.includes(point.label)) overlapping.overlappingLabels.push(point.label);
+    overlapping.attemptIds.push(...point.attemptIds);
+  }
+  return groups.map((point) => ({
+    ...point,
+    label: point.overlappingLabels.length > 1 ? `${point.overlappingLabels.join(' · ')} (overlapping; values within plot resolution)` : point.overlappingLabels[0],
+    attemptIds: [...new Set(point.attemptIds)],
+  }));
+}
+
 function chartAxisLabel(metric) {
   if (metric === 'time') return 'Response time (seconds)';
   if (metric === 'attempts') return 'Attempts';
@@ -3487,19 +3613,28 @@ function chartColorClass(spec, point, index) {
 
 function openAttemptDetails(records, attemptIds, heading) {
   const rows = records.filter((record) => attemptIds.includes(record.attemptId));
-  refs['attempt-detail-summary'].textContent = `${rows.length} contributing attempt${rows.length === 1 ? '' : 's'} — ${heading}`;
+  refs['attempt-detail-summary'].textContent = `${rows.length} contributing attempt${rows.length === 1 ? '' : 's'} — ${heading}${rows.length > 100 ? ' (showing the 100 most recent)' : ''}`;
   refs['attempt-detail-content'].replaceChildren();
   if (!rows.length) refs['attempt-detail-content'].textContent = 'No saved attempts match this chart mark.';
   else {
     const wrap = document.createElement('div');
     wrap.className = 'table-wrap attempt-detail-table';
     const table = document.createElement('table');
-    table.innerHTML = '<thead><tr><th>When</th><th>Game</th><th>Result</th><th>Time</th><th>Details</th></tr></thead>';
+    table.innerHTML = '<thead><tr><th>When</th><th>Session</th><th>Attempt</th><th>Game</th><th>Difficulty</th><th>Result</th><th>Time</th><th>Details</th></tr></thead>';
     const body = document.createElement('tbody');
-    for (const record of rows.slice().reverse()) {
+    for (const record of rows.slice(-100).reverse()) {
       const row = document.createElement('tr');
-      const details = [record.expectedAnswer, record.userAnswer].filter(Boolean).join(' → ') || 'No answer detail recorded';
-      for (const value of [new Date(record.timestamp).toLocaleString(), record.gameName, record.outcome,
+      const gameDetails = record.game === 'cash'
+        ? [`Due ${record.amountDueCents}¢`, `Tender ${record.cashGivenCents}¢`, `${record.tenderPieceCount} pieces`, `${record.tenderDenominationTypes} denominations`, `Change/short ${record.changeOrShortfallCents}¢`]
+        : record.game === 'memory'
+          ? [`${record.totalDigits} digits`, `Display ${record.readTimeSeconds}s`, `Answer time ${record.writeTimeSeconds}s`, `${record.correctValueCount}/${record.valueCount} values`, `Streak ${record.memoryStreak ?? '—'}`]
+          : record.game === 'task'
+            ? [`${record.stepsCompleted}/${record.stepsExpected} steps`, `${record.totalMistakes} mistakes`, (record.taskMistakeCategories ?? []).join(', ') || 'No mistake categories']
+            : record.game === 'error-detection'
+              ? [`${record.expectedAnomalyCount} actual errors`, `${record.selectedAnomalyCount} selected`, `${record.missedAnomalyCount} missed`, `${record.falseFlagCount} false positives`, record.puzzleFamily]
+              : [`${record.fraudExpectedIssueCount} actual errors`, `${record.fraudCorrectlyIdentifiedCount ?? Math.max(0, record.fraudExpectedIssueCount - record.fraudFalseNegativeCount)} identified`, `${record.fraudFalseNegativeCount} missed`, `${record.fraudFalsePositiveCount} false positives`, (record.fraudExpectedCategories ?? []).join(', ') || 'Clean case'];
+      const details = [...gameDetails, record.expectedAnswer, record.userAnswer].filter((value) => value !== null && value !== undefined && value !== '').join(' · ') || 'No answer detail recorded';
+      for (const value of [new Date(record.timestamp).toLocaleString(), record.sessionId ?? 'Not recorded', `${record.attemptId} · #${record.questionNumber ?? '—'}`, record.gameName, record.difficulty ?? 'Not recorded', record.outcome,
         record.responseTimeSeconds === null ? 'Not recorded' : `${record.responseTimeSeconds.toFixed(1)}s`, details]) {
         const cell = document.createElement('td');
         cell.textContent = value;
@@ -3539,6 +3674,7 @@ function renderChartCard(spec, records) {
   };
   const card = document.createElement('article');
   card.className = 'interactive-chart visual-card';
+  card.dataset.chartKind = spec.kind;
   const heading = document.createElement('div');
   heading.className = 'visual-heading';
   const title = document.createElement('h4');
@@ -3573,11 +3709,12 @@ function renderChartCard(spec, records) {
   card.append(selectionHint);
   const series = spec.series[0];
   const sourcePoints = isScatter ? series.points : series.points.slice(view.start, view.start + view.count);
-  const points = sourcePoints.filter((point) => {
+  const availablePoints = sourcePoints.filter((point) => {
     const value = spec.kind === 'scatter' ? point.y : point.value;
     return value !== null && value !== undefined && Number.isFinite(Number(value))
       && (spec.kind !== 'scatter' || (point.x !== null && point.x !== undefined && Number.isFinite(Number(point.x)) && Number(point.x) >= view.xMin && Number(point.x) <= view.xMax));
   });
+  let points = availablePoints;
   if (!view.visible || !points.length) {
     const empty = document.createElement('p');
     empty.className = 'chart-empty';
@@ -3592,6 +3729,9 @@ function renderChartCard(spec, records) {
   const metric = series.metric;
   const values = points.map((point) => Number(spec.kind === 'scatter' ? point.y : point.value)).filter(Number.isFinite);
   const scale = chartScale(values, metric);
+  const hueValues = allPoints.map((point) => Number(point.y)).filter(Number.isFinite);
+  const hueMinimum = hueValues.length ? Math.min(...hueValues) : 0;
+  const hueMaximum = hueValues.length ? Math.max(...hueValues) : 0;
   const yFor = (value) => plot.bottom - (Number(value) / scale.max * plotHeight);
   const xScale = spec.kind === 'scatter' ? { min: view.xMin, max: view.xMax,
     ticks: (() => { const step = chartTickStep(view.xMax - view.xMin, 'time'); const ticks = [];
@@ -3600,6 +3740,7 @@ function renderChartCard(spec, records) {
   const xFor = (point, index) => spec.kind === 'scatter'
     ? plot.left + ((Number(point.x) - xScale.min) / (xScale.max - xScale.min) * plotWidth)
     : plot.left + ((index + 0.5) / Math.max(points.length, 1) * plotWidth);
+  if (isScatter) points = mergeCoincidentScatterPoints(points, (point) => xFor(point, 0), (value) => yFor(value));
   const yAxis = chartSvgElement('g', { class: 'chart-axis chart-y-axis' });
   scale.ticks.forEach((tick) => {
     const y = yFor(tick);
@@ -3636,7 +3777,6 @@ function renderChartCard(spec, records) {
   svg.append(yAxis, xAxis);
   const selection = chartSvgElement('rect', { class: 'chart-selection', x: plot.left, y: plot.top, width: 0, height: plotHeight, visibility: 'hidden' });
   svg.append(selection);
-  const linePoints = [];
   const lineSegments = [];
   points.forEach((point, index) => {
     const value = Number(spec.kind === 'scatter' ? point.y : point.value);
@@ -3646,15 +3786,23 @@ function renderChartCard(spec, records) {
     const width = plotWidth / Math.max(points.length, 1);
     const height = Math.max(2, plot.bottom - y);
     if (spec.kind === 'line') {
-      linePoints.push(`${x},${y}`);
-      if (index > 0) lineSegments.push({ x1: xFor(points[index - 1], index - 1), y1: yFor(Number(spec.kind === 'scatter' ? points[index - 1].y : points[index - 1].value)), x2: x, y2: y, color: chartColorClass(spec, point, index) });
+      if (index > 0) {
+        const previous = points[index - 1];
+        const isDateSeries = /^\d{4}-\d{2}-\d{2}$/.test(previous.label) && /^\d{4}-\d{2}-\d{2}$/.test(point.label);
+        const daysApart = isDateSeries ? (Date.parse(`${point.label}T00:00:00Z`) - Date.parse(`${previous.label}T00:00:00Z`)) / 86400000 : 1;
+        if (daysApart === 1) lineSegments.push({ x1: xFor(previous, index - 1), y1: yFor(Number(previous.value)), x2: x, y2: y });
+      }
     }
     const colorClass = chartColorClass(spec, point, index);
     const mark = chartSvgElement('g', { class: `analytics-mark ${colorClass}`, role: 'button', tabindex: '0', 'aria-label': `${point.label}: ${chartValue(point, series.metric)} from ${point.attemptIds.length} attempts` });
+    if (isScatter) mark.style.setProperty('--chart-color', chartHueColor(Number(point.y), hueMinimum, hueMaximum, series.metric));
     const shape = chartSvgElement(spec.kind === 'line' || spec.kind === 'scatter' ? 'circle' : 'rect', spec.kind === 'line' || spec.kind === 'scatter'
       ? { cx: x, cy: y, r: Math.max(4, Math.min(8, width * 0.18)) }
       : { x: x - Math.max(3, width * 0.32), y, width: Math.max(5, width * 0.64), height, rx: 2 });
-    const activate = () => openAttemptDetails(records, point.attemptIds, `${spec.title}: ${point.label}`);
+    const pointDetail = isScatter
+      ? `${spec.title}: ${point.label}; X ${Number(point.x).toFixed(1)} seconds; Y ${chartValue(point, series.metric)}`
+      : `${spec.title}: ${point.label} (${chartValue(point, series.metric)})`;
+    const activate = () => openAttemptDetails(records, point.attemptIds, pointDetail);
     mark.addEventListener('click', activate);
     mark.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); activate(); }
@@ -3671,11 +3819,11 @@ function renderChartCard(spec, records) {
     }
     svg.append(mark);
   });
-  if (linePoints.length > 1 && spec.kind === 'line') {
-    const path = chartSvgElement('polyline', { class: 'chart-series-line', points: linePoints.join(' '), fill: 'none' });
+  if (lineSegments.length && spec.kind === 'line') {
+    const path = chartSvgElement('path', { class: 'chart-series-line', d: lineSegments.map((segment) => `M ${segment.x1} ${segment.y1} L ${segment.x2} ${segment.y2}`).join(' '), fill: 'none' });
     svg.insertBefore(path, svg.querySelector('.analytics-mark'));
   }
-  if (lineSegments.length) lineSegments.forEach((segment) => svg.insertBefore(chartSvgElement('line', { class: `chart-series-segment ${segment.color}`, x1: segment.x1, y1: segment.y1, x2: segment.x2, y2: segment.y2 }), svg.querySelector('.analytics-mark')));
+  if (lineSegments.length && spec.kind !== 'line') lineSegments.forEach((segment) => svg.insertBefore(chartSvgElement('line', { class: `chart-series-segment ${segment.color}`, x1: segment.x1, y1: segment.y1, x2: segment.x2, y2: segment.y2 }), svg.querySelector('.analytics-mark')));
   let drag = null;
   let suppressClick = false;
   const plotX = (event) => {
@@ -3692,6 +3840,7 @@ function renderChartCard(spec, records) {
   };
   svg.addEventListener('pointerdown', (event) => {
     if (event.isPrimary === false || (event.pointerType === 'mouse' && event.button !== 0)) return;
+    if (event.target.closest?.('.analytics-mark')) return;
     const x = plotX(event);
     drag = { pointerId: event.pointerId, startX: x, currentX: x, moved: false };
     svg.setPointerCapture(event.pointerId);
@@ -3737,7 +3886,16 @@ function renderChartCard(spec, records) {
     event.stopPropagation();
     suppressClick = false;
   }, true);
-  card.append(svg);
+  const plotLayout = document.createElement('div');
+  plotLayout.className = 'chart-plot-layout';
+  plotLayout.append(svg);
+  if (isScatter) {
+    const legend = renderChartHueLegend(spec, allPoints, series.metric);
+    if (legend) plotLayout.append(legend);
+  }
+  card.append(plotLayout);
+  const categoryLegend = renderChartCategoryLegend(spec, points);
+  if (categoryLegend) card.append(categoryLegend);
   if (view.compare) {
     const compare = document.createElement('p');
     compare.className = 'chart-note';
@@ -3848,6 +4006,7 @@ function renderHistoryInsights(records) {
   focus.className = 'chart-note';
   const recommendation = recommendNextChallenge(records, { game: historyView.filters.game });
   focus.textContent = recommendation.challenge ? `Practice focus: ${recommendation.target}. ${recommendation.reason}` : recommendation.reason;
+  if (historyView.dataSource === 'sample') focus.textContent = `Based on Sample Data. ${focus.textContent}`;
   root.append(focus);
 }
 
@@ -3959,20 +4118,23 @@ function fallbackChallenge(recommendation) {
 }
 
 function renderRecommendedChallenge(records) {
-  const candidates = rankPracticeCandidates(records, historyPresetMap());
-  const recommendation = recommendNextChallenge(records, { candidatePlans: candidates, currentChallenge: state.currentChallenge });
+  const sampleMode = historyView.dataSource === 'sample';
+  const candidates = sampleMode ? [] : rankPracticeCandidates(records, historyPresetMap());
+  const recommendation = recommendNextChallenge(records, sampleMode
+    ? { game: historyView.filters.game }
+    : { candidatePlans: candidates, currentChallenge: state.currentChallenge });
   const target = refs['history-recommendations'];
   const previous = refs['previous-challenges'];
   target.replaceChildren();
   previous.replaceChildren();
   let plan = recommendation.challenge ? recommendation : null;
   if (plan && (!plan.preset || !plan.options)) plan = fallbackChallenge(recommendation);
-  const currentCandidate = state.currentChallenge && candidates.find((candidate) => candidate.id === state.currentChallenge.id);
+  const currentCandidate = !sampleMode && state.currentChallenge && candidates.find((candidate) => candidate.id === state.currentChallenge.id);
   if (currentCandidate && !recommendation.recoveredCurrent) plan = { ...currentCandidate, ...state.currentChallenge, reason: state.currentChallenge.reason ?? currentCandidate.reason };
   if (!plan || !plan.preset || !plan.options) {
     const note = document.createElement('p');
     note.className = 'practice-note';
-    note.textContent = recommendation.reason;
+    note.textContent = sampleMode ? `Based on Sample Data. ${recommendation.reason}` : recommendation.reason;
     target.append(note);
   } else {
     const card = document.createElement('article');
@@ -3981,6 +4143,12 @@ function renderRecommendedChallenge(records) {
     title.textContent = `${PRACTICE_GAMES[plan.game]} — ${plan.target}`;
     const why = document.createElement('p');
     why.textContent = `Why recommended: ${recommendation.reason}`;
+    if (sampleMode) {
+      const sampleNote = document.createElement('p');
+      sampleNote.className = 'sample-recommendation-note';
+      sampleNote.textContent = 'Based on Sample Data';
+      card.append(sampleNote);
+    }
     const detail = document.createElement('p');
     detail.className = 'practice-note';
     detail.textContent = `Evidence: ${recommendation.evidenceCount ?? plan.evidenceStats?.attempts ?? 0} comparable attempts. ${plan.progressionRule ?? 'Only the relevant workload axis changes after sustained success.'}`;
@@ -3992,10 +4160,15 @@ function renderRecommendedChallenge(records) {
     const apply = document.createElement('button');
     apply.type = 'button';
     apply.className = 'secondary-button';
-    apply.textContent = 'Use practice plan';
-    apply.addEventListener('click', () => { saveCurrentChallenge({ ...plan, weaknessKey: recommendation.weaknessKey }); applyPracticePlan(plan); });
+    apply.textContent = sampleMode ? 'Practice plan unavailable in Sample Data' : 'Use practice plan';
+    apply.disabled = sampleMode;
+    apply.addEventListener('click', () => {
+      if (sampleMode) return;
+      saveCurrentChallenge({ ...plan, weaknessKey: recommendation.weaknessKey });
+      applyPracticePlan(plan);
+    });
     card.append(title, why, detail, review, apply);
-    if (state.currentChallenge?.id === plan.id) {
+    if (!sampleMode && state.currentChallenge?.id === plan.id) {
       const clear = document.createElement('button');
       clear.type = 'button';
       clear.className = 'text-button';
@@ -4005,7 +4178,7 @@ function renderRecommendedChallenge(records) {
     }
     target.append(card);
   }
-  if (recommendation.previousChallenges.length) {
+  if (!sampleMode && recommendation.previousChallenges.length) {
     const heading = document.createElement('h4');
     heading.textContent = 'Previous challenges';
     const list = document.createElement('ul');
@@ -4021,6 +4194,9 @@ function renderRecommendedChallenge(records) {
 
 function renderHistoryRows(records) {
   refs['history-rows'].replaceChildren();
+  refs['history-attempt-summary'].textContent = records.length > 100
+    ? `Showing the 100 most recent attempts of ${records.length.toLocaleString()} matching records. Narrow the filters or download the CSV to work with more.`
+    : `${records.length.toLocaleString()} matching attempt${records.length === 1 ? '' : 's'}.`;
   if (records.length === 0) {
     const row = document.createElement('tr');
     const cell = document.createElement('td');
@@ -4028,7 +4204,7 @@ function renderHistoryRows(records) {
     cell.textContent = 'No saved attempts match these filters.';
     row.append(cell); refs['history-rows'].append(row); return;
   }
-  for (const record of records.slice().reverse()) {
+  for (const record of records.slice(-100).reverse()) {
     const row = document.createElement('tr');
     row.tabIndex = 0;
     row.title = 'Open attempt details';
@@ -4061,9 +4237,9 @@ function renderFraudHistory(records) {
     [String(summary.bestStreak), 'Best perfect streak'],
     [summary.mostFrequentlyMissedCategory ? summary.mostFrequentlyMissedCategory.label : 'None recorded', 'Most frequently missed type'],
   ]);
-  refs['fraud-history-weakness'].textContent = summary.weakestCategory
+  refs['fraud-history-weakness'].textContent = (historyView.dataSource === 'sample' ? 'Based on Sample Data. ' : '') + (summary.weakestCategory
     ? 'Weakest area: ' + summary.weakestCategory.label.toLowerCase() + ' (' + summary.weakestCategory.accuracyPercent + '% across ' + summary.weakestCategory.expectedCount + ' examples). ' + summary.recommendedChallenge
-    : summary.recommendedChallenge;
+    : summary.recommendedChallenge);
   refs['fraud-history-categories'].replaceChildren();
   if (!summary.byCategory.length) {
     const row = document.createElement('tr');
@@ -4119,7 +4295,8 @@ function renderFraudHistory(records) {
 }
 
 function renderHistory() {
-  const history = getHistory();
+  const history = historyRecordsForView();
+  renderHistoryDataSource(history);
   const gameOnly = filterHistory(history, { game: historyView.filters.game });
   renderHistoryFilters(gameOnly);
   const records = filterHistory(history, historyView.filters);
@@ -4157,7 +4334,7 @@ function openHistory() {
 }
 
 function downloadHistory() {
-  const history = getHistory();
+  const history = historyRecordsForView();
   if (history.length === 0) {
     setMessage('There is no history to download yet.');
     return;
@@ -4167,11 +4344,25 @@ function downloadHistory() {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = 'Cash-and-Memory-Game-History.csv';
+  link.download = historyView.dataSource === 'sample' ? 'Cash-Handling-Sample-History.csv' : 'Cash-and-Memory-Game-History.csv';
   link.click();
   window.setTimeout(() => URL.revokeObjectURL(url), 0);
   setMessage('History CSV download started.');
 }
+
+refs['history-data-source'].addEventListener('change', (event) => {
+  const input = event.target.closest('input[name="historyDataSource"]');
+  if (input) setHistoryDataSource(input.value);
+});
+refs['history-view-sample'].addEventListener('click', () => {
+  refs['history-data-source'].querySelector('input[value="sample"]').checked = true;
+  setHistoryDataSource('sample');
+});
+refs['history-regenerate-sample'].addEventListener('click', () => {
+  ensureSampleHistory(true);
+  historyView.charts.clear();
+  renderHistory();
+});
 
 refs['setup-form'].addEventListener('submit', (event) => {
   event.preventDefault();
@@ -4464,6 +4655,7 @@ refs['attempt-detail-dialog'].addEventListener('click', (event) => {
   if (event.target === refs['attempt-detail-dialog']) refs['attempt-detail-dialog'].close();
 });
 refs['clear-history'].addEventListener('click', () => {
+  if (historyView.dataSource === 'sample') return;
   if (window.confirm('Clear all saved quiz history from this browser? This cannot be undone.')) {
     localStorage.removeItem(HISTORY_KEY);
     clearPracticePlan();

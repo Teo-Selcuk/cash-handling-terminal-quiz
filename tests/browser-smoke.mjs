@@ -9,13 +9,14 @@ import { checkHistory, checkAutoContinue, checkTimeouts } from './browser-histor
 import { checkResponsive } from './browser-responsive-checks.mjs';
 import { checkGuidance } from './browser-guidance-checks.mjs';
 import { checkProgress } from './browser-progress-checks.mjs';
+import { checkSampleHistory } from './browser-sample-history-checks.mjs';
 import { checkFraudInspection } from './browser-fraud-inspection-checks.mjs';
 const { chromium } = createRequire(import.meta.url)('playwright');
 const root = fileURLToPath(new URL('../', import.meta.url));
 const server = createServer(async (request, response) => {
   const path = new URL(request.url, 'http://localhost').pathname;
   const file = path === '/' ? 'index.html' : path.slice(1);
-  if (!['index.html', 'app.js', 'style.css', 'quiz-core.mjs', 'pattern-games.mjs', 'distraction-sounds.mjs', 'adaptive-practice.mjs', 'progress-analytics.mjs', 'fraud-inspection.mjs', 'assets/fraud/id-portrait-female-20260922.jpg', 'assets/fraud/id-portrait-male-20260922.jpg'].includes(file)) {
+  if (!['index.html', 'app.js', 'style.css', 'quiz-core.mjs', 'pattern-games.mjs', 'distraction-sounds.mjs', 'adaptive-practice.mjs', 'progress-analytics.mjs', 'fraud-inspection.mjs', 'sample-history.mjs', 'assets/fraud/id-portrait-female-20260922.jpg', 'assets/fraud/id-portrait-male-20260922.jpg'].includes(file)) {
     response.writeHead(404).end(); return;
   }
   response.setHeader('Content-Type', file.endsWith('.jpg') ? 'image/jpeg' : ({ '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.mjs': 'text/javascript' })[extname(file)]);
@@ -54,12 +55,14 @@ try {
   const base = process.env.QUIZ_LIVE_URL || `http://127.0.0.1:${server.address().port}/`;
   if (process.env.QUIZ_FOCUSED === 'progress') {
     await checkProgress(browser, base);
+    await checkSampleHistory(browser, base);
     console.log('Focused History and Progress browser checks passed.');
   } else {
   await checkResponsive(browser, base);
   await checkGuidance(browser, base);
   await checkHistory(browser, base);
   await checkProgress(browser, base);
+  await checkSampleHistory(browser, base);
   await checkFraudInspection(browser, base);
   await checkAutoContinue(browser, base);
   await checkTimeouts(browser, base);
