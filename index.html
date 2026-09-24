@@ -581,6 +581,57 @@
           <div class="history-filter-grid" id="history-game-filters"></div>
         </section>
         <div class="metric-grid" id="history-metrics"></div>
+        <section class="history-error-analysis" id="history-error-analysis" aria-labelledby="history-error-heading">
+          <div class="visual-heading">
+            <div><p class="eyebrow">Filtered answer evidence</p><h3 id="history-error-heading">Error Analysis</h3></div>
+            <label class="error-analysis-sort">Sort breakdowns
+              <select id="error-analysis-sort">
+                <option value="error-rate">Highest error rate</option>
+                <option value="errors">Most errors</option>
+                <option value="attempts">Most attempts</option>
+                <option value="lowest">Lowest error rate</option>
+                <option value="magnitude">Highest average numeric error</option>
+                <option value="alphabetical">Alphabetical</option>
+              </select>
+            </label>
+          </div>
+          <p class="chart-note" id="history-error-data-label"></p>
+          <div class="metric-grid" id="history-error-metrics"></div>
+          <div class="error-analysis-highlights" id="history-error-highlights"></div>
+          <section class="history-error-comparison" aria-labelledby="history-error-comparison-heading">
+            <h4 id="history-error-comparison-heading">Recent and earlier error rates</h4>
+            <div id="history-error-comparison"></div>
+          </section>
+          <section class="history-error-charts" aria-labelledby="history-error-charts-heading">
+            <h4 id="history-error-charts-heading">Error charts</h4>
+            <div id="history-error-charts"></div>
+          </section>
+          <div class="error-analysis-tables">
+            <section aria-labelledby="history-error-category-heading">
+              <h4 id="history-error-category-heading">Error rate by category</h4>
+              <div id="history-error-category-table"></div>
+            </section>
+            <section aria-labelledby="history-error-raw-heading">
+              <h4 id="history-error-raw-heading">Error rate by raw input</h4>
+              <div id="history-error-raw-table"></div>
+            </section>
+            <section aria-labelledby="history-error-combination-heading">
+              <h4 id="history-error-combination-heading">Error rate by raw-input combination</h4>
+              <p class="chart-note">Combined inputs enter Strengths / Weaknesses only after five relevant opportunities. Each row shows its opportunity count and unique attempts.</p>
+              <div id="history-error-combination-table"></div>
+            </section>
+            <section aria-labelledby="history-error-difficulty-heading">
+              <h4 id="history-error-difficulty-heading">Error rate by difficulty and settings</h4>
+              <div id="history-error-difficulty-table"></div>
+            </section>
+            <section aria-labelledby="history-error-numeric-heading">
+              <h4 id="history-error-numeric-heading">Numeric error magnitude</h4>
+              <p class="chart-note">Only numeric answers are compared. Categorical choices and number-memory sequences have no invented numeric distance.</p>
+              <div id="history-error-numeric-table"></div>
+              <div id="history-error-distribution"></div>
+            </section>
+          </div>
+        </section>
         <section class="fraud-history-panel" id="fraud-history-panel" hidden aria-labelledby="fraud-history-heading">
           <div class="visual-heading">
             <div><p class="eyebrow">Inspection progress</p><h3 id="fraud-history-heading">Check &amp; ID results</h3></div>
@@ -655,7 +706,7 @@
         </div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th scope="col">When</th><th scope="col">Game</th><th scope="col">Level</th><th scope="col">Result</th><th scope="col">Time</th><th scope="col">Expected</th></tr></thead>
+            <thead><tr><th scope="col">When</th><th scope="col">Game</th><th scope="col">Level</th><th scope="col">Result</th><th scope="col">Time</th><th scope="col">Expected</th><th scope="col">Raw-input mistakes</th><th scope="col">Numeric error</th></tr></thead>
             <tbody id="history-rows"></tbody>
           </table>
         </div>
@@ -686,6 +737,6 @@
     </dialog>
 
     <footer>Browser edition. The original PowerShell quiz remains in this repository.</footer>
-    <script type="module" src="app.js?v=20260923-performance-insights"></script>
+    <script type="module" src="app.js?v=20260923-error-percentage"></script>
   </body>
 </html>

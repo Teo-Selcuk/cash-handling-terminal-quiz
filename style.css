@@ -142,6 +142,29 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 .history-tabs button, .history-quick-ranges button, .history-facet { min-height: 2.75rem; border: 0.0625rem solid var(--line); border-radius: 999rem; background: var(--surface); color: var(--ink); padding: 0.5rem 0.75rem; font-weight: 650; }
 .history-tabs button[aria-pressed="true"], .history-quick-ranges button[aria-pressed="true"] { border-color: var(--brand-fill); background: var(--brand-fill); color: #fff; }
 .history-filter-panel, .history-comparison, .history-charts { margin: 1.5rem 0; padding: 1rem; border: 0.0625rem solid var(--line); border-radius: var(--radius); background: var(--surface-quiet); }
+.history-error-analysis { min-width: 0; margin: 1.5rem 0; padding: clamp(0.75rem, 2vw, 1.25rem); border: 0.0625rem solid var(--line); border-left: 0.3rem solid var(--danger); border-radius: var(--radius); background: var(--surface-quiet); }
+.history-error-analysis > .visual-heading { align-items: flex-end; }
+.history-error-analysis h4 { margin: 1.25rem 0 0.5rem; font-size: 1rem; }
+.history-error-analysis h5 { margin: 0; font-size: 0.875rem; }
+.error-analysis-sort { display: grid; gap: 0.25rem; width: min(100%, 19rem); font-size: 0.8rem; }
+.error-analysis-sort select { min-height: 2.75rem; padding: 0.45rem 0.65rem; border: 0.0625rem solid var(--line); border-radius: 0.3rem; background: var(--surface); color: var(--ink); font-size: 1rem; }
+.history-error-analysis > .metric-grid { margin: 1rem 0; }
+.error-analysis-highlights { display: grid; gap: 0.5rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); }
+.error-analysis-highlight { min-width: 0; margin: 0; padding: 0.75rem; border-left: 0.2rem solid var(--accent); background: var(--surface); line-height: 1.45; overflow-wrap: anywhere; }
+.history-error-comparison { margin-top: 1.25rem; padding: 0.75rem; border: 0.0625rem solid var(--line); border-radius: 0.3rem; background: var(--surface); }
+.history-error-comparison .chart-note + .chart-note { margin-top: 0.45rem; }
+.history-error-charts > div { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 23rem), 1fr)); min-width: 0; margin-top: 0.75rem; }
+.history-error-charts .interactive-chart { min-width: 0; }
+.error-analysis-tables { display: grid; gap: 0.75rem; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 1.25rem; }
+.error-analysis-tables > section { min-width: 0; padding: 0.75rem; border: 0.0625rem solid var(--line); border-radius: 0.3rem; background: var(--surface); }
+.error-analysis-table-wrap { max-height: 28rem; overflow: auto; margin-top: 0.65rem; }
+.error-analysis-table-wrap table { min-width: 38rem; font-size: 0.8125rem; }
+.error-analysis-table-wrap th, .error-analysis-table-wrap td { padding: 0.55rem; white-space: normal; }
+.error-analysis-table-wrap td:first-child { min-width: 10rem; overflow-wrap: anywhere; }
+.error-distribution { margin-top: 1rem; }
+.error-distribution ul { display: grid; gap: 0.4rem 0.75rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr)); margin: 0.65rem 0 0; padding: 0; list-style: none; }
+.error-distribution li { display: flex; justify-content: space-between; gap: 0.4rem; padding: 0.55rem 0.65rem; border: 0.0625rem solid var(--line); border-radius: 0.25rem; background: var(--surface); font-variant-numeric: tabular-nums; }
+.error-distribution li strong { color: var(--brand-fill); }
 .history-filter-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 0.75rem; margin-top: 0.75rem; }
 .history-filter-group { min-width: 0; display: grid; gap: 0.5rem; padding: 0.75rem; border: 0.0625rem solid var(--line); border-radius: 0.25rem; background: var(--surface); }
 .history-filter-group legend { margin: 0; padding: 0; font-size: 0.875rem; }
@@ -507,6 +530,10 @@ input:disabled { background: var(--disabled-surface); color: var(--muted); }
   .chart-hue-gradient { flex-direction: row; min-height: 1.25rem; height: 1.25rem; }
   .chart-hue-ticks { flex-direction: row; }
   .chart-hue-unit { display: none; }
+  .history-error-analysis > .visual-heading { align-items: stretch; }
+  .error-analysis-sort { width: 100%; }
+  .error-analysis-tables { grid-template-columns: minmax(0, 1fr); }
+  .history-error-charts > div { grid-template-columns: minmax(0, 1fr); }
 }
 .bar-chart-value { grid-column: 2; color: var(--muted); font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
 

@@ -407,6 +407,670 @@ function buildProgressModelShallow(records) {
   return { attempts: records.length, answered: answered.length, correct: correct.length, accuracyPercent: percent(correct.length, answered.length), averageResponseTimeSeconds: average(times), eligibleResponseAttempts: times.length };
 }
 
+export const ERROR_SEVERITY_BANDS = Object.freeze([
+  Object.freeze({ key: 'correct', label: 'Correct', min: 0, max: 0 }),
+  Object.freeze({ key: 'small', label: 'Small', min: 0, max: 5 }),
+  Object.freeze({ key: 'moderate', label: 'Moderate', min: 5, max: 15 }),
+  Object.freeze({ key: 'large', label: 'Large', min: 15, max: 30 }),
+  Object.freeze({ key: 'very-large', label: 'Very large', min: 30, max: Infinity }),
+]);
+
+const ERROR_DISTRIBUTION_BANDS = Object.freeze([
+  { key: 'zero', label: '0%', test: (value) => value === 0 },
+  { key: '0-5', label: '>0–5%', test: (value) => value > 0 && value <= 5 },
+  { key: '5-10', label: '>5–10%', test: (value) => value > 5 && value <= 10 },
+  { key: '10-20', label: '>10–20%', test: (value) => value > 10 && value <= 20 },
+  { key: '20-50', label: '>20–<50%', test: (value) => value > 20 && value < 50 },
+  { key: '50-plus', label: '≥50%', test: (value) => value >= 50 },
+]);
+
+const CASH_DENOMINATION_LABELS = Object.freeze({
+  10000: '$100 bills', 5000: '$50 bills', 2000: '$20 bills', 1000: '$10 bills', 500: '$5 bills', 100: '$1 bills',
+  25: 'Quarters', 10: 'Dimes', 5: 'Nickels', 1: 'Pennies',
+});
+
+const FRAUD_ISSUE_LABELS = Object.freeze({
+  'payee-mismatch': 'Payee/name mismatch', 'amount-mismatch': 'Written/numeric amount mismatch', 'date-issue': 'Check date issue',
+  'check-alteration': 'Check alteration', 'handwriting-issue': 'Handwriting/ink issue', 'missing-required-field': 'Missing check field',
+  'endorsement-missing': 'Missing endorsement', 'endorsement-signature-mismatch': 'Endorsement signature',
+  'maker-signature-suspicious': 'Maker signature', 'check-number-mismatch': 'Check number/MICR', 'routing-issue': 'Routing control',
+  'account-information-issue': 'Account information', 'id-expired': 'Expired ID',
+  'id-information-inconsistent': 'ID information mismatch', 'id-altered': 'ID alteration',
+});
+
+function validDenominationCountMap(value) {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value)
+    && Object.entries(value).every(([denomination, count]) => Object.hasOwn(CASH_DENOMINATION_LABELS, denomination)
+      && integer(count) !== null && integer(count) >= 0));
+}
+
+function round2(value) { return Number.isFinite(value) ? Number(value.toFixed(2)) : null; }
+function errorPercent(part, total) { return total ? Number(((part / total) * 100).toFixed(1)) : null; }
+function median(values) {
+  if (!values.length) return null;
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+function centsText(value) {
+  const cents = Number(value);
+  if (!Number.isSafeInteger(cents)) return 'Not recorded';
+  const sign = cents < 0 ? '-' : '';
+  const absolute = Math.abs(cents);
+  return `${sign}$${Math.floor(absolute / 100).toLocaleString('en-US')}.${String(absolute % 100).padStart(2, '0')}`;
+}
+
+function errorSeverityFor(value) {
+  if (!Number.isFinite(value) || value < 0) return null;
+  if (value === 0) return ERROR_SEVERITY_BANDS[0];
+  if (value <= 5) return ERROR_SEVERITY_BANDS[1];
+  if (value <= 15) return ERROR_SEVERITY_BANDS[2];
+  if (value <= 30) return ERROR_SEVERITY_BANDS[3];
+  return ERROR_SEVERITY_BANDS[4];
+}
+
+function numericErrorResponse({ record, game, label, expectedValue, submittedValue, unit = 'number', answerExpected = true }) {
+  if (!answerExpected || !known(expectedValue) || !known(submittedValue)
+      || !Number.isFinite(Number(expectedValue)) || !Number.isFinite(Number(submittedValue))) return null;
+  const expected = Number(expectedValue);
+  const submitted = Number(submittedValue);
+  const difference = submitted - expected;
+  const absoluteError = Math.abs(difference);
+  const percentageError = expected === 0 ? absoluteError === 0 ? 0 : null : absoluteError / Math.abs(expected) * 100;
+  return {
+    attemptId: record.attemptId, game, label, timestamp: record.timestamp, outcome: record.outcome,
+    expectedValue: expected, submittedValue: submitted, signedDifference: difference, absoluteError,
+    percentageError: round2(percentageError), percentageErrorLabel: percentageError === null ? `N/A (correct answer is ${unit === 'cents' ? centsText(expected) : expected})` : `${round2(percentageError)}%`,
+    unit, severity: errorSeverityFor(percentageError),
+  };
+}
+
+function newErrorGroups() { return new Map(); }
+
+function addErrorOpportunity(groups, { key, label, game, error, record, kind = 'category', percentageError = null, falseNegative = false, falsePositive = false }) {
+  if (!groups.has(key)) groups.set(key, { key, label, game, kind, opportunities: 0, errors: 0, falseNegatives: 0, falsePositives: 0, attemptIds: new Set(), percentages: [] });
+  const group = groups.get(key);
+  group.opportunities += 1;
+  group.errors += Number(Boolean(error));
+  group.falseNegatives += Number(Boolean(falseNegative));
+  group.falsePositives += Number(Boolean(falsePositive));
+  group.attemptIds.add(record.attemptId);
+  if (Number.isFinite(percentageError)) group.percentages.push(percentageError);
+}
+
+function finishErrorGroups(groups, minimumOpportunities, sortBy) {
+  const rows = [...groups.values()].map((group) => {
+    const interval = wilsonInterval(group.errors, group.opportunities);
+    const ids = [...group.attemptIds];
+    return {
+      ...group, attemptIds: ids, attemptCount: ids.length, correct: group.opportunities - group.errors,
+      errorRatePercent: errorPercent(group.errors, group.opportunities), displayRate: `${errorPercent(group.errors, group.opportunities)}% (${group.errors} of ${group.opportunities})`,
+      interval, meanPercentageError: group.percentages.length ? round2(average(group.percentages)) : null,
+      medianPercentageError: group.percentages.length ? round2(median(group.percentages)) : null,
+      eligibleForRanking: group.opportunities >= minimumOpportunities,
+      evidenceLabel: group.opportunities >= 10 ? 'Recurring signal' : group.opportunities >= minimumOpportunities ? 'Early signal' : 'Limited signal',
+    };
+  });
+  const compare = (left, right) => {
+    if (sortBy === 'errors') return right.errors - left.errors || right.opportunities - left.opportunities || left.label.localeCompare(right.label, undefined, { numeric: true });
+    if (sortBy === 'attempts') return right.attemptCount - left.attemptCount || left.label.localeCompare(right.label, undefined, { numeric: true });
+    if (sortBy === 'lowest') return left.errorRatePercent - right.errorRatePercent || right.opportunities - left.opportunities || left.label.localeCompare(right.label, undefined, { numeric: true });
+    if (sortBy === 'magnitude') return (right.meanPercentageError ?? -1) - (left.meanPercentageError ?? -1) || right.opportunities - left.opportunities;
+    if (sortBy === 'alphabetical') return left.label.localeCompare(right.label, undefined, { numeric: true });
+    return right.errorRatePercent - left.errorRatePercent || right.opportunities - left.opportunities || left.label.localeCompare(right.label, undefined, { numeric: true });
+  };
+  return rows.sort(compare);
+}
+
+function summarizeErrorOutcomes(records) {
+  const completed = records.filter((record) => ANSWERED_OUTCOMES.has(record.outcome));
+  const incorrect = completed.filter((record) => record.outcome === 'Incorrect').length;
+  const timedOut = completed.filter((record) => record.outcome === 'Timed Out').length;
+  const errors = incorrect + timedOut;
+  const correct = completed.filter((record) => record.outcome === 'Correct').length;
+  return {
+    attempts: completed.length, incorrect, timedOut, errors,
+    errorRatePercent: errorPercent(errors, completed.length), accuracyPercent: errorPercent(correct, completed.length),
+  };
+}
+
+function rateTrend(records) {
+  const byDay = new Map();
+  for (const record of records) {
+    if (!record.day || !ANSWERED_OUTCOMES.has(record.outcome)) continue;
+    if (!byDay.has(record.day)) byDay.set(record.day, []);
+    byDay.get(record.day).push(record);
+  }
+  return [...byDay.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([day, rows]) => {
+    const stats = summarizeErrorOutcomes(rows);
+    return { key: day, label: day, value: stats.errorRatePercent, count: stats.attempts, errors: stats.errors,
+      opportunities: stats.attempts, attemptIds: rows.map((record) => record.attemptId) };
+  });
+}
+
+function addSettingGroups(rows, record, add) {
+  const game = record.game;
+  const settings = [];
+  const difficulty = game === 'fraud-inspection' ? record.fraudCaseDifficulty ?? record.difficulty : record.difficulty;
+  if (known(difficulty)) settings.push(['difficulty', `Difficulty · ${difficulty}`]);
+  const timeLimit = game === 'fraud-inspection' ? record.fraudTimeLimitSeconds ?? record.timeLimitSeconds : record.timeLimitSeconds;
+  if (known(timeLimit)) settings.push(['time-limit', `Time limit · ${timeLimit}s`]);
+  if (game === 'cash') {
+    if (known(record.answerMode)) settings.push(['answer-mode', `Answer mode · ${record.answerMode}`]);
+    if (known(record.customerBillRequestKind)) settings.push(['customer-request', `Customer request · ${record.customerBillRequestKind}`]);
+    if (known(record.cashSessionMode ?? record.sessionMode)) settings.push(['cash-mode', `Cash mode · ${record.cashSessionMode ?? record.sessionMode}`]);
+  } else if (game === 'memory') {
+    if (known(record.readTimeSeconds)) settings.push(['display-time', `Display · ${record.readTimeSeconds}s`]);
+    if (known(record.writeTimeSeconds)) settings.push(['answer-time', `Answer time · ${record.writeTimeSeconds}s`]);
+  } else if (game === 'task') {
+    if (known(record.workspaceKind)) settings.push(['workspace', `Workflow · ${record.workspaceKind}`]);
+    if (known(record.stepsExpected)) settings.push(['steps', `${record.stepsExpected} expected steps`]);
+  } else if (game === 'error-detection') {
+    if (known(record.puzzleFamilyId ?? record.puzzleFamily)) settings.push(['puzzle-family', `Puzzle · ${record.puzzleFamilyId ?? record.puzzleFamily}`]);
+    if (known(record.ruleLayers)) settings.push(['rule-layers', `${record.ruleLayers} rule layers`]);
+    if (known(record.detailCount)) settings.push(['clues', `${record.detailCount} clues`]);
+  } else if (game === 'fraud-inspection') {
+    if (known(record.fraudRunMode)) settings.push(['run-mode', `Run mode · ${record.fraudRunMode}`]);
+    if (known(record.fraudExpectedCategories?.length)) settings.push(['issue-count', `${record.fraudExpectedCategories.length} actual issues`]);
+  }
+  settings.forEach(([key, label]) => add(rows, { key: `${game}:${key}:${label}`, label, game, error: record.outcome !== 'Correct', record }));
+}
+
+function addMemoryEvidence(record, byCategory, byRawInput, mistakeCounts, mistakesForAttempt) {
+  const expected = Array.isArray(record.expectedValues) && record.expectedValues.length
+    && record.expectedValues.every((value) => typeof value === 'string' && /^\d+(?:\.\d+)?$/.test(value)) ? record.expectedValues : null;
+  const answered = Array.isArray(record.answeredValues) ? record.answeredValues.map((value) => String(value ?? '').replaceAll(/\s/g, '')) : null;
+  if (!expected?.length || record.outcome === 'Not answered') return;
+  const isTimeout = record.outcome === 'Timed Out';
+  addErrorOpportunity(byCategory, { key: 'memory:exact-sequence', label: 'Exact number sequence', game: 'memory', error: record.outcome !== 'Correct', record });
+  expected.forEach((target, valueIndex) => {
+    const received = isTimeout ? '' : answered?.[valueIndex] ?? '';
+    const targetDigits = target.replaceAll('.', '');
+    const receivedDigits = received.replaceAll('.', '');
+    const digitLength = targetDigits.length;
+    const sequenceError = isTimeout || target !== received;
+    const lengthKey = `memory:value-length:${digitLength}`;
+    addErrorOpportunity(byCategory, { key: lengthKey, label: `${digitLength}-digit recall`, game: 'memory', error: sequenceError, record });
+    if (sequenceError) {
+      const reason = isTimeout ? 'Answer timeout' : received === '' ? 'Missing value' : 'Incorrect number';
+      mistakesForAttempt.push({ key: `memory:${reason.toLowerCase().replaceAll(' ', '-')}`, label: reason, detail: `${valueIndex + 1}${valueIndex === 0 ? 'st' : valueIndex === 1 ? 'nd' : valueIndex === 2 ? 'rd' : 'th'} value (${digitLength} digits)` });
+      mistakeCounts.set(reason, (mistakeCounts.get(reason) ?? 0) + 1);
+    }
+    if (known(record.readTimeSeconds)) {
+      addErrorOpportunity(byRawInput, { key: `memory:read-time:${record.readTimeSeconds}`, label: `Display time · ${record.readTimeSeconds}s`, game: 'memory', error: sequenceError, record });
+    }
+    if (known(record.writeTimeSeconds)) {
+      addErrorOpportunity(byRawInput, { key: `memory:write-time:${record.writeTimeSeconds}`, label: `Answer limit · ${record.writeTimeSeconds}s`, game: 'memory', error: sequenceError, record });
+    }
+    if (isTimeout) return;
+    for (let position = 0; position < targetDigits.length; position += 1) {
+      const receivedDigit = receivedDigits[position] ?? '';
+      const missing = receivedDigit === '';
+      const wrong = !missing && receivedDigit !== targetDigits[position];
+      addErrorOpportunity(byRawInput, { key: `memory:digit-position:${position + 1}`, label: `Digit position ${position + 1}`, game: 'memory', error: missing || wrong, record });
+      addErrorOpportunity(byRawInput, { key: 'memory:missing-digit', label: 'Missing digit', game: 'memory', error: missing, record });
+      addErrorOpportunity(byRawInput, { key: 'memory:wrong-digit', label: 'Wrong digit', game: 'memory', error: wrong, record });
+      if (missing || wrong) {
+        const label = missing ? `Missing digit · position ${position + 1}` : `Wrong digit · position ${position + 1}`;
+        mistakesForAttempt.push({ key: missing ? 'memory:missing-digit' : 'memory:wrong-digit', label,
+          detail: `Value ${valueIndex + 1}: expected ${targetDigits[position]}, entered ${missing ? 'nothing' : receivedDigit}` });
+        mistakeCounts.set(label, (mistakeCounts.get(label) ?? 0) + 1);
+      }
+    }
+    const extraDigit = receivedDigits.length > targetDigits.length;
+    addErrorOpportunity(byRawInput, { key: 'memory:extra-digit', label: 'Added digit', game: 'memory', error: extraDigit, record });
+    if (extraDigit) {
+      const label = 'Added digit';
+      mistakesForAttempt.push({ key: 'memory:extra-digit', label, detail: `Value ${valueIndex + 1} has ${receivedDigits.length - targetDigits.length} extra digit(s)` });
+      mistakeCounts.set(label, (mistakeCounts.get(label) ?? 0) + 1);
+    }
+    const decimalWrong = target.includes('.') !== received.includes('.') || (target.includes('.') && target.indexOf('.') !== received.indexOf('.'));
+    addErrorOpportunity(byRawInput, { key: 'memory:decimal-placement', label: 'Decimal point placement', game: 'memory', error: decimalWrong, record });
+    if (decimalWrong) {
+      const label = 'Wrong decimal placement';
+      mistakesForAttempt.push({ key: 'memory:decimal-placement', label, detail: `Value ${valueIndex + 1}: correct ${target}, entered ${received}` });
+      mistakeCounts.set(label, (mistakeCounts.get(label) ?? 0) + 1);
+    }
+  });
+}
+
+function addTaskEvidence(record, byCategory, byRawInput, numericResponses, mistakesForAttempt, mistakeCounts) {
+  if (known(record.workspaceKind)) addErrorOpportunity(byCategory, {
+    key: `task:workspace:${record.workspaceKind}`, label: `${record.workspaceKind[0].toUpperCase()}${record.workspaceKind.slice(1)} workflow`,
+    game: 'task', error: record.outcome !== 'Correct', record,
+  });
+  const evidence = Array.isArray(record.taskStepEvidence) ? record.taskStepEvidence : null;
+  if (evidence) for (const step of evidence) {
+    const status = step?.status;
+    if (!['correct', 'missing', 'wrong-value', 'out-of-order', 'wrong-target'].includes(status)) continue;
+    const error = status !== 'correct';
+    const fieldLabel = String(step.targetLabel || step.targetId || step.type || 'Expected action');
+    const typeLabel = String(step.type || 'action');
+    const expectedNumeric = typeof step.expectedValue === 'number' || typeof step.expectedValue === 'string' && /^-?(?:\d+|\d*\.\d+)$/.test(step.expectedValue.trim()) ? Number(step.expectedValue) : null;
+    const actualNumeric = typeof step.actualValue === 'number' || typeof step.actualValue === 'string' && /^-?(?:\d+|\d*\.\d+)$/.test(step.actualValue.trim()) ? Number(step.actualValue) : null;
+    const numericPercent = expectedNumeric !== null && actualNumeric !== null
+      ? expectedNumeric === 0 ? actualNumeric === 0 ? 0 : null : Math.abs(actualNumeric - expectedNumeric) / Math.abs(expectedNumeric) * 100 : null;
+    addErrorOpportunity(byCategory, { key: `task:action:${typeLabel}`, label: `${typeLabel.replaceAll('-', ' ')} actions`, game: 'task', error, record, percentageError: numericPercent });
+    addErrorOpportunity(byRawInput, { key: `task:field:${step.targetId || fieldLabel}`, label: fieldLabel, game: 'task', error, record, percentageError: numericPercent });
+    if (error) {
+      const label = status === 'wrong-value' ? `Wrong value · ${fieldLabel}` : status === 'out-of-order' ? `Out of order · ${fieldLabel}` : status === 'wrong-target' ? `Wrong field · ${fieldLabel}` : `Missing action · ${fieldLabel}`;
+      mistakesForAttempt.push({ key: `task:${status}`, label, detail: [known(step.expectedValue) ? `Expected ${step.expectedValue}` : '', known(step.actualValue) ? `entered ${step.actualValue}` : ''].filter(Boolean).join(', ') });
+      mistakeCounts.set(label, (mistakeCounts.get(label) ?? 0) + 1);
+    }
+  }
+  if (Array.isArray(record.taskMistakeCategories)) for (const kind of ['missing', 'extra', 'out-of-order']) {
+    addErrorOpportunity(byCategory, { key: `task:mistake:${kind}`, label: `${kind.replaceAll('-', ' ')} actions`, game: 'task', error: record.taskMistakeCategories.includes(kind), record });
+  }
+  if (Array.isArray(record.taskNumericResponses) && record.outcome !== 'Timed Out') for (const response of record.taskNumericResponses) {
+    if (!response || typeof response !== 'object') continue;
+    const numeric = numericErrorResponse({ record, game: 'task', label: response.label ?? 'Numeric task answer', expectedValue: response.expectedValue, submittedValue: response.submittedValue, answerExpected: response.submittedValue !== null });
+    if (numeric) numericResponses.push(numeric);
+  }
+}
+
+function addCashEvidence(record, byCategory, byRawInput, numericResponses, mistakesForAttempt, mistakeCounts) {
+  const isTimeout = record.outcome === 'Timed Out';
+  const type = record.cashTransactionType ?? record.transactionType;
+  if (known(type)) {
+    const typeWrong = isTimeout || (known(record.userAnswer) && record.userAnswer !== type);
+    addErrorOpportunity(byCategory, { key: 'cash:transaction-type', label: 'Exact / Change / Short recognition', game: 'cash', error: typeWrong, record });
+    if (typeWrong) {
+      const label = `Wrong transaction type · ${type}`;
+      mistakesForAttempt.push({ key: 'cash:transaction-type', label, detail: `Selected ${record.userAnswer || 'no answer'}` });
+      mistakeCounts.set(label, (mistakeCounts.get(label) ?? 0) + 1);
+    }
+  }
+  const expectedCents = integer(record.changeOrShortfallCents);
+  const submittedCents = integer(record.userDeclaredAmountCents);
+  const answeredNumber = !isTimeout && known(record.userAnswer) && expectedCents !== null && submittedCents !== null;
+  if (type && type !== 'Exact') {
+    const amountError = isTimeout || (answeredNumber && expectedCents !== submittedCents);
+    const amountKey = `cash:amount:${String(type).toLowerCase()}`;
+    const amountPercent = answeredNumber ? expectedCents === 0 ? submittedCents === 0 ? 0 : null : Math.abs(submittedCents - expectedCents) / Math.abs(expectedCents) * 100 : null;
+    addErrorOpportunity(byCategory, { key: amountKey, label: type === 'Change' ? 'Giving change amount' : 'Shortfall amount', game: 'cash', error: amountError, record, percentageError: amountPercent });
+    if (amountError) {
+      const difference = answeredNumber ? submittedCents - expectedCents : null;
+      const label = answeredNumber ? difference > 0 ? 'Too much change / shortfall' : difference < 0 ? 'Too little change / shortfall' : 'Amount calculation' : 'Amount timeout';
+      mistakesForAttempt.push({ key: 'cash:amount', label, detail: difference === null ? 'No numeric answer recorded' : `${centsText(Math.abs(difference))} away from the correct amount` });
+      mistakeCounts.set(label, (mistakeCounts.get(label) ?? 0) + 1);
+    }
+  }
+  if (answeredNumber) {
+    const numeric = numericErrorResponse({ record, game: 'cash', label: type === 'Change' ? 'Giving change amount' : type === 'Short' ? 'Shortfall amount' : 'Exact payment amount', expectedValue: expectedCents, submittedValue: submittedCents, unit: 'cents' });
+    if (numeric) numericResponses.push(numeric);
+  }
+  if (record.cashBuilder === true && expectedCents !== null) {
+    const builderError = isTimeout || integer(record.userCashTotalCents) === null || integer(record.userCashTotalCents) !== expectedCents;
+    addErrorOpportunity(byCategory, { key: 'cash:builder-total', label: 'Cash Builder total', game: 'cash', error: builderError, record });
+    if (builderError) {
+      const label = 'Cash Builder total mismatch';
+      mistakesForAttempt.push({ key: 'cash:builder-total', label, detail: `Expected ${centsText(expectedCents)}; selected ${integer(record.userCashTotalCents) === null ? 'no total' : centsText(record.userCashTotalCents)}` });
+      mistakeCounts.set(label, (mistakeCounts.get(label) ?? 0) + 1);
+    }
+  }
+  if (known(record.customerBillRequestKind) && record.customerBillRequestKind !== 'Not requested') {
+    const requestError = isTimeout || record.customerRequestResult !== 'Handled';
+    addErrorOpportunity(byCategory, { key: 'cash:customer-request', label: 'Customer bill request', game: 'cash', error: requestError, record });
+    if (requestError) {
+      const label = 'Customer bill request not fulfilled';
+      mistakesForAttempt.push({ key: 'cash:customer-request', label, detail: record.customerBillRequestHandling ?? '' });
+      mistakeCounts.set(label, (mistakeCounts.get(label) ?? 0) + 1);
+    }
+  }
+  const expectedCounts = validDenominationCountMap(record.cashExpectedDenominationCounts) ? record.cashExpectedDenominationCounts : null;
+  const submittedCounts = validDenominationCountMap(record.userCashDenominationCounts) ? record.userCashDenominationCounts : null;
+  if (record.cashDenominationStrictRequest === true && expectedCounts && submittedCounts && !isTimeout) {
+    const expectedBills = Object.entries(expectedCounts).filter(([cents]) => Number(cents) >= 100).reduce((sum, [, count]) => sum + Number(count), 0);
+    const submittedBills = Object.entries(submittedCounts).filter(([cents]) => Number(cents) >= 100).reduce((sum, [, count]) => sum + Number(count), 0);
+    const expectedCoins = Object.entries(expectedCounts).filter(([cents]) => Number(cents) < 100).reduce((sum, [, count]) => sum + Number(count), 0);
+    const submittedCoins = Object.entries(submittedCounts).filter(([cents]) => Number(cents) < 100).reduce((sum, [, count]) => sum + Number(count), 0);
+    for (const [key, label, expected, submitted] of [
+      ['bill-count', 'Number of bills', expectedBills, submittedBills], ['coin-count', 'Number of coins', expectedCoins, submittedCoins],
+    ]) {
+      const error = expected !== submitted;
+      addErrorOpportunity(byRawInput, { key: `cash:${key}`, label, game: 'cash', error, record });
+      if (error) {
+        const detail = `${label}: expected ${expected}, selected ${submitted}`;
+        mistakesForAttempt.push({ key: `cash:${key}`, label: `Wrong ${label.toLowerCase()}`, detail });
+        mistakeCounts.set(detail, (mistakeCounts.get(detail) ?? 0) + 1);
+      }
+    }
+    if (expectedBills > 0 && expectedCoins > 0) {
+      const error = submittedBills === 0 || submittedCoins === 0;
+      addErrorOpportunity(byRawInput, { key: 'cash:mixed-bills-coins', label: 'Mixed bills + coins', game: 'cash', error, record });
+      if (error) {
+        const label = 'Mixed bill and coin request not followed';
+        mistakesForAttempt.push({ key: 'cash:mixed-bills-coins', label, detail: 'The requested payout requires both bills and coins.' });
+        mistakeCounts.set(label, (mistakeCounts.get(label) ?? 0) + 1);
+      }
+    }
+    for (const [denomination, label] of Object.entries(CASH_DENOMINATION_LABELS)) {
+      const expected = Number(expectedCounts[denomination] ?? 0);
+      const submitted = Number(submittedCounts[denomination] ?? 0);
+      const error = expected !== submitted;
+      addErrorOpportunity(byRawInput, { key: `cash:denomination:${denomination}`, label, game: 'cash', error, record });
+      if (error) {
+        const detail = `${label}: expected ${expected}, selected ${submitted}`;
+        mistakesForAttempt.push({ key: `cash:denomination:${denomination}`, label: `Wrong ${label.toLowerCase()} count`, detail });
+        mistakeCounts.set(detail, (mistakeCounts.get(detail) ?? 0) + 1);
+      }
+    }
+  }
+}
+
+function addErrorDetectionEvidence(record, byCategory, byRawInput, mistakesForAttempt, mistakeCounts) {
+  const family = record.puzzleFamilyId ?? record.puzzleFamily;
+  if (known(family)) addErrorOpportunity(byCategory, { key: `error-detection:family:${family}`, label: `${family} puzzle`, game: 'error-detection', error: record.outcome !== 'Correct', record });
+  if (Array.isArray(record.errorDetailEvidence)) {
+    for (const clue of record.errorDetailEvidence) {
+      if (!clue || typeof clue !== 'object') continue;
+      const error = Boolean(clue.isAnomaly) !== Boolean(clue.selected);
+      addErrorOpportunity(byRawInput, { key: `error-detection:clue:${clue.id}`, label: clue.label ?? clue.id, game: 'error-detection', error, record });
+      if (error) {
+        const label = clue.isAnomaly ? `Missed anomaly · ${clue.label ?? clue.id}` : `False positive · ${clue.label ?? clue.id}`;
+        mistakesForAttempt.push({ key: 'error-detection:clue', label, detail: `Displayed ${clue.presentedValue ?? 'clue'}${known(clue.expectedValue) ? `; expected ${clue.expectedValue}` : ''}` });
+        mistakeCounts.set(label, (mistakeCounts.get(label) ?? 0) + 1);
+      }
+    }
+  }
+  const expectedIds = Array.isArray(record.expectedErrorIds) ? record.expectedErrorIds : null;
+  const missedIds = Array.isArray(record.missedErrorIds) ? record.missedErrorIds : null;
+  const flaggedIds = Array.isArray(record.falseFlagIds) ? record.falseFlagIds : null;
+  const expectedCount = integer(record.expectedErrorCount) ?? expectedIds?.length ?? null;
+  const missedCount = integer(record.missedAnomalyCount) ?? missedIds?.length ?? null;
+  const falseFlagCount = integer(record.falseFlagCount) ?? flaggedIds?.length ?? null;
+  if (expectedCount !== null && missedCount !== null) {
+    const missedSet = new Set(missedIds ?? []);
+    for (let index = 0; index < expectedCount; index += 1) addErrorOpportunity(byCategory, {
+      key: 'error-detection:missed-anomaly', label: 'Missed anomaly', game: 'error-detection', error: missedIds ? missedSet.has(expectedIds[index]) : index < missedCount, record,
+    });
+  }
+  if (expectedCount !== null && falseFlagCount !== null) {
+    const clueCount = integer(record.detailCount);
+    const validCount = clueCount === null ? null : Math.max(0, clueCount - expectedCount);
+    if (validCount > 0) {
+      // One clue-level trial per valid clue; the selected valid clues are false positives.
+      const validIds = flaggedIds ?? Array.from({ length: falseFlagCount }, (_, index) => `false-${index}`);
+      for (let index = 0; index < validCount; index += 1) addErrorOpportunity(byCategory, {
+        key: 'error-detection:false-positive', label: 'False-positive clue selection', game: 'error-detection', error: validIds[index] !== undefined, record,
+      });
+    }
+  }
+}
+
+function addFraudEvidence(record, byCategory, byRawInput, mistakesForAttempt, mistakeCounts) {
+  const resultMap = record.fraudCategoryResults && typeof record.fraudCategoryResults === 'object' ? record.fraudCategoryResults : null;
+  const expected = new Set(Array.isArray(record.fraudExpectedCategories) ? record.fraudExpectedCategories.filter((id) => typeof id === 'string' && id) : []);
+  const missed = new Set(Array.isArray(record.fraudMissedCategories) ? record.fraudMissedCategories.filter((id) => typeof id === 'string' && id) : []);
+  const falsePositive = new Set(Array.isArray(record.fraudFalsePositiveCategories) ? record.fraudFalsePositiveCategories.filter((id) => typeof id === 'string' && id) : []);
+  if (resultMap) {
+    for (const [id, outcome] of Object.entries(resultMap)) {
+      if (!['found', 'missed', 'false-positive', 'valid'].includes(outcome)) continue;
+      const label = FRAUD_ISSUE_LABELS[id] ?? id.replaceAll('-', ' ');
+      const isPresent = outcome === 'found' || outcome === 'missed';
+      const isFalseNegative = outcome === 'missed';
+      const isFalsePositive = outcome === 'false-positive';
+      const error = isFalseNegative || isFalsePositive;
+      const opportunityKey = `fraud:issue-${isPresent ? 'present' : 'absent'}:${id}`;
+      const opportunityLabel = isPresent ? `Missed ${label} when present` : `False positive · ${label} when absent`;
+      addErrorOpportunity(byRawInput, { key: opportunityKey, label: opportunityLabel, game: 'fraud-inspection', error, record, falseNegative: isFalseNegative, falsePositive: isFalsePositive });
+      addErrorOpportunity(byCategory, { key: `fraud:category:${isPresent ? 'present' : 'absent'}:${id}`, label: opportunityLabel, game: 'fraud-inspection', error, record, falseNegative: isFalseNegative, falsePositive: isFalsePositive });
+      if (error) {
+        const mistakeLabel = isFalseNegative ? `Missed ${label.toLowerCase()}` : `False positive · ${label.toLowerCase()}`;
+        mistakesForAttempt.push({ key: isFalseNegative ? 'fraud:missed-issue' : 'fraud:false-positive', label: mistakeLabel, detail: `Issue ${id}` });
+        mistakeCounts.set(mistakeLabel, (mistakeCounts.get(mistakeLabel) ?? 0) + 1);
+      }
+    }
+  } else {
+    for (const id of expected) {
+      const isFalseNegative = missed.has(id);
+      const label = FRAUD_ISSUE_LABELS[id] ?? id.replaceAll('-', ' ');
+      const opportunityKey = `fraud:issue-present:${id}`;
+      const opportunityLabel = `Missed ${label} when present`;
+      addErrorOpportunity(byRawInput, { key: opportunityKey, label: opportunityLabel, game: 'fraud-inspection', error: isFalseNegative, record, falseNegative: isFalseNegative });
+      addErrorOpportunity(byCategory, { key: `fraud:category:present:${id}`, label: opportunityLabel, game: 'fraud-inspection', error: isFalseNegative, record, falseNegative: isFalseNegative });
+      if (isFalseNegative) {
+        const mistakeLabel = `Missed ${label.toLowerCase()}`;
+        mistakesForAttempt.push({ key: 'fraud:missed-issue', label: mistakeLabel, detail: `Issue ${id}` });
+        mistakeCounts.set(mistakeLabel, (mistakeCounts.get(mistakeLabel) ?? 0) + 1);
+      }
+    }
+    for (const id of falsePositive) {
+      const label = FRAUD_ISSUE_LABELS[id] ?? id.replaceAll('-', ' ');
+      const mistakeLabel = `False positive · ${label.toLowerCase()}`;
+      mistakesForAttempt.push({ key: 'fraud:false-positive', label: mistakeLabel, detail: `Issue ${id}; absent-case opportunity count is unavailable in this older record` });
+      mistakeCounts.set(mistakeLabel, (mistakeCounts.get(mistakeLabel) ?? 0) + 1);
+    }
+  }
+  if (known(record.fraudCleanCase)) addErrorOpportunity(byCategory, {
+    key: record.fraudCleanCase ? 'fraud:clean-case' : 'fraud:issue-case', label: record.fraudCleanCase ? 'Clean-case recognition' : 'Issue-bearing case review',
+    game: 'fraud-inspection', error: record.outcome !== 'Correct', record,
+  });
+}
+
+function addConditionCombination(groups, record) {
+  if (record.outcome === 'Not answered') return;
+  let key = null; let label = null; let game = record.game;
+  if (game === 'cash' && known(record.cashTransactionType ?? record.transactionType) && known(record.difficulty)) {
+    const kind = record.cashDenominationStrictRequest ? 'strict-request' : record.cashBuilder ? 'cash-builder' : 'standard';
+    const transaction = String(record.cashTransactionType ?? record.transactionType).toLowerCase();
+    key = `cash:${transaction}:${record.difficulty}:${kind}`;
+    label = `${transaction === 'change' ? 'Giving Change' : transaction === 'short' ? 'Shortfall' : 'Exact payment'} · ${record.difficulty} · ${kind.replaceAll('-', ' ')}`;
+  } else if (game === 'memory' && known(record.totalDigits) && known(record.readTimeSeconds) && known(record.difficulty)) {
+    key = `memory:${record.totalDigits}-digits:${record.readTimeSeconds}s:${record.difficulty}`;
+    label = `${record.totalDigits} digits · ${record.readTimeSeconds}s display · ${record.difficulty}`;
+  } else if (game === 'task' && known(record.workspaceKind) && known(record.stepsExpected) && known(record.difficulty)) {
+    key = `task:${record.workspaceKind}:${record.stepsExpected}:${record.difficulty}`;
+    label = `${record.workspaceKind} · ${record.stepsExpected} steps · ${record.difficulty}`;
+  } else if (game === 'error-detection' && known(record.puzzleFamilyId ?? record.puzzleFamily) && known(record.ruleLayers) && known(record.difficulty)) {
+    const family = record.puzzleFamilyId ?? record.puzzleFamily;
+    key = `error-detection:${family}:${record.ruleLayers}:${record.difficulty}`;
+    label = `${family} · ${record.ruleLayers} rule layers · ${record.difficulty}`;
+  } else if (game === 'fraud-inspection' && known(record.fraudCaseDifficulty ?? record.difficulty) && known(record.fraudRunMode)) {
+    const difficulty = record.fraudCaseDifficulty ?? record.difficulty;
+    key = `fraud-inspection:${difficulty}:${record.fraudRunMode}`;
+    label = `${difficulty} case · ${record.fraudRunMode}`;
+  }
+  if (key) addErrorOpportunity(groups, { key, label, game, error: record.outcome !== 'Correct', record });
+}
+
+function addInputCombinationEvidence(groups, record, add) {
+  const game = record.game;
+  const difficulty = game === 'fraud-inspection' ? record.fraudCaseDifficulty ?? record.difficulty : record.difficulty;
+  const timeLimit = game === 'fraud-inspection' ? record.fraudTimeLimitSeconds ?? record.timeLimitSeconds : record.timeLimitSeconds;
+  const settings = [known(difficulty) ? String(difficulty) : '', known(timeLimit) ? `${timeLimit}s limit` : 'timer not recorded'].filter(Boolean).join(' · ');
+  if (game === 'cash' && record.cashDenominationStrictRequest === true && record.cashExpectedDenominationCounts && record.userCashDenominationCounts && record.outcome !== 'Timed Out') {
+    if (!validDenominationCountMap(record.cashExpectedDenominationCounts) || !validDenominationCountMap(record.userCashDenominationCounts)) return;
+    const expected = record.cashExpectedDenominationCounts;
+    const submitted = record.userCashDenominationCounts;
+    const denominations = [...new Set([...Object.keys(expected), ...Object.keys(submitted)])]
+      .filter((cents) => Number(expected[cents] ?? 0) > 0 || Number(submitted[cents] ?? 0) > 0)
+      .map(Number).sort((left, right) => right - left);
+    if (denominations.length) {
+      const values = denominations.join('+');
+      const mix = denominations.map((cents) => CASH_DENOMINATION_LABELS[cents] ?? `${cents}¢`).join(' + ');
+      add(groups, { key: `cash:mix:${record.cashTransactionType ?? record.transactionType}:${values}:${settings}`,
+        label: `Cash request · ${mix} · ${settings}`, game,
+        error: denominations.some((cents) => Number(expected[cents] ?? 0) !== Number(submitted[cents] ?? 0)), record, kind: 'input-combination' });
+    }
+  }
+  if (game === 'memory' && Array.isArray(record.expectedValues)) {
+    const expectedDigits = Array.isArray(record.digitsByValue) ? record.digitsByValue : record.expectedValues.map((value) => String(value).replace('.', '').length);
+    const displayTime = known(record.readTimeSeconds) ? `${record.readTimeSeconds}s display` : 'display time not recorded';
+    const answerLimit = known(record.writeTimeSeconds) ? `${record.writeTimeSeconds}s answer limit` : 'answer limit not recorded';
+    const memorySettings = [known(difficulty) ? String(difficulty) : '', displayTime, answerLimit].filter(Boolean).join(' · ');
+    for (let index = 0; index < record.expectedValues.length; index += 1) {
+      const expected = String(record.expectedValues[index]);
+      const answered = record.outcome === 'Timed Out' ? '' : String(record.answeredValues?.[index] ?? '').replaceAll(/\s/g, '');
+      const length = Number(expectedDigits[index]);
+      if (!Number.isFinite(length)) continue;
+      add(groups, { key: `memory:digits:${length}:${memorySettings}`, label: `${length}-digit recall · ${memorySettings}`, game,
+        error: record.outcome === 'Timed Out' || expected !== answered, record, kind: 'input-combination' });
+    }
+  }
+  if (game === 'task' && Array.isArray(record.taskStepEvidence)) for (const step of record.taskStepEvidence) {
+    if (!['correct', 'missing', 'wrong-value', 'out-of-order', 'wrong-target'].includes(step?.status)) continue;
+    const field = String(step.targetLabel || step.targetId || step.type || 'Expected task action');
+    add(groups, { key: `task:field:${step.targetId || field}:${record.workspaceKind ?? 'workflow-unknown'}:${settings}`,
+      label: `${record.workspaceKind ?? 'Task'} · ${field} · ${settings}`, game, error: step.status !== 'correct', record, kind: 'input-combination' });
+  }
+  if (game === 'error-detection' && Array.isArray(record.errorDetailEvidence)) {
+    const family = record.puzzleFamilyId ?? record.puzzleFamily ?? 'Puzzle';
+    for (const clue of record.errorDetailEvidence) {
+      if (!clue || typeof clue !== 'object') continue;
+      const error = Boolean(clue.isAnomaly) !== Boolean(clue.selected);
+      add(groups, { key: `error-detection:clue:${clue.id}:${family}:${record.ruleLayers ?? 'layers-unknown'}:${settings}`,
+        label: `${family} · ${clue.label ?? clue.id} · ${record.ruleLayers ?? 'unknown'} rule layers · ${settings}`,
+        game, error, record, kind: 'input-combination' });
+    }
+  }
+  if (game === 'fraud-inspection' && record.fraudCategoryResults && typeof record.fraudCategoryResults === 'object') {
+    for (const [id, status] of Object.entries(record.fraudCategoryResults)) {
+      if (!['found', 'missed', 'false-positive', 'valid'].includes(status)) continue;
+      const error = status === 'missed' || status === 'false-positive';
+      if (!error && !['found', 'valid'].includes(status)) continue;
+      const issue = FRAUD_ISSUE_LABELS[id] ?? id;
+      const mistake = status === 'missed' ? 'missed' : status === 'false-positive' ? 'false positive' : 'checked';
+      add(groups, { key: `fraud:issue:${id}:${status === 'false-positive' || status === 'valid' ? 'absent' : 'present'}:${settings}`,
+        label: `${issue} ${status === 'false-positive' || status === 'valid' ? 'absent' : 'present'} · ${mistake} · ${settings}`,
+        game, error, record, kind: 'input-combination' });
+    }
+  }
+}
+
+/**
+ * Analyze completed attempts from the already-filtered history set. The caller
+ * may pass an explicitly matched earlier set for the change-over-time comparison.
+ */
+export function buildErrorAnalytics(history, { previousRecords = [], comparisonCurrentRecords = null, minimumOpportunities = 5, sortBy = 'error-rate', comparisonDisabled = false } = {}) {
+  const records = modelRows(history);
+  const completed = records.filter((record) => ANSWERED_OUTCOMES.has(record.outcome));
+  const summary = summarizeErrorOutcomes(records);
+  const byCategoryGroups = newErrorGroups();
+  const byRawInputGroups = newErrorGroups();
+  const bySettingGroups = newErrorGroups();
+  const combinationGroups = newErrorGroups();
+  const inputCombinationGroups = newErrorGroups();
+  const numericResponses = [];
+  const mistakeCounts = new Map();
+  const attemptDetails = new Map();
+
+  for (const record of completed) {
+    const mistakesForAttempt = [];
+    if (record.game === 'cash') addCashEvidence(record, byCategoryGroups, byRawInputGroups, numericResponses, mistakesForAttempt, mistakeCounts);
+    if (record.game === 'memory') addMemoryEvidence(record, byCategoryGroups, byRawInputGroups, mistakeCounts, mistakesForAttempt);
+    if (record.game === 'task') addTaskEvidence(record, byCategoryGroups, byRawInputGroups, numericResponses, mistakesForAttempt, mistakeCounts);
+    if (record.game === 'error-detection') addErrorDetectionEvidence(record, byCategoryGroups, byRawInputGroups, mistakesForAttempt, mistakeCounts);
+    if (record.game === 'fraud-inspection') addFraudEvidence(record, byCategoryGroups, byRawInputGroups, mistakesForAttempt, mistakeCounts);
+    addSettingGroups(bySettingGroups, record, addErrorOpportunity);
+    addConditionCombination(combinationGroups, record);
+    addInputCombinationEvidence(inputCombinationGroups, record, addErrorOpportunity);
+    attemptDetails.set(record.attemptId, { attemptId: record.attemptId, game: record.game, outcome: record.outcome, mistakes: mistakesForAttempt });
+  }
+
+  const byCategory = finishErrorGroups(byCategoryGroups, minimumOpportunities, sortBy);
+  const byRawInput = finishErrorGroups(byRawInputGroups, minimumOpportunities, sortBy);
+  // Difficulty groups are also useful as explicit setting comparisons.
+  const difficultyMap = newErrorGroups();
+  for (const record of completed) {
+    const difficulty = record.game === 'fraud-inspection' ? record.fraudCaseDifficulty ?? record.difficulty : record.difficulty;
+    if (known(difficulty)) addErrorOpportunity(difficultyMap, { key: `${record.game}:${difficulty}`, label: `${record.gameName} · ${difficulty}`, game: record.game, error: record.outcome !== 'Correct', record });
+  }
+  const difficultyGroups = finishErrorGroups(difficultyMap, minimumOpportunities, sortBy);
+  const bySetting = finishErrorGroups(bySettingGroups, minimumOpportunities, sortBy);
+  const combinations = finishErrorGroups(combinationGroups, minimumOpportunities, sortBy);
+  const inputCombinations = finishErrorGroups(inputCombinationGroups, minimumOpportunities, sortBy);
+  const eligibleSkills = [...byCategory, ...byRawInput, ...inputCombinations].filter((group) => group.eligibleForRanking);
+  const weaknesses = eligibleSkills.filter((group) => group.errorRatePercent > 0).sort((left, right) => right.errorRatePercent - left.errorRatePercent || right.opportunities - left.opportunities).slice(0, 5);
+  const strengths = eligibleSkills.filter((group) => group.errorRatePercent < 20).sort((left, right) => left.errorRatePercent - right.errorRatePercent || right.opportunities - left.opportunities).slice(0, 5);
+  const mostCommonMistakes = [...mistakeCounts.entries()].map(([label, count]) => ({ label, count })).sort((left, right) => right.count - left.count || left.label.localeCompare(right.label)).slice(0, 8);
+  const sortedNumeric = [...numericResponses].sort((left, right) => (Date.parse(left.timestamp) || 0) - (Date.parse(right.timestamp) || 0));
+  const percentResponses = sortedNumeric.filter((row) => row.percentageError !== null);
+  const numericDistribution = ERROR_DISTRIBUTION_BANDS.map((band) => ({ key: band.key, label: band.label, count: percentResponses.filter((row) => band.test(row.percentageError)).length,
+    attemptIds: percentResponses.filter((row) => band.test(row.percentageError)).map((row) => row.attemptId) }));
+  const largestNumericError = [...sortedNumeric].sort((left, right) => right.absoluteError - left.absoluteError)[0] ?? null;
+  const recentRows = completed.slice(-30);
+  const recent = summarizeErrorOutcomes(recentRows);
+  const longTerm = summary;
+  const summaryWithMagnitude = {
+    ...summary, notAnswered: records.filter((record) => record.outcome === 'Not answered').length,
+    numericResponses: numericResponses.length, numericNotApplicable: numericResponses.filter((row) => row.percentageError === null).length,
+    averagePercentageError: percentResponses.length ? round2(average(percentResponses.map((row) => row.percentageError))) : null,
+    medianPercentageError: percentResponses.length ? round2(median(percentResponses.map((row) => row.percentageError))) : null,
+    recentErrorRatePercent: recent.errorRatePercent, longTermErrorRatePercent: longTerm.errorRatePercent,
+  };
+
+  let comparison = { available: false, current: null, previous: null, errorRateDeltaPoints: null, improvementPoints: null, label: 'Not enough comparable attempts yet', categoryChanges: [] };
+  if (!comparisonDisabled) {
+    const prior = buildErrorAnalytics(previousRecords, { minimumOpportunities, sortBy, comparisonDisabled: true });
+    const currentAnalytics = comparisonCurrentRecords === null ? null
+      : buildErrorAnalytics(comparisonCurrentRecords, { minimumOpportunities, sortBy, comparisonDisabled: true });
+    const current = currentAnalytics?.summary ?? recent;
+    if (prior.summary.attempts >= minimumOpportunities && current.attempts >= minimumOpportunities) {
+      const delta = round2(current.errorRatePercent - prior.summary.errorRatePercent);
+      const numberCompared = prior.summary.attempts;
+      const suffix = numberCompared === 1 ? 'attempt' : 'attempts';
+      const currentGroups = currentAnalytics ? currentAnalytics.byRawInput.concat(currentAnalytics.byCategory, currentAnalytics.inputCombinations) : [];
+      const changes = new Map(prior.byRawInput.concat(prior.byCategory, prior.inputCombinations).map((group) => [group.key, group]));
+      comparison = {
+        available: true,
+        current,
+        previous: prior.summary,
+        errorRateDeltaPoints: delta,
+        improvementPoints: delta === null ? null : -delta,
+        label: `Previous ${numberCompared} relevant ${suffix}`,
+        categoryChanges: currentGroups.filter((group) => group.eligibleForRanking && changes.has(group.key) && changes.get(group.key).eligibleForRanking)
+          .map((group) => ({ key: group.key, label: group.label, currentErrorRatePercent: group.errorRatePercent,
+            previousErrorRatePercent: changes.get(group.key).errorRatePercent,
+            errorRateDeltaPoints: round2(group.errorRatePercent - changes.get(group.key).errorRatePercent),
+            currentOpportunities: group.opportunities, previousOpportunities: changes.get(group.key).opportunities }))
+          .sort((left, right) => (left.errorRateDeltaPoints ?? 0) - (right.errorRateDeltaPoints ?? 0)),
+      };
+    }
+  }
+  const sampleRows = records.filter((record) => record.isSample === true).length;
+  const dataLabel = sampleRows === records.length && records.length ? 'Based on Sample Data' : sampleRows ? 'Mixed real and sample data' : null;
+  const allAttemptIds = completed.map((record) => record.attemptId);
+  const makeChart = (id, title, kind, metric, points, axisLabel) => ({
+    id, title, kind, axisLabel, attemptIds: [...new Set(points.flatMap((point) => point.attemptIds ?? []))],
+    series: [{ metric, points }],
+  });
+  const categoryPoints = byCategory.map((group) => ({ key: group.key, label: group.label, value: group.errorRatePercent, count: group.opportunities, opportunities: group.opportunities,
+    errors: group.errors, attemptCount: group.attemptCount, attemptIds: group.attemptIds, interval: group.interval }));
+  const rawInputPoints = byRawInput.map((group) => ({ key: group.key, label: group.label, value: group.errorRatePercent, count: group.opportunities, opportunities: group.opportunities,
+    errors: group.errors, attemptCount: group.attemptCount, attemptIds: group.attemptIds, interval: group.interval }));
+  const trendPoints = rateTrend(records);
+  const magnitudePoints = sortedNumeric.map((row, index) => ({ key: row.attemptId, label: `Attempt ${index + 1}`, value: row.percentageError, count: 1,
+    attemptIds: [row.attemptId], expectedValue: row.expectedValue, submittedValue: row.submittedValue, absoluteError: row.absoluteError }));
+  return {
+    summary: summaryWithMagnitude, byCategory, byRawInput, byDifficulty: difficultyGroups, bySetting,
+    combinations, inputCombinations, weaknesses, strengths,
+    highestErrorCategory: byCategory.filter((group) => group.eligibleForRanking).sort((left, right) => right.errorRatePercent - left.errorRatePercent)[0] ?? null,
+    highestErrorRawInput: byRawInput.filter((group) => group.eligibleForRanking).sort((left, right) => right.errorRatePercent - left.errorRatePercent)[0] ?? null,
+    highestErrorInputCombination: inputCombinations.filter((group) => group.eligibleForRanking).sort((left, right) => right.errorRatePercent - left.errorRatePercent)[0] ?? null,
+    lowestErrorCategory: byCategory.filter((group) => group.eligibleForRanking).sort((left, right) => left.errorRatePercent - right.errorRatePercent)[0] ?? null,
+    mostCommonMistakes,
+    numeric: {
+      responses: sortedNumeric,
+      averagePercentageError: summaryWithMagnitude.averagePercentageError,
+      medianPercentageError: summaryWithMagnitude.medianPercentageError,
+      largestNumericError,
+      notApplicable: summaryWithMagnitude.numericNotApplicable,
+      distribution: numericDistribution,
+      severityFor: errorSeverityFor,
+    },
+    trend: trendPoints, recent, longTerm, comparison, dataLabel, attemptDetails,
+    charts: {
+      category: makeChart('error-rate-category', 'Error Rate by Category', 'bar', 'error-rate', categoryPoints, 'Error rate (%)'),
+      rawInput: makeChart('error-rate-raw-input', 'Error Rate by Raw Input', 'bar', 'error-rate', rawInputPoints, 'Error rate (%)'),
+      trend: makeChart('error-rate-over-time', 'Error Rate Over Time', 'line', 'error-rate', trendPoints, 'Error rate (%)'),
+      magnitude: makeChart('numeric-percentage-error', 'Numeric Error Magnitude by Attempt', 'line', 'percentage-error', magnitudePoints, 'Absolute percentage error'),
+    },
+    attemptIds: allAttemptIds,
+  };
+}
+
 /** Compare explicit date periods; dates are inclusive calendar days. */
 export function comparePeriods(history, periods = {}) {
   const records = modelRows(history);

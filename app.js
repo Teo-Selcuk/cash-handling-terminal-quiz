@@ -9,9 +9,9 @@ import {
 } from './fraud-inspection.mjs?v=20260922-signature-portrait';
 import { PRACTICE_GAMES, rankPracticeCandidates, recommendPractice, practiceSettings } from './adaptive-practice.mjs?v=20260918-progress';
 import {
-  buildChartSpecs, buildConditionalReport, buildGameFilters, buildProgressModel, comparePeriods,
+  buildChartSpecs, buildConditionalReport, buildErrorAnalytics, buildGameFilters, buildProgressModel, comparePeriods,
   filterHistory, recommendNextChallenge,
-} from './progress-analytics.mjs?v=20260923-performance-insights';
+} from './progress-analytics.mjs?v=20260923-error-analytics';
 import { generateSampleHistory } from './sample-history.mjs?v=20260923-sample-history';
 import {
   DENOMINATIONS,
@@ -59,6 +59,8 @@ const refs = Object.fromEntries([
   'feedback-kicker', 'feedback-lead', 'feedback-details', 'next-question', 'session-metrics',
   'start-another', 'summary-history', 'open-history', 'back-to-setup', 'history-metrics',
   'history-outcome-diagram', 'history-outcome-legend', 'history-outcomes-summary', 'history-accuracy-chart',
+  'history-error-analysis', 'history-error-data-label', 'history-error-metrics', 'history-error-highlights', 'history-error-comparison', 'history-error-charts',
+  'history-error-category-table', 'history-error-raw-table', 'history-error-combination-table', 'history-error-difficulty-table', 'history-error-numeric-table', 'history-error-distribution', 'error-analysis-sort',
   'history-rows', 'download-csv', 'clear-history', 'message', 'submit-answer', 'theme-toggle',
   'history-data-source', 'history-sample-banner', 'history-regenerate-sample', 'history-empty-real', 'history-view-sample',
   'history-game-tabs', 'history-quick-ranges', 'history-common-filters', 'history-game-filters', 'clear-history-filters',
@@ -85,7 +87,7 @@ const refs = Object.fromEntries([
 ].map((id) => [id, document.getElementById(id)]));
 
 const savedPresetState = loadPresetState();
-const historyView = { filters: { game: 'all' }, activeRange: 'all', charts: new Map(), conditions: [], dataSource: 'real', sampleRecords: null };
+const historyView = { filters: { game: 'all' }, activeRange: 'all', charts: new Map(), conditions: [], dataSource: 'real', sampleRecords: null, errorSort: 'error-rate' };
 
 const state = {
   activeScreen: 'setup',
@@ -1246,6 +1248,11 @@ function recordAnswer(answer, score, timedOut, elapsedSeconds) {
     userCashTotal: state.cashBuilderEnabled ? formatMoney(score.cashTotalCents) : '',
     userCashTotalCents: state.cashBuilderEnabled ? score.cashTotalCents : 0,
     userCashBreakdown: state.cashBuilderEnabled ? formatBreakdown(selectedCash) : '',
+    ...(customerRequest?.isValid && ['specific', 'remainder', 'high'].includes(customerRequest.kind) ? {
+      cashDenominationStrictRequest: true,
+      cashExpectedDenominationCounts: Object.fromEntries(customerRequest.expectedBreakdown.map((item) => [item.cents, item.count])),
+      userCashDenominationCounts: answer ? Object.fromEntries(selectedCash.map((item) => [item.cents, item.count])) : null,
+    } : {}),
     breakdownMatchesDeclaredAmount: score.breakdownMatches,
     customerBillRequest: customerRequest?.text ?? '',
     customerBillRequestKind: customerRequest?.kind ?? '',
@@ -1679,6 +1686,10 @@ function recordErrorDetectionAttempt(score, timedOut, elapsedSeconds) {
     selectedDetailIds: score.selectedDetailIds,
     missedErrorIds: score.missedErrorIds,
     falseFlagIds: score.falseFlagIds,
+    errorDetailEvidence: state.errorDetectionChallenge.details.map((detail) => ({
+      id: detail.id, label: detail.label, presentedValue: detail.value, expectedValue: detail.expectedValue,
+      isAnomaly: score.expectedErrorIds.includes(detail.id), selected: score.selectedDetailIds.includes(detail.id),
+    })),
     cleanPuzzle: score.errorCount === 0,
     missedErrors: describeErrorDetails(score.missedErrorIds, true),
     falseFlags: describeErrorDetails(score.falseFlagIds),
@@ -2971,9 +2982,65 @@ function taskActionAnalytics(challenge, actionLog) {
   };
 }
 
+function taskAnalyticsTargetLabel(step, kind) {
+  const id = String(step.targetId ?? '');
+  if (id === 'task-invoice-calculation') return 'Invoice · Final total';
+  if (id === 'task-invoice-verification' || id === 'task-case-verification') return `${kind === 'invoice' ? 'Invoice' : 'Case'} · Verification code`;
+  if (id.includes('invoice-reference')) return 'Invoice · Reference';
+  if (id.includes('invoice-status')) return 'Invoice · Review status';
+  if (id.includes('invoice-category')) return 'Invoice · Cost category';
+  if (id.includes('invoice-approved')) return 'Invoice · Approval received';
+  if (id.includes('invoice-verified')) return 'Invoice · Source verified';
+  if (id.includes('invoice-note')) return 'Invoice · Review note';
+  if (id.includes('case-reference')) return 'Case · Reference';
+  if (id.includes('case-status')) return 'Case · Status';
+  if (id.includes('case-queue')) return 'Case · Queue';
+  if (id.includes('case-followup')) return 'Case · Follow-up';
+  const rowField = id.match(/^task-row-(\d+)-(reference|status|priority|complete)$/);
+  if (rowField) return `Record row ${rowField[1]} · ${rowField[2]}`;
+  if (id === 'task-save-workspace') return 'Save changes';
+  if (step.type === 'activate-tab') return 'Workspace tab selection';
+  if (step.type.includes('dialog')) return 'Case note dialog';
+  if (step.type === 'open-workspace-tab') return 'Open verification workspace';
+  return step.instruction || id || step.type || 'Expected action';
+}
+
+function taskStepEvidence(challenge, actionLog) {
+  const steps = challenge.steps ?? [];
+  const used = new Set();
+  const matches = steps.map((step) => {
+    const index = actionLog.findIndex((action, actionIndex) => !used.has(actionIndex)
+      && action.type === step.type && action.targetId === step.targetId);
+    if (index < 0) return { step, actionIndex: null, action: null };
+    used.add(index);
+    return { step, actionIndex: index, action: actionLog[index] };
+  });
+  let latestExpectedIndex = -1;
+  const evidence = matches.map(({ step, actionIndex, action }, index) => {
+    let status = 'missing';
+    if (action) {
+      const valueMatches = step.value === undefined || (typeof step.value === 'boolean'
+        ? step.value === action.value : String(step.value) === String(action.value ?? ''));
+      status = !valueMatches ? 'wrong-value' : actionIndex < latestExpectedIndex ? 'out-of-order' : 'correct';
+      latestExpectedIndex = Math.max(latestExpectedIndex, actionIndex);
+    }
+    return {
+      stepNumber: index + 1, type: step.type, targetId: step.targetId,
+      targetLabel: taskAnalyticsTargetLabel(step, challenge.workspace.kind), expectedValue: step.value ?? null,
+      actualValue: action?.value ?? null, status,
+    };
+  });
+  const numericResponses = evidence.filter((step) => step.targetId === 'task-invoice-calculation').map((step) => ({
+    label: 'Invoice Final total', expectedValue: Number(step.expectedValue),
+    submittedValue: step.actualValue !== null && /^-?(?:\d+|\d*\.\d+)$/.test(String(step.actualValue).trim()) ? Number(step.actualValue) : null,
+  }));
+  return { taskStepEvidence: evidence, taskNumericResponses: numericResponses };
+}
+
 function recordTaskAttempt(score, timedOut, elapsedSeconds) {
   const challenge = state.taskChallenge;
   const actionAnalytics = taskActionAnalytics(challenge, state.taskActionLog);
+  const errorEvidence = taskStepEvidence(challenge, state.taskActionLog);
   return {
     timestamp: new Date().toISOString(),
     sessionId: state.sessionId,
@@ -2992,6 +3059,7 @@ function recordTaskAttempt(score, timedOut, elapsedSeconds) {
     mistakes: score.mistakes,
     sequenceAccuracyPercent: score.sequenceAccuracyPercent,
     ...actionAnalytics,
+    ...errorEvidence,
     timeLimitSeconds: challenge.recallSeconds,
     timeUsedSeconds: Number(elapsedSeconds.toFixed(1)),
     expectedAnswer: `${score.expectedSteps} ordered steps`,
@@ -3476,12 +3544,14 @@ function chartValue(point, metric) {
   if (metric === 'attempts') return `${point.value}`;
   if (metric === 'cents') return `${Math.round(point.value)}¢`;
   if (['actions', 'digits', 'selections'].includes(metric)) return Number(point.value).toFixed(1);
+  if (['accuracy', 'error-rate', 'percentage-error'].includes(metric)) return `${Number(point.value).toFixed(metric === 'accuracy' || metric === 'error-rate' ? 0 : 2)}%`;
   return `${point.value}%`;
 }
 
 function chartHueColor(value, minimum, maximum, metric) {
   const ratio = maximum === minimum ? 0.5 : Math.max(0, Math.min(1, (value - minimum) / (maximum - minimum)));
-  const hue = metric === 'accuracy' ? 7 + 128 * ratio : 214 - 170 * ratio;
+  const errorMetric = metric === 'error-rate' || metric === 'percentage-error';
+  const hue = metric === 'accuracy' ? 7 + 128 * ratio : errorMetric ? 135 - 128 * ratio : 214 - 170 * ratio;
   return `hsl(${hue.toFixed(2)} 68% 43%)`;
 }
 
@@ -3518,7 +3588,7 @@ function renderChartHueLegend(spec, points, metric) {
   }
   const unit = document.createElement('span');
   unit.className = 'chart-hue-unit';
-  unit.textContent = metric === 'time' ? 'seconds' : metric === 'accuracy' ? 'percent' : metric;
+  unit.textContent = metric === 'time' ? 'seconds' : ['accuracy', 'error-rate', 'percentage-error'].includes(metric) ? 'percent' : metric;
   legend.append(title, gradient, tickList, unit);
   return legend;
 }
@@ -3569,11 +3639,13 @@ function chartAxisLabel(metric) {
   if (metric === 'actions') return 'Average actions';
   if (metric === 'digits') return 'Average digit errors';
   if (metric === 'selections') return 'Average selections to fix';
+  if (metric === 'error-rate') return 'Error rate (%)';
+  if (metric === 'percentage-error') return 'Absolute percentage error (%)';
   return 'Accuracy (%)';
 }
 
 function chartTickStep(max, metric) {
-  if (metric === 'accuracy') return 20;
+  if (metric === 'accuracy' || metric === 'error-rate') return 20;
   const rough = Math.max(1, max) / 4;
   const magnitude = 10 ** Math.floor(Math.log10(rough));
   const normalized = rough / magnitude;
@@ -3583,14 +3655,14 @@ function chartTickStep(max, metric) {
 function chartScale(values, metric) {
   const maximum = Math.max(0, ...values.filter(Number.isFinite));
   const step = chartTickStep(maximum, metric);
-  const max = metric === 'accuracy' ? 100 : Math.max(step, Math.ceil(maximum / step) * step);
+  const max = metric === 'accuracy' || metric === 'error-rate' ? 100 : Math.max(step, Math.ceil(maximum / step) * step);
   const ticks = [];
   for (let value = 0; value <= max + step / 100; value += step) ticks.push(Number(value.toFixed(8)));
   return { max, ticks };
 }
 
 function chartTickValue(value, metric) {
-  return metric === 'time' ? `${value}s` : metric === 'accuracy' ? `${value}%` : String(value);
+  return metric === 'time' ? `${value}s` : ['accuracy', 'error-rate', 'percentage-error'].includes(metric) ? `${value}%` : String(value);
 }
 
 function chartColorClass(spec, point, index) {
@@ -3602,6 +3674,8 @@ function chartColorClass(spec, point, index) {
     return 'chart-value-muted';
   }
   if (spec.id === 'fraud-false-flags') return point.value >= 30 ? 'chart-value-danger' : point.value > 0 ? 'chart-value-caution' : 'chart-value-success';
+  if (metric === 'error-rate') return point.value >= 25 ? 'chart-value-danger' : point.value > 5 ? 'chart-value-caution' : 'chart-value-success';
+  if (metric === 'percentage-error') return point.value >= 15 ? 'chart-value-danger' : point.value > 0 ? 'chart-value-caution' : 'chart-value-success';
   if (metric === 'accuracy') {
     if (point.value < 60) return 'chart-value-danger';
     if (point.value < 85) return 'chart-value-caution';
@@ -3613,6 +3687,7 @@ function chartColorClass(spec, point, index) {
 
 function openAttemptDetails(records, attemptIds, heading) {
   const rows = records.filter((record) => attemptIds.includes(record.attemptId));
+  const errorAnalytics = buildErrorAnalytics(rows, { comparisonDisabled: true, minimumOpportunities: 1 });
   refs['attempt-detail-summary'].textContent = `${rows.length} contributing attempt${rows.length === 1 ? '' : 's'} — ${heading}${rows.length > 100 ? ' (showing the 100 most recent)' : ''}`;
   refs['attempt-detail-content'].replaceChildren();
   if (!rows.length) refs['attempt-detail-content'].textContent = 'No saved attempts match this chart mark.';
@@ -3620,7 +3695,7 @@ function openAttemptDetails(records, attemptIds, heading) {
     const wrap = document.createElement('div');
     wrap.className = 'table-wrap attempt-detail-table';
     const table = document.createElement('table');
-    table.innerHTML = '<thead><tr><th>When</th><th>Session</th><th>Attempt</th><th>Game</th><th>Difficulty</th><th>Result</th><th>Time</th><th>Details</th></tr></thead>';
+    table.innerHTML = '<thead><tr><th>When</th><th>Session</th><th>Attempt</th><th>Game</th><th>Difficulty</th><th>Result</th><th>Time</th><th>Details</th><th>Raw-input mistakes</th><th>Numeric error</th></tr></thead>';
     const body = document.createElement('tbody');
     for (const record of rows.slice(-100).reverse()) {
       const row = document.createElement('tr');
@@ -3634,8 +3709,15 @@ function openAttemptDetails(records, attemptIds, heading) {
               ? [`${record.expectedAnomalyCount} actual errors`, `${record.selectedAnomalyCount} selected`, `${record.missedAnomalyCount} missed`, `${record.falseFlagCount} false positives`, record.puzzleFamily]
               : [`${record.fraudExpectedIssueCount} actual errors`, `${record.fraudCorrectlyIdentifiedCount ?? Math.max(0, record.fraudExpectedIssueCount - record.fraudFalseNegativeCount)} identified`, `${record.fraudFalseNegativeCount} missed`, `${record.fraudFalsePositiveCount} false positives`, (record.fraudExpectedCategories ?? []).join(', ') || 'Clean case'];
       const details = [...gameDetails, record.expectedAnswer, record.userAnswer].filter((value) => value !== null && value !== undefined && value !== '').join(' · ') || 'No answer detail recorded';
+      const attemptEvidence = errorAnalytics.attemptDetails.get(record.attemptId);
+      const rawMistakes = attemptEvidence?.mistakes.length
+        ? attemptEvidence.mistakes.map((mistake) => `${mistake.label}${mistake.detail ? ` — ${mistake.detail}` : ''}`).join('; ')
+        : hasDetailedErrorEvidence(record) ? 'No mismatch identified in available recorded inputs' : 'Detailed raw-input errors were not recorded for this attempt';
+      const numeric = errorAnalytics.numeric.responses.filter((response) => response.attemptId === record.attemptId);
+      const numericText = numeric.length ? numeric.map((response) => `${response.label}: correct ${numericAnswerText(response.expectedValue, response.unit)}, answered ${numericAnswerText(response.submittedValue, response.unit)}, difference ${displayNumericDifference(response.signedDifference, response.unit)}, absolute ${numericAnswerText(response.absoluteError, response.unit)}, percentage ${response.percentageErrorLabel}`).join('; ')
+        : record.game === 'cash' || record.game === 'task' ? 'No numeric answer pair recorded' : 'Categorical answer; numeric deviation does not apply';
       for (const value of [new Date(record.timestamp).toLocaleString(), record.sessionId ?? 'Not recorded', `${record.attemptId} · #${record.questionNumber ?? '—'}`, record.gameName, record.difficulty ?? 'Not recorded', record.outcome,
-        record.responseTimeSeconds === null ? 'Not recorded' : `${record.responseTimeSeconds.toFixed(1)}s`, details]) {
+        record.responseTimeSeconds === null ? 'Not recorded' : `${record.responseTimeSeconds.toFixed(1)}s`, details, rawMistakes, numericText]) {
         const cell = document.createElement('td');
         cell.textContent = value;
         row.append(cell);
@@ -3772,7 +3854,8 @@ function renderChartCard(spec, records) {
     xAxis.append(label);
   });
   const xTitle = chartSvgElement('text', { class: 'chart-axis-title', x: plot.left + plotWidth / 2, y: 320, 'text-anchor': 'middle' });
-  xTitle.textContent = spec.kind === 'scatter' ? 'Response time (seconds)' : points.every((point) => /^\d{4}-\d{2}-\d{2}$/.test(point.label)) ? 'Date' : 'Category';
+  xTitle.textContent = spec.kind === 'scatter' ? 'Response time (seconds)' : points.every((point) => /^\d{4}-\d{2}-\d{2}$/.test(point.label)) ? 'Date'
+    : points.every((point) => /^Attempt \d+$/.test(point.label)) ? 'Attempt number' : 'Category';
   xAxis.append(xTitle);
   svg.append(yAxis, xAxis);
   const selection = chartSvgElement('rect', { class: 'chart-selection', x: plot.left, y: plot.top, width: 0, height: plotHeight, visibility: 'hidden' });
@@ -3794,23 +3877,26 @@ function renderChartCard(spec, records) {
       }
     }
     const colorClass = chartColorClass(spec, point, index);
-    const mark = chartSvgElement('g', { class: `analytics-mark ${colorClass}`, role: 'button', tabindex: '0', 'aria-label': `${point.label}: ${chartValue(point, series.metric)} from ${point.attemptIds.length} attempts` });
+    const evidence = Number.isFinite(point.opportunities) && Number.isFinite(point.errors)
+      ? `${point.errors} of ${point.opportunities} error opportunities across ${point.attemptCount ?? point.attemptIds.length} attempts`
+      : `from ${point.attemptIds.length} attempt${point.attemptIds.length === 1 ? '' : 's'}`;
+    const mark = chartSvgElement('g', { class: `analytics-mark ${colorClass}`, role: 'button', tabindex: '0', 'aria-label': `${point.label}: ${chartValue(point, series.metric)} ${evidence}` });
     if (isScatter) mark.style.setProperty('--chart-color', chartHueColor(Number(point.y), hueMinimum, hueMaximum, series.metric));
     const shape = chartSvgElement(spec.kind === 'line' || spec.kind === 'scatter' ? 'circle' : 'rect', spec.kind === 'line' || spec.kind === 'scatter'
       ? { cx: x, cy: y, r: Math.max(4, Math.min(8, width * 0.18)) }
       : { x: x - Math.max(3, width * 0.32), y, width: Math.max(5, width * 0.64), height, rx: 2 });
     const pointDetail = isScatter
       ? `${spec.title}: ${point.label}; X ${Number(point.x).toFixed(1)} seconds; Y ${chartValue(point, series.metric)}`
-      : `${spec.title}: ${point.label} (${chartValue(point, series.metric)})`;
+      : `${spec.title}: ${point.label} (${chartValue(point, series.metric)}; ${evidence})`;
     const activate = () => openAttemptDetails(records, point.attemptIds, pointDetail);
     mark.addEventListener('click', activate);
     mark.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); activate(); }
     });
-    mark.addEventListener('mouseenter', () => { status.textContent = `${point.label}: ${chartValue(point, series.metric)} from ${point.attemptIds.length} attempt${point.attemptIds.length === 1 ? '' : 's'}.`; });
-    mark.addEventListener('focus', () => { status.textContent = `${point.label}: ${chartValue(point, series.metric)} from ${point.attemptIds.length} attempt${point.attemptIds.length === 1 ? '' : 's'}.`; });
+    mark.addEventListener('mouseenter', () => { status.textContent = `${point.label}: ${chartValue(point, series.metric)} ${evidence}.`; });
+    mark.addEventListener('focus', () => { status.textContent = `${point.label}: ${chartValue(point, series.metric)} ${evidence}.`; });
     const tooltip = chartSvgElement('title');
-    tooltip.textContent = `${point.label}: ${chartValue(point, series.metric)}`;
+    tooltip.textContent = `${point.label}: ${chartValue(point, series.metric)}; ${evidence}`;
     mark.append(tooltip, shape);
     if (spec.kind === 'bar' || spec.kind === 'line' || spec.kind === 'scatter') {
       const label = chartSvgElement('text', { class: 'chart-value-label', x, y: Math.max(plot.top + 11, y - 7), 'text-anchor': 'middle' });
@@ -3914,7 +4000,9 @@ function renderChartCard(spec, records) {
     const row = document.createElement('tr');
     const correct = point.correct ?? point.detail?.correct;
     const evidence = series.metric === 'accuracy' && point.measure !== 'mean' && correct !== undefined
-      ? `${correct} / ${point.count}` : `${point.attemptIds.length} attempts`;
+      ? `${correct} / ${point.count}` : Number.isFinite(point.opportunities) && Number.isFinite(point.errors)
+        ? `${point.errors} / ${point.opportunities} errors across ${point.attemptCount ?? point.attemptIds.length} attempts`
+        : `${point.attemptIds.length} attempts`;
     [point.label, chartValue(point, series.metric), evidence, point.interval ? `${point.interval[0]}–${point.interval[1]}%` : '—'].forEach((value) => {
       const cell = document.createElement('td');
       cell.textContent = value;
@@ -3933,7 +4021,267 @@ function renderHistoryCharts(records) {
   refs['history-charts'].replaceChildren(...specs.map((spec) => renderChartCard(spec, records)));
 }
 
-function renderHistoryInsights(records) {
+const ERROR_COMPLETED_OUTCOMES = new Set(['Correct', 'Incorrect', 'Timed Out']);
+const ERROR_GAME_LABELS = Object.freeze({
+  cash: 'Cash handling', memory: 'Number memory', task: 'Task simulation',
+  'error-detection': 'Error detection', 'fraud-inspection': 'Check & ID Fraud Inspection',
+});
+
+function answeredErrorRows(records) {
+  return records.filter((record) => ERROR_COMPLETED_OUTCOMES.has(record.outcome));
+}
+
+function errorComparisonSets(history, filtered) {
+  const filters = { ...historyView.filters };
+  delete filters.startDate;
+  delete filters.endDate;
+  delete filters.attemptLimit;
+  const comparable = filterHistory(history, filters);
+  const range = historyView.activeRange;
+  const current = answeredErrorRows(filtered);
+  if (range === 'all') {
+    return { current: current.slice(-30), previous: current.slice(-60, -30), label: 'Most recent 30 vs previous 30 attempts' };
+  }
+  if (range === '30a' || range === '50a') {
+    const selectedIds = new Set(filtered.map((record) => record.attemptId));
+    const count = range === '30a' ? 30 : 50;
+    const previous = answeredErrorRows(comparable.filter((record) => !selectedIds.has(record.attemptId))).slice(-count);
+    return { current, previous, label: `Most recent ${count} vs previous ${count} attempts` };
+  }
+  const start = historyView.filters.startDate;
+  const end = historyView.filters.endDate;
+  if (!start || !end) return { current, previous: [], label: 'Matching earlier date range' };
+  const startDay = new Date(`${start}T00:00:00`);
+  const endDay = new Date(`${end}T00:00:00`);
+  const days = Math.max(1, Math.round((endDay - startDay) / 86400000) + 1);
+  const previousEnd = new Date(startDay);
+  previousEnd.setDate(previousEnd.getDate() - 1);
+  const previousStart = new Date(previousEnd);
+  previousStart.setDate(previousStart.getDate() - days + 1);
+  const previous = filterHistory(comparable, { startDate: localIsoDate(previousStart), endDate: localIsoDate(previousEnd) });
+  const rangeLabel = range === 'today' ? 'Today vs yesterday' : range === 'yesterday' ? 'Yesterday vs the prior day' : `${days} days vs the prior ${days} days`;
+  return { current, previous: answeredErrorRows(previous), label: rangeLabel };
+}
+
+function formatErrorRate(row) {
+  return row.errorRatePercent === null ? 'Not enough attempts yet' : `${row.errorRatePercent}% (${row.errors} of ${row.opportunities})`;
+}
+
+function appendAnalyticsTable(target, headers, rows, emptyText, renderRow) {
+  target.replaceChildren();
+  const wrap = document.createElement('div');
+  wrap.className = 'table-wrap error-analysis-table-wrap';
+  const table = document.createElement('table');
+  const head = document.createElement('thead');
+  const header = document.createElement('tr');
+  for (const title of headers) {
+    const cell = document.createElement('th');
+    cell.scope = 'col';
+    cell.textContent = title;
+    header.append(cell);
+  }
+  head.append(header);
+  const body = document.createElement('tbody');
+  if (!rows.length) {
+    const row = document.createElement('tr');
+    const cell = document.createElement('td');
+    cell.className = 'empty-row';
+    cell.colSpan = headers.length;
+    cell.textContent = emptyText;
+    row.append(cell);
+    body.append(row);
+  } else {
+    rows.forEach((item) => body.append(renderRow(item)));
+  }
+  table.append(head, body);
+  wrap.append(table);
+  target.append(wrap);
+}
+
+function makeAnalyticsRow(values, className = '') {
+  const row = document.createElement('tr');
+  if (className) row.className = className;
+  for (const value of values) {
+    const cell = document.createElement('td');
+    cell.textContent = String(value ?? '—');
+    row.append(cell);
+  }
+  return row;
+}
+
+function numericAnswerText(value, unit) {
+  return unit === 'cents' ? formatMoney(Math.round(value)) : Number(value).toLocaleString('en-US', { maximumFractionDigits: 4 });
+}
+
+function displayNumericDifference(value, unit) {
+  if (value === null || value === undefined) return 'Not available';
+  const magnitude = numericAnswerText(Math.abs(value), unit);
+  return `${value > 0 ? '+' : value < 0 ? '−' : ''}${magnitude}`;
+}
+
+function hasDetailedErrorEvidence(record) {
+  if (record.game === 'cash') return Boolean(record.cashTransactionType || record.transactionType || record.cashBuilder === true || record.cashDenominationStrictRequest === true);
+  if (record.game === 'memory') return Array.isArray(record.expectedValues) && Array.isArray(record.answeredValues);
+  if (record.game === 'task') return Array.isArray(record.taskStepEvidence) || Array.isArray(record.taskMistakeCategories);
+  if (record.game === 'error-detection') return Array.isArray(record.errorDetailEvidence);
+  if (record.game === 'fraud-inspection') return Boolean(record.fraudCategoryResults || Array.isArray(record.fraudExpectedCategories));
+  return false;
+}
+
+function formatInterval(interval) {
+  return interval ? `${interval[0]}–${interval[1]}%` : '—';
+}
+
+function formatSkillEvidence(group) {
+  return `${group.label}: ${formatErrorRate(group)} across ${group.attemptCount} attempts${group.eligibleForRanking ? '' : ' · limited sample'}`;
+}
+
+function renderErrorAnalysis(records, history) {
+  const { current, previous, label: comparisonLabel } = errorComparisonSets(history, records);
+  const analytics = buildErrorAnalytics(records, {
+    previousRecords: previous,
+    comparisonCurrentRecords: current,
+    sortBy: historyView.errorSort,
+  });
+  refs['history-error-data-label'].textContent = historyView.dataSource === 'sample'
+    ? 'Based on Sample Data. Sample attempts stay separate from saved real history.'
+    : analytics.dataLabel ?? 'Based on saved real gameplay. Older records show detailed errors only when the source fields were saved.';
+  refs['error-analysis-sort'].value = historyView.errorSort;
+
+  const summary = analytics.summary;
+  renderMetrics(refs['history-error-metrics'], [
+    [summary.errorRatePercent === null ? '—' : `${summary.errorRatePercent}%`, `Overall error rate · ${summary.errors}/${summary.attempts}`],
+    [summary.accuracyPercent === null ? '—' : `${summary.accuracyPercent}%`, 'Accuracy'],
+    [String(summary.incorrect), 'Incorrect answers'],
+    [String(summary.timedOut), 'Timed out'],
+    [summary.averagePercentageError === null ? '—' : `${summary.averagePercentageError}%`, `Average numeric error · ${summary.numericResponses - summary.numericNotApplicable} applicable`],
+    [summary.medianPercentageError === null ? '—' : `${summary.medianPercentageError}%`, 'Median numeric error'],
+  ]);
+
+  const highlight = [];
+  if (summary.attempts) highlight.push(`Overall: ${summary.errorRatePercent}% error rate (${summary.errors} errors of ${summary.attempts} completed attempts); ${summary.notAnswered} unfinished checkpoints are excluded.`);
+  else highlight.push('Not enough completed attempts yet. Complete a question to start the error analysis.');
+  const candidates = [
+    ['Highest error-rate category', analytics.highestErrorCategory],
+    ['Highest raw-input error rate', analytics.highestErrorRawInput],
+  ];
+  candidates.forEach(([labelText, group]) => highlight.push(group
+    ? `${labelText}: ${formatSkillEvidence(group)}.`
+    : `${labelText}: Not enough attempts yet (at least five relevant opportunities are required).`));
+  const combo = analytics.highestErrorInputCombination;
+  highlight.push(combo ? `Highest eligible input combination: ${formatSkillEvidence(combo)}.` : 'Highest input combination: Not enough attempts yet (at least five relevant opportunities are required).');
+  const lowest = analytics.lowestErrorCategory;
+  highlight.push(lowest ? `Lowest eligible category error rate: ${formatSkillEvidence(lowest)}.` : 'Lowest category: Not enough attempts yet.');
+  const commonMistake = analytics.mostCommonMistakes[0];
+  highlight.push(commonMistake ? `Most common mistake: ${commonMistake.label} (${commonMistake.count} occurrences).` : 'Most common mistake: No detailed mistakes recorded in this range.');
+  const largestMean = [...analytics.byCategory, ...analytics.byRawInput].filter((group) => group.meanPercentageError !== null)
+    .sort((left, right) => right.meanPercentageError - left.meanPercentageError)[0];
+  highlight.push(largestMean ? `Highest average numeric percentage error: ${largestMean.label} (${largestMean.meanPercentageError}% across ${largestMean.percentages.length} numeric answers).` : 'Average numerical error by skill: Not available for categorical answers.');
+  const largest = analytics.numeric.largestNumericError;
+  highlight.push(largest ? `Largest absolute numeric error: ${largest.label}, ${numericAnswerText(largest.absoluteError, largest.unit)} away from ${numericAnswerText(largest.expectedValue, largest.unit)}; percentage error ${largest.percentageErrorLabel}.` : 'Largest numeric error: No supported numeric answers in this range.');
+  highlight.push(`Recent error rate: ${analytics.recent.errorRatePercent === null ? 'not enough attempts' : `${analytics.recent.errorRatePercent}% (${analytics.recent.errors}/${analytics.recent.attempts}) across the latest 30 filtered attempts`}. Long-term filtered rate: ${summary.errorRatePercent === null ? 'not enough attempts' : `${summary.errorRatePercent}% (${summary.errors}/${summary.attempts})`}.`);
+  refs['history-error-highlights'].replaceChildren(...highlight.map((text) => {
+    const item = document.createElement('p');
+    item.className = 'error-analysis-highlight';
+    item.textContent = text;
+    return item;
+  }));
+
+  const comparison = analytics.comparison;
+  refs['history-error-comparison'].replaceChildren();
+  const comparisonText = document.createElement('p');
+  comparisonText.className = 'chart-note';
+  if (comparison.available) {
+    const delta = comparison.errorRateDeltaPoints;
+    const outcome = delta < 0 ? `Improvement: ${Math.abs(delta)} percentage points` : delta > 0 ? `Error rate increased ${delta} percentage points` : 'No percentage-point change';
+    comparisonText.textContent = `${comparisonLabel}. Previous ${comparison.previous.errorRatePercent}% (${comparison.previous.errors}/${comparison.previous.attempts}); recent ${comparison.current.errorRatePercent}% (${comparison.current.errors}/${comparison.current.attempts}). ${outcome}.`;
+  } else {
+    comparisonText.textContent = `${comparisonLabel}: Not enough comparable attempts yet. At least five answered attempts are needed in each period.`;
+  }
+  refs['history-error-comparison'].append(comparisonText);
+  for (const item of comparison.categoryChanges.slice(0, 5)) {
+    const change = document.createElement('p');
+    change.className = 'chart-note';
+    const direction = item.errorRateDeltaPoints < 0 ? `improved ${Math.abs(item.errorRateDeltaPoints)} percentage points` : item.errorRateDeltaPoints > 0 ? `increased ${item.errorRateDeltaPoints} percentage points` : 'unchanged';
+    change.textContent = `${item.label}: ${item.previousErrorRatePercent}% (${item.previousOpportunities}) → ${item.currentErrorRatePercent}% (${item.currentOpportunities}); ${direction}.`;
+    refs['history-error-comparison'].append(change);
+  }
+
+  const chartSpecs = [analytics.charts.category, analytics.charts.rawInput, analytics.charts.trend, analytics.charts.magnitude]
+    .filter((spec) => spec.series[0].points.length && (spec.id !== 'numeric-percentage-error' || analytics.numeric.responses.length));
+  refs['history-error-charts'].replaceChildren(...chartSpecs.map((spec) => renderChartCard(spec, records)));
+  if (!chartSpecs.length) {
+    const empty = document.createElement('p');
+    empty.className = 'chart-empty';
+    empty.textContent = 'Charts will appear when the filtered attempts contain category, raw-input, trend, or numeric answer evidence.';
+    refs['history-error-charts'].replaceChildren(empty);
+  }
+
+  const errorGroups = analytics.byCategory;
+  appendAnalyticsTable(refs['history-error-category-table'], ['Game and category', 'Errors / opportunities', 'Error rate', '95% interval', 'Attempts', 'Numeric magnitude'], errorGroups,
+    'No category-level answer fields are available for these attempts.', (group) => makeAnalyticsRow([
+      `${ERROR_GAME_LABELS[group.game] ?? group.game} · ${group.label}`, `${group.errors} / ${group.opportunities}`, `${group.errorRatePercent}%${group.eligibleForRanking ? '' : ' · limited sample'}`,
+      formatInterval(group.interval), group.attemptCount, group.meanPercentageError === null ? '—' : `${group.meanPercentageError}% average`,
+    ]));
+
+  appendAnalyticsTable(refs['history-error-raw-table'], ['Raw input / skill', 'Errors / opportunities', 'Error rate', '95% interval', 'Attempts', 'Evidence'], analytics.byRawInput,
+    'Raw-input detail is not recorded for these attempts. Older history remains available without inferred fields.', (group) => makeAnalyticsRow([
+      `${ERROR_GAME_LABELS[group.game] ?? group.game} · ${group.label}`, `${group.errors} / ${group.opportunities}`, `${group.errorRatePercent}%${group.eligibleForRanking ? '' : ' · limited sample'}`,
+      formatInterval(group.interval), group.attemptCount, group.evidenceLabel,
+    ]));
+
+  appendAnalyticsTable(refs['history-error-combination-table'], ['Observed input combination', 'Errors / opportunities', 'Error rate', '95% interval', 'Attempts', 'Evidence'], analytics.inputCombinations,
+    'Input-combination fields are not recorded for these attempts.', (group) => makeAnalyticsRow([
+      group.label, `${group.errors} / ${group.opportunities}`, `${group.errorRatePercent}%${group.eligibleForRanking ? '' : ' · limited sample'}`,
+      formatInterval(group.interval), group.attemptCount, group.evidenceLabel,
+    ]));
+
+  const settings = analytics.bySetting;
+  appendAnalyticsTable(refs['history-error-difficulty-table'], ['Difficulty / setting', 'Errors / opportunities', 'Error rate', '95% interval', 'Attempts'], settings,
+    'Difficulty and configuration values were not saved for these attempts.', (group) => makeAnalyticsRow([
+      `${ERROR_GAME_LABELS[group.game] ?? group.game} · ${group.label}`, `${group.errors} / ${group.opportunities}`, `${group.errorRatePercent}%${group.eligibleForRanking ? '' : ' · limited sample'}`,
+      formatInterval(group.interval), group.attemptCount,
+    ]));
+
+  const numericRows = analytics.numeric.responses.slice(-50).reverse();
+  appendAnalyticsTable(refs['history-error-numeric-table'], ['Attempt', 'Question', 'Correct answer', 'User answer', 'Difference', 'Absolute error', 'Percentage error', 'Severity'], numericRows,
+    'No numeric answer pairs were saved for this selection. Categorical answers do not have a numeric distance.', (numeric) => {
+      const record = records.find((row) => row.attemptId === numeric.attemptId);
+      const row = makeAnalyticsRow([
+        numeric.game, `${record?.questionNumber ?? '—'} · ${new Date(numeric.timestamp).toLocaleString()}`,
+        numericAnswerText(numeric.expectedValue, numeric.unit), numericAnswerText(numeric.submittedValue, numeric.unit),
+        displayNumericDifference(numeric.signedDifference, numeric.unit), numericAnswerText(numeric.absoluteError, numeric.unit), numeric.percentageErrorLabel,
+        numeric.severity?.label ?? (numeric.percentageError === null ? 'N/A' : '—'),
+      ]);
+      if (record) {
+        row.tabIndex = 0;
+        row.title = 'Open attempt details';
+        const open = () => openAttemptDetails(records, [record.attemptId], `Numeric error for attempt ${record.attemptId}`);
+        row.addEventListener('click', open);
+        row.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); } });
+      }
+      return row;
+    });
+  const distribution = document.createElement('div');
+  distribution.className = 'error-distribution';
+  const distributionHeading = document.createElement('h5');
+  distributionHeading.textContent = `Numeric percentage-error distribution (${analytics.numeric.responses.length - analytics.numeric.notApplicable} applicable answers; ${analytics.numeric.notApplicable} N/A at a zero correct answer)`;
+  const distributionList = document.createElement('ul');
+  analytics.numeric.distribution.forEach((band) => {
+    const item = document.createElement('li');
+    const text = document.createElement('span');
+    text.textContent = band.label;
+    const count = document.createElement('strong');
+    count.textContent = `${band.count}`;
+    item.append(text, count);
+    distributionList.append(item);
+  });
+  distribution.append(distributionHeading, distributionList);
+  refs['history-error-distribution'].replaceChildren(distribution);
+  return analytics;
+}
+
+function renderHistoryInsights(records, errorAnalytics = buildErrorAnalytics(records, { comparisonDisabled: true })) {
   const report = buildConditionalReport(records, historyView.filters.game, historyView.conditions);
   historyView.conditions = report.selectedIds;
   const root = refs['history-insights'];
@@ -3998,6 +4346,12 @@ function renderHistoryInsights(records) {
       item.textContent = `${group.label}: ${group.value}% (${group.correct}/${group.count}, 95% interval ${group.interval[0]}–${group.interval[1]}%); ${group.gapPoints >= 0 ? '+' : ''}${group.gapPoints} points versus ${group.baselinePercent}% for comparable difficulty and mode (${group.comparableCount} attempts). ${group.evidence}.`;
       list.append(item);
     });
+    const detailedSkills = title === 'Strengths' ? errorAnalytics.strengths : errorAnalytics.weaknesses;
+    detailedSkills.slice(0, 3).forEach((group) => {
+      const item = document.createElement('li');
+      item.textContent = `${title === 'Strengths' ? 'Strength' : 'Weakness'} — ${formatSkillEvidence(group)}.`;
+      list.append(item);
+    });
     section.append(heading, list);
     columns.append(section);
   }
@@ -4005,7 +4359,9 @@ function renderHistoryInsights(records) {
   const focus = document.createElement('p');
   focus.className = 'chart-note';
   const recommendation = recommendNextChallenge(records, { game: historyView.filters.game });
-  focus.textContent = recommendation.challenge ? `Practice focus: ${recommendation.target}. ${recommendation.reason}` : recommendation.reason;
+  const specificWeakness = errorAnalytics.weaknesses[0];
+  const weaknessEvidence = specificWeakness ? ` Highest detailed error rate: ${formatSkillEvidence(specificWeakness)}.` : '';
+  focus.textContent = (recommendation.challenge ? `Practice focus: ${recommendation.target}. ${recommendation.reason}` : recommendation.reason) + weaknessEvidence;
   if (historyView.dataSource === 'sample') focus.textContent = `Based on Sample Data. ${focus.textContent}`;
   root.append(focus);
 }
@@ -4119,6 +4475,8 @@ function fallbackChallenge(recommendation) {
 
 function renderRecommendedChallenge(records) {
   const sampleMode = historyView.dataSource === 'sample';
+  const errorAnalytics = buildErrorAnalytics(records, { comparisonDisabled: true });
+  const detailedWeakness = errorAnalytics.weaknesses[0];
   const candidates = sampleMode ? [] : rankPracticeCandidates(records, historyPresetMap());
   const recommendation = recommendNextChallenge(records, sampleMode
     ? { game: historyView.filters.game }
@@ -4142,7 +4500,8 @@ function renderRecommendedChallenge(records) {
     const title = document.createElement('h4');
     title.textContent = `${PRACTICE_GAMES[plan.game]} — ${plan.target}`;
     const why = document.createElement('p');
-    why.textContent = `Why recommended: ${recommendation.reason}`;
+    const matchingWeakness = detailedWeakness?.game === plan.game ? ` Game-specific Error Analysis: ${formatSkillEvidence(detailedWeakness)}.` : '';
+    why.textContent = `Why recommended: ${recommendation.reason}${matchingWeakness}`;
     if (sampleMode) {
       const sampleNote = document.createElement('p');
       sampleNote.className = 'sample-recommendation-note';
@@ -4151,7 +4510,8 @@ function renderRecommendedChallenge(records) {
     }
     const detail = document.createElement('p');
     detail.className = 'practice-note';
-    detail.textContent = `Evidence: ${recommendation.evidenceCount ?? plan.evidenceStats?.attempts ?? 0} comparable attempts. ${plan.progressionRule ?? 'Only the relevant workload axis changes after sustained success.'}`;
+    detail.textContent = `Evidence: ${recommendation.evidenceCount ?? plan.evidenceStats?.attempts ?? 0} comparable attempts. ${plan.progressionRule ?? 'Only the relevant workload axis changes after sustained success.'}`
+      + (detailedWeakness ? ` Detailed error signal: ${formatSkillEvidence(detailedWeakness)}.` : ' Detailed error ranking needs at least five relevant opportunities.');
     const review = document.createElement('details');
     const summary = document.createElement('summary');
     summary.textContent = 'Review proposed settings';
@@ -4192,7 +4552,7 @@ function renderRecommendedChallenge(records) {
   }
 }
 
-function renderHistoryRows(records) {
+function renderHistoryRows(records, analytics = buildErrorAnalytics(records, { comparisonDisabled: true })) {
   refs['history-rows'].replaceChildren();
   refs['history-attempt-summary'].textContent = records.length > 100
     ? `Showing the 100 most recent attempts of ${records.length.toLocaleString()} matching records. Narrow the filters or download the CSV to work with more.`
@@ -4200,7 +4560,7 @@ function renderHistoryRows(records) {
   if (records.length === 0) {
     const row = document.createElement('tr');
     const cell = document.createElement('td');
-    cell.className = 'empty-row'; cell.colSpan = 6;
+    cell.className = 'empty-row'; cell.colSpan = 8;
     cell.textContent = 'No saved attempts match these filters.';
     row.append(cell); refs['history-rows'].append(row); return;
   }
@@ -4213,6 +4573,12 @@ function renderHistoryRows(records) {
     row.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); } });
     const cells = [new Date(record.timestamp).toLocaleString(), `${record.gameName}${record.sessionMode ? ` · ${record.sessionMode}` : ''}`,
       record.difficulty ?? 'Not recorded', record.outcome, record.responseTimeSeconds === null ? 'Not recorded' : `${record.responseTimeSeconds.toFixed(1)}s`, record.expectedAnswer ?? 'Not recorded'];
+    const detail = analytics.attemptDetails.get(record.attemptId);
+    const numericErrors = analytics.numeric.responses.filter((response) => response.attemptId === record.attemptId);
+    cells.push(detail?.mistakes.length ? detail.mistakes.map((mistake) => mistake.label).join('; ')
+      : hasDetailedErrorEvidence(record) ? 'No raw-input error identified' : 'Detailed categories not recorded');
+    cells.push(numericErrors.length ? numericErrors.map((response) => `${numericAnswerText(response.absoluteError, response.unit)} absolute · ${response.percentageErrorLabel}`).join('; ')
+      : 'Not applicable / not recorded');
     row.append(...cells.map((value) => { const cell = document.createElement('td'); cell.textContent = value; return cell; }));
     refs['history-rows'].append(row);
   }
@@ -4301,13 +4667,14 @@ function renderHistory() {
   renderHistoryFilters(gameOnly);
   const records = filterHistory(history, historyView.filters);
   const model = buildProgressModel(records);
+  const errorAnalytics = renderErrorAnalysis(records, history);
   renderProgressMetrics(model);
   renderHistoryVisuals(summarizeHistory(records));
   renderRecommendedChallenge(records);
   renderHistoryComparison(history, records);
   renderHistoryCharts(records);
-  renderHistoryInsights(records);
-  renderHistoryRows(records);
+  renderHistoryInsights(records, errorAnalytics);
+  renderHistoryRows(records, errorAnalytics);
   renderFraudHistory(records);
 }
 
@@ -4360,6 +4727,11 @@ refs['history-view-sample'].addEventListener('click', () => {
 });
 refs['history-regenerate-sample'].addEventListener('click', () => {
   ensureSampleHistory(true);
+  historyView.charts.clear();
+  renderHistory();
+});
+refs['error-analysis-sort'].addEventListener('change', () => {
+  historyView.errorSort = refs['error-analysis-sort'].value;
   historyView.charts.clear();
   renderHistory();
 });

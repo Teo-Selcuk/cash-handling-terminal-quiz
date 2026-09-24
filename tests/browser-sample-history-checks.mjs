@@ -37,6 +37,12 @@ export async function checkSampleHistory(browser, site) {
     await page.locator('#history-sample-banner').waitFor({ state: 'visible' });
     assert.match(await page.locator('#history-sample-banner').innerText(), /SAMPLE DATA MODE/);
     assert.equal(Number((await page.locator('#history-metrics .metric strong').first().textContent()).replaceAll(',', '')), 1200);
+    assert.match(await page.locator('#history-error-data-label').textContent(), /Based on Sample Data/);
+    assert.match(await page.locator('#history-error-metrics').innerText(), /Overall error rate/);
+    assert.ok(await page.locator('#history-error-category-table tbody tr').count() > 1, 'sample mode has game-specific error categories');
+    assert.ok(await page.locator('#history-error-raw-table tbody tr').count() > 1, 'sample mode has raw-input error rates');
+    assert.ok(await page.locator('#history-error-combination-table tbody tr').count() > 1, 'sample mode has input-combination rates');
+    assert.equal(await page.locator('#history-rows tr').first().locator('td').count(), 8, 'sample attempt rows include both error fields');
     assert.equal(await page.locator('#history-rows tr').count(), 100, 'attempt table remains bounded');
     assert.match(await page.locator('#history-attempt-summary').textContent(), /100 most recent.*1,200/);
     assert.equal(await page.locator('#clear-history').isDisabled(), true, 'real history clear is disabled in sample mode');
@@ -53,6 +59,8 @@ export async function checkSampleHistory(browser, site) {
       const value = Number((await page.locator('#history-metrics .metric strong').first().textContent()).replaceAll(',', ''));
       assert.ok(value >= expectedMin, `${range} includes expected sample attempts`);
       assert.ok(await page.locator('#history-rows tr').count() > 0, `${range} renders attempt rows`);
+      assert.match(await page.locator('#history-error-data-label').textContent(), /Based on Sample Data/, `${range} keeps the sample label`);
+      assert.ok((await page.locator('#history-error-metrics .metric strong').first().textContent()).match(/%$/), `${range} recalculates error rate`);
       assert.equal(await page.evaluate((key) => sessionStorage.getItem(key), sampleKey), firstDataset, `${range} reuses the same sample history`);
     }
     const today = await page.evaluate(() => {

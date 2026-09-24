@@ -54,6 +54,14 @@ export async function checkProgress(browser, site) {
     await page.goto(site);
     await page.locator('#open-history').click();
     assert.match(await page.locator('#history-heading').textContent(), /History \| Progress \| Charts \| Attempts/);
+    assert.equal(await page.locator('#history-error-analysis').isVisible(), true, 'filtered Error Analysis is available in History');
+    assert.match(await page.locator('#history-error-data-label').textContent(), /saved real gameplay/);
+    assert.match(await page.locator('#history-error-metrics').innerText(), /Overall error rate.*108\/324/s);
+    assert.ok(await page.locator('#history-error-category-table tbody tr').count() > 0, 'game-specific error categories render');
+    assert.ok(await page.locator('#history-error-combination-table tbody tr').count() > 0, 'supported raw-input combinations render');
+    assert.ok(await page.locator('#history-error-charts h4').allTextContents().then((titles) => titles.includes('Error Rate by Category') && titles.includes('Error Rate by Raw Input') && titles.includes('Error Rate Over Time')),
+      'category, raw-input, and trend charts render when their saved fields exist');
+    assert.equal(await page.locator('#history-rows tr').first().locator('td').count(), 8, 'attempt table includes raw-input and numeric-error columns');
     assert.equal(await page.locator('#qralarm-connection').evaluate((details) => details.open), false);
     await page.locator('#qralarm-connection summary').click();
     assert.equal(await page.locator('#qralarm-connection').evaluate((details) => details.open), true);
@@ -85,6 +93,12 @@ export async function checkProgress(browser, site) {
     await page.locator('#history-quick-ranges button[data-history-range="50a"]').click();
     assert.equal(await page.locator('#history-quick-ranges button[data-history-range="50a"]').getAttribute('aria-pressed'), 'true');
     assert.match(await page.locator('#history-insights').innerText(), /Correct by:.*5s.*10s.*15s/s);
+    assert.ok(await page.locator('#history-error-charts .interactive-chart').filter({ has: page.getByRole('heading', { name: 'Error Rate Over Time' }) }).count() === 1,
+      'the 50-attempt legacy selection recalculates its supported error trend');
+    assert.match(await page.locator('#history-error-metrics').innerText(), /Overall error rate/);
+    await page.locator('#error-analysis-sort').selectOption('alphabetical');
+    assert.equal(await page.locator('#error-analysis-sort').inputValue(), 'alphabetical', 'error breakdowns can be sorted');
+    await page.locator('#error-analysis-sort').selectOption('error-rate');
     const chart = page.locator('#history-charts .interactive-chart').first();
     assert.ok(await chart.locator('.chart-axis').count() >= 2, 'charts render visible X and Y axes');
     assert.ok(await chart.locator('.chart-axis-title').count() >= 2, 'charts label both axes');

@@ -58,18 +58,41 @@ function cashRecord(record, random, index) {
   const type = delta > 0 ? 'Change' : delta < 0 ? 'Short' : 'Exact';
   const wrongType = type === 'Exact' ? 'Change' : type === 'Change' ? 'Short' : 'Change';
   const outcome = record.outcome === 'Correct' ? type : select(random, [wrongType, wrongType]);
+  const hasRequest = index % 7 === 0;
+  const requestKind = hasRequest ? select(random, ['specific', 'remainder', 'mixed', 'low', 'high', 'mismatch']) : '';
+  const cashBuilder = index % 3 === 0 || hasRequest;
+  const strictRequest = hasRequest && ['specific', 'remainder', 'high'].includes(requestKind);
+  const expectedCounts = {};
+  let payoutRemaining = Math.abs(delta);
+  for (const denomination of DENOMINATIONS) {
+    const count = Math.floor(payoutRemaining / denomination);
+    if (count) { expectedCounts[denomination] = count; payoutRemaining -= count * denomination; }
+  }
+  const selectedCounts = { ...expectedCounts };
+  if (strictRequest && record.outcome === 'Incorrect' && random() < 0.5) {
+    const denomination = select(random, DENOMINATIONS);
+    selectedCounts[denomination] = Math.max(0, (selectedCounts[denomination] ?? 0) + (random() < 0.5 ? 1 : -1));
+  }
+  const declaredAmount = record.outcome === 'Correct' ? Math.abs(delta) : Math.max(0, Math.abs(delta) + select(random, [1, 5, 25, 100]));
+  const selectedTotal = cashBuilder ? Object.entries(selectedCounts).reduce((sum, [cents, count]) => sum + Number(cents) * count, 0) : 0;
+  const answerMode = hasRequest ? 'Cash builder + customer requests' : cashBuilder ? 'Cash builder' : 'Normal';
   return {
     ...record, game: 'cash', gameType: 'Cash handling',
     amountDueCents: due, cashGivenCents: tendered, tenderBreakdown, tenderDenominationCounts: Object.fromEntries(counts),
     tenderBillCount: bills, tenderCoinCount: pieces - bills, tenderPieceCount: pieces, tenderDenominationTypes: tenderBreakdown.length,
     cashTransactionType: type, changeOrShortfallCents: Math.abs(delta), userAnswer: record.outcome === 'Timed Out' ? '' : outcome,
-    userDeclaredAmountCents: record.outcome === 'Correct' ? Math.abs(delta) : Math.max(0, Math.abs(delta) + select(random, [1, 5, 25, 100])),
-    answerMode: select(random, ['Normal', 'Cash builder', 'Cash builder + customer requests']),
-    cashBuilder: index % 3 !== 0, customerRequests: index % 7 === 0,
-    customerBillRequestKind: select(random, ['specific', 'any', 'none']),
-    customerRequestResult: select(random, ['Handled', 'Not handled', 'Not requested']),
+    userDeclaredAmountCents: declaredAmount,
+    answerMode, cashBuilder, customerRequests: hasRequest,
+    customerBillRequestKind: requestKind,
+    customerRequestResult: !hasRequest ? 'Not requested' : record.outcome === 'Timed Out' || record.outcome === 'Incorrect' && random() < 0.65 ? 'Not handled' : 'Handled',
+    ...(cashBuilder ? { userCashTotalCents: selectedTotal, userCashBreakdown: JSON.stringify(selectedCounts) } : {}),
+    ...(strictRequest ? {
+      cashDenominationStrictRequest: true,
+      cashExpectedDenominationCounts: expectedCounts,
+      userCashDenominationCounts: record.outcome === 'Timed Out' ? null : selectedCounts,
+    } : {}),
     cashAddClicks: pieces, cashRemoveClicks: Math.floor(random() * 3), cashQuickEntries: Math.floor(random() * 4), cashClearClicks: Math.floor(random() * 2),
-    breakdownMatchesDeclaredAmount: record.outcome === 'Correct',
+    breakdownMatchesDeclaredAmount: record.outcome === 'Timed Out' ? false : selectedTotal === declaredAmount,
   };
 }
 
@@ -91,14 +114,53 @@ function memoryRecord(record, random) {
 }
 
 function taskRecord(record, random) {
-  const stepsExpected = 3 + Math.floor(random() * 9);
+  const stepsExpected = 2 + Math.floor(random() * 9);
   const mistakes = record.outcome === 'Correct' ? 0 : record.outcome === 'Timed Out' ? stepsExpected : 1 + Math.floor(random() * 4);
-  const categories = mistakes ? Array.from({ length: mistakes }, () => select(random, TASK_CATEGORIES)) : [];
+  const workspaceKind = select(random, ['records', 'invoice', 'casework']);
+  const targetPool = workspaceKind === 'invoice'
+    ? ['task-invoice-calculation', 'task-invoice-status', 'task-invoice-category', 'task-invoice-reference', 'task-invoice-verified', 'task-invoice-approved', 'task-invoice-note', 'task-invoice-verification', 'task-tab-calculations', 'task-save-workspace']
+    : workspaceKind === 'casework'
+      ? ['task-case-status', 'task-case-queue', 'task-case-reference', 'task-case-followup', 'task-case-verification', 'task-case-note', 'task-confirm-case-note', 'task-open-verification-tab', 'task-tab-case-details', 'task-save-workspace']
+      : ['task-row-1-status', 'task-row-2-priority', 'task-row-3-complete', 'task-row-4-reference', 'task-row-1-priority', 'task-row-2-status', 'task-row-3-reference', 'task-row-4-complete', 'task-tab-orders', 'task-save-workspace'];
+  const targetIds = targetPool.slice(0, stepsExpected);
+  const taskStepEvidence = targetIds.map((targetId, stepNumber) => {
+    const numeric = targetId === 'task-invoice-calculation';
+    const expectedValue = numeric ? 250 + Math.floor(random() * 9750)
+      : targetId.includes('status') ? select(random, ['Review', 'Approved', 'On hold'])
+        : targetId.includes('priority') ? select(random, ['Normal', 'High', 'Urgent'])
+          : targetId.includes('complete') || targetId.includes('verified') || targetId.includes('followup') ? true
+            : `REF-${1000 + Math.floor(random() * 9000)}`;
+    let status = record.outcome === 'Correct' ? 'correct' : record.outcome === 'Timed Out' ? 'missing'
+      : select(random, ['wrong-value', 'missing', 'out-of-order', 'correct']);
+    if (record.outcome === 'Incorrect' && stepNumber === 0) status = select(random, ['wrong-value', 'missing', 'out-of-order']);
+    const actualValue = status === 'correct' ? expectedValue : status === 'missing' ? null
+      : numeric ? Math.max(0, expectedValue + select(random, [-500, -100, 75, 250]))
+        : typeof expectedValue === 'boolean' ? !expectedValue : `${expectedValue}-wrong`;
+    const label = targetId === 'task-invoice-calculation' ? 'Invoice · Final total'
+      : targetId === 'task-invoice-status' || targetId === 'task-case-status' ? 'Workflow · Status'
+        : targetId === 'task-invoice-category' ? 'Invoice · Cost category'
+          : targetId.includes('priority') ? 'Record · Priority' : targetId.includes('reference') ? 'Workflow · Reference' : targetId.replaceAll('task-', '').replaceAll('-', ' ');
+    const type = targetId.includes('status') || targetId.includes('category') || targetId.includes('priority') ? 'select-option'
+      : targetId.includes('complete') || targetId.includes('approved') || targetId.includes('verified') || targetId.includes('followup') ? 'toggle-checkbox'
+        : targetId.startsWith('task-tab-') ? 'activate-tab' : targetId === 'task-save-workspace' ? 'commit'
+          : targetId.includes('open-') ? 'open-workspace-tab' : targetId.includes('case-note') ? 'set-text' : 'set-text';
+    return { stepNumber: stepNumber + 1, type, targetId, targetLabel: label, expectedValue, actualValue, status };
+  });
+  const categories = [...new Set([
+    ...(taskStepEvidence.some((step) => step.status === 'missing') ? ['missing'] : []),
+    ...(taskStepEvidence.some((step) => step.status === 'out-of-order') ? ['out-of-order'] : []),
+    ...(record.outcome === 'Incorrect' && random() < 0.35 ? ['extra'] : []),
+  ])];
+  const taskNumericResponses = taskStepEvidence.filter((step) => step.targetId === 'task-invoice-calculation').map((step) => ({
+    label: 'Invoice Final total', expectedValue: Number(step.expectedValue),
+    submittedValue: Number.isFinite(Number(step.actualValue)) ? Number(step.actualValue) : null,
+  }));
   return {
-    ...record, game: 'task', gameType: 'Task simulation', workspaceKind: select(random, ['records', 'invoice', 'casework']),
+    ...record, game: 'task', gameType: 'Task simulation', workspaceKind,
     workspaceRows: 3 + Math.floor(random() * 10), workspaceTabs: 2 + Math.floor(random() * 5),
     stepsExpected, stepsCompleted: record.outcome === 'Timed Out' ? 0 : Math.max(0, stepsExpected - mistakes), mistakes,
     sequenceAccuracyPercent: Math.round((stepsExpected - mistakes) / stepsExpected * 100), taskMistakeCategories: [...new Set(categories)],
+    taskStepEvidence, taskNumericResponses,
     taskMissingCount: Number(categories.includes('missing')), taskExtraCount: Number(categories.includes('extra')),
     taskOutOfOrderCount: Number(categories.includes('out-of-order')), taskTabChanges: Math.floor(random() * 8),
     taskCorrections: Math.floor(random() * 3), briefingSeconds: 10 + Math.floor(random() * 30),
@@ -120,13 +182,21 @@ function errorRecord(record, random) {
   const selectedDetailIds = expectedErrorIds.slice(missedAnomalyCount);
   const falseFlagIds = Array.from({ length: falseFlagCount }, (_, i) => `valid-${i + 1}`);
   selectedDetailIds.push(...falseFlagIds);
+  const familyId = select(random, ERROR_FAMILIES);
+  const errorDetailEvidence = Array.from({ length: detailCount }, (_, index) => {
+    const id = index < expectedErrorCount ? expectedErrorIds[index] : `valid-${index - expectedErrorCount + 1}`;
+    const isAnomaly = expectedErrorIds.includes(id);
+    return { id, label: `${familyId.replaceAll('-', ' ')} clue ${index + 1}`, presentedValue: isAnomaly ? `Anomalous detail ${index + 1}` : `Valid detail ${index + 1}`,
+      expectedValue: `Rule-consistent detail ${index + 1}`, isAnomaly, selected: selectedDetailIds.includes(id) };
+  });
   return {
-    ...record, game: 'error-detection', gameType: 'Error detection', puzzleFamilyId: select(random, ERROR_FAMILIES),
+    ...record, game: 'error-detection', gameType: 'Error detection', puzzleFamilyId: familyId,
     puzzleFamily: select(random, ['Cipher check', 'Pattern sequence', 'Visual ledger', 'Transaction rule']),
     puzzleType: select(random, ['Analytical', 'Visual']), ruleLayers: 1 + Math.floor(random() * 4), detailCount,
     expectedErrorCount, selectedErrorCount: selectedDetailIds.length,
     correctlyFlagged: expectedErrorCount - missedAnomalyCount, missedAnomalyCount, falseFlagCount,
     expectedErrorIds, selectedDetailIds, missedErrorIds, falseFlagIds,
+    errorDetailEvidence,
     cleanPuzzle: expectedErrorCount === 0, timeLimitSeconds: record.timeLimitSeconds,
     expectedAnswer: expectedErrorCount ? `${expectedErrorCount} anomalies` : 'No anomalies.',
     userAnswer: record.outcome === 'Timed Out' ? '' : record.outcome === 'Correct' ? 'Exact anomaly set' : `${missedAnomalyCount} missed, ${falseFlagCount} false flags`,

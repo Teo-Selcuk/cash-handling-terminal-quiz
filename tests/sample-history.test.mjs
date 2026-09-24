@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generateSampleHistory } from '../sample-history.mjs';
-import { buildChartSpecs, buildGameFilters, filterHistory, normalizeHistoryRecord } from '../progress-analytics.mjs';
+import { buildChartSpecs, buildErrorAnalytics, buildGameFilters, filterHistory, normalizeHistoryRecord } from '../progress-analytics.mjs';
 
 const now = new Date('2026-09-23T16:00:00.000Z');
 
@@ -31,12 +31,18 @@ test('sample history is isolated, stable for a seed, and covers every game mecha
     .every((record) => record.fraudFalseNegativeCount + record.fraudFalsePositiveCount > 0));
 
   const normalized = first.map(normalizeHistoryRecord).filter(Boolean);
+  const errorAnalytics = buildErrorAnalytics(first);
   for (const game of ['cash', 'memory', 'task', 'error-detection', 'fraud-inspection']) {
     const records = normalized.filter((record) => record.game === game);
     assert.ok(records.length > 0, `${game} has sample records`);
     assert.ok(buildChartSpecs(records, game).some((spec) => spec.series[0].points.length), `${game} charts have data`);
     assert.ok(buildGameFilters(records, game).fields.some((field) => field.available > 0), `${game} filters have data`);
+    assert.ok(errorAnalytics.byCategory.some((group) => group.game === game), `${game} has game-specific error categories`);
+    assert.ok(errorAnalytics.byRawInput.some((group) => group.game === game), `${game} has raw-input error analytics`);
   }
+  assert.ok(errorAnalytics.byRawInput.some((group) => group.key.startsWith('cash:denomination:')), 'cash sample records include bill/coin breakdowns');
+  assert.ok(errorAnalytics.byRawInput.some((group) => group.key.startsWith('memory:digit-position:')), 'memory sample records include digit-position results');
+  assert.ok(errorAnalytics.inputCombinations.some((group) => group.game === 'cash'), 'cash has observed denomination-mix combinations');
   assert.ok(normalized.filter((record) => record.day >= '2026-08-25').length >= 500);
   assert.ok(filterHistory(first, { startDate: '2026-09-23', endDate: '2026-09-23' }).length > 0);
   assert.ok(filterHistory(first, { startDate: '2026-09-22', endDate: '2026-09-22' }).length > 0);
