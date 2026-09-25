@@ -36,6 +36,17 @@ test('a clean check with a valid ID is scored correctly as no issues found', () 
   assert.equal(challenge.expectedIssues.length, 0);
   assert.equal(result.correct, true);
   assert.equal(result.cleanCase, true);
+  assert.notEqual(challenge.id.legalName, challenge.makerId.legalName);
+  assert.match(challenge.id.idNumber, /^ID-\d{9}$/);
+  assert.match(challenge.makerId.idNumber, /^ID-\d{9}$/);
+  assert.notEqual(challenge.id.idNumber, challenge.makerId.idNumber);
+  assert.match(challenge.check.routingNumber, /^990\d{6}$/);
+  assert.match(challenge.check.accountNumber, /^\d{10}$/);
+  assert.notEqual(challenge.check.accountNumber, challenge.id.idNumber.slice(3));
+  assert.equal(challenge.check.makerSignature, challenge.makerId.signature);
+  assert.equal(challenge.check.endorsementSignature, challenge.id.signature);
+  assert.equal(challenge.check.routingNumber, challenge.tellerFile.routingNumber);
+  assert.equal(challenge.check.accountNumber, challenge.tellerFile.accountNumber);
 });
 
 test('one payee typo changes only the payee match and is selectable as one issue', () => {
@@ -95,22 +106,35 @@ test('missing endorsement and an endorsement signature mismatch are distinct iss
   assert.notEqual(mismatch.check.endorsementSignature, mismatch.id.signature);
 });
 
-test('a front maker signature is compared with the ID only when the customer is the maker', () => {
+test('maker signature mismatch is an independent issue against the maker ID', () => {
   const settings = resolveFraudInspectionSettings('Custom', oneCategory('maker-signature-suspicious'));
   const makerCase = createFraudInspectionCase('Custom', settings, sequenceRandom(2), fixedDate);
-  assert.equal(makerCase.customerIsMaker, true);
   assert.ok(makerCase.expectedIssues.some((issue) => issue.id === 'maker-signature-suspicious'));
-  assert.equal(makerCase.check.makerName, makerCase.id.legalName);
-  assert.notEqual(makerCase.check.makerSignature, makerCase.id.signature);
+  assert.equal(makerCase.check.makerName, makerCase.makerId.legalName);
+  assert.notEqual(makerCase.check.makerSignature, makerCase.makerId.signature);
+  assert.equal(makerCase.check.endorsementSignature, makerCase.id.signature);
+  assert.deepEqual(makerCase.expectedIssues[0].regions, ['check-maker-signature', 'maker-id-signature']);
+});
 
-  const broadSettings = resolveFraudInspectionSettings('Custom', {
-    minimumErrors: 0, maximumErrors: 8, allowNoErrorCases: true, enabledCategories: categoryIds,
+test('payee and maker signatures can both be wrong in the same case', () => {
+  const settings = resolveFraudInspectionSettings('Custom', {
+    minimumErrors: 2, maximumErrors: 2, allowNoErrorCases: false,
+    enabledCategories: ['endorsement-signature-mismatch', 'maker-signature-suspicious'],
   });
-  const unrelated = Array.from({ length: 100 }, (_, index) =>
-    createFraudInspectionCase('Custom', broadSettings, sequenceRandom(index + 100), fixedDate))
-    .find((challenge) => !challenge.customerIsMaker);
-  assert.ok(unrelated);
-  assert.equal(unrelated.expectedIssues.some((issue) => issue.id === 'maker-signature-suspicious'), false);
+  const challenge = createFraudInspectionCase('Custom', settings, sequenceRandom(33), fixedDate);
+  assert.deepEqual(new Set(challenge.expectedIssues.map((issue) => issue.id)), new Set(settings.enabledCategories));
+  assert.notEqual(challenge.check.endorsementSignature, challenge.id.signature);
+  assert.notEqual(challenge.check.makerSignature, challenge.makerId.signature);
+  assert.equal(scoreFraudInspectionAttempt(challenge, settings.enabledCategories).correct, true);
+});
+
+test('routing and account anomalies compare separate check fields with the teller file', () => {
+  for (const [category, field] of [['routing-issue', 'routingNumber'], ['account-information-issue', 'accountNumber']]) {
+    const settings = resolveFraudInspectionSettings('Custom', oneCategory(category));
+    const challenge = createFraudInspectionCase('Custom', settings, sequenceRandom(31), fixedDate);
+    assert.notEqual(challenge.check[field], challenge.tellerFile[field]);
+    assert.equal(scoreFraudInspectionAttempt(challenge, [category]).correct, true);
+  }
 });
 
 test('natural signature variation on a clean case is not labeled suspicious', () => {

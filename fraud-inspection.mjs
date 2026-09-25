@@ -7,10 +7,10 @@ export const FRAUD_INSPECTION_CATEGORIES = Object.freeze([
   { id: 'missing-required-field', label: 'A required check field is missing', group: 'Required fields' },
   { id: 'endorsement-missing', label: 'Payee endorsement is missing', group: 'Endorsement and signatures' },
   { id: 'endorsement-signature-mismatch', label: 'Endorsement signature does not match ID signature', group: 'Endorsement and signatures' },
-  { id: 'maker-signature-suspicious', label: 'Maker signature conflicts with the customer ID', group: 'Endorsement and signatures' },
+  { id: 'maker-signature-suspicious', label: 'Maker signature does not match maker ID signature', group: 'Endorsement and signatures' },
   { id: 'check-number-mismatch', label: 'Printed and MICR check numbers do not match', group: 'Check and account details' },
-  { id: 'routing-issue', label: 'Routing control does not match the exercise details', group: 'Check and account details' },
-  { id: 'account-information-issue', label: 'Account control does not match the exercise details', group: 'Check and account details' },
+  { id: 'routing-issue', label: 'Check routing number differs from teller file', group: 'Check and account details' },
+  { id: 'account-information-issue', label: 'Check account number differs from teller file', group: 'Check and account details' },
   { id: 'id-expired', label: 'Customer ID is expired', group: 'Customer ID' },
   { id: 'id-information-inconsistent', label: 'Printed ID details or dates are inconsistent', group: 'Customer ID' },
   { id: 'id-altered', label: 'Customer ID shows a possible alteration', group: 'Customer ID' },
@@ -60,7 +60,6 @@ const LAST_NAMES = ['Bennett', 'Patel', 'Rodriguez', 'Chen', 'Johnson', 'Kim', '
 const STREETS = ['Maple Row', 'Harbor Lane', 'Juniper Street', 'Cedar Walk', 'Orchard Avenue', 'Lakeview Drive', 'Willow Court', 'Beacon Road'];
 const CITIES = ['Fairview', 'Lakehurst', 'Brookdale', 'Northfield', 'Millhaven', 'Cedar Point'];
 const STATES = ['OR', 'VT', 'NM', 'ME', 'IA', 'AZ', 'RI', 'CO'];
-const MAKERS = ['Harborlight Studio', 'Juniper Supply Co.', 'Westbrook Market', 'Northfield Arts Council', 'Cedar Row Services', 'Maple Street Books'];
 const DOCUMENT_PALETTES = [
   { paper: '#fffef8', ink: '#17272a', accent: '#245d64', rule: '#c4d2ce' },
   { paper: '#fffdf5', ink: '#28313f', accent: '#6b536f', rule: '#d4cbc8' },
@@ -211,9 +210,11 @@ function baseCase(difficulty, settings, random, exerciseDate) {
   const city = choice(CITIES, random);
   const state = choice(STATES, random);
   const zip = String(randomInteger(10000, 99999, random));
-  const customerIsMaker = settings.enabledCategories.includes('maker-signature-suspicious')
-    && (random() < 0.24 || settings.enabledCategories.length === 1);
-  const makerName = customerIsMaker ? person.name : choice(MAKERS, random);
+  const chosenMaker = randomPerson(random);
+  const maker = chosenMaker.name === person.name
+    ? { ...chosenMaker, first: FIRST_NAMES[(FIRST_NAMES.indexOf(person.first) + 1) % FIRST_NAMES.length],
+      name: [FIRST_NAMES[(FIRST_NAMES.indexOf(person.first) + 1) % FIRST_NAMES.length], chosenMaker.middle, chosenMaker.last].filter(Boolean).join(' ') }
+    : chosenMaker;
   const checkNumber = String(randomInteger(1042, 9987, random));
   const amountDollars = choice([57, 125, 280, 625, 1250, 2400, 7300], random);
   const amountCents = amountDollars * 100;
@@ -221,16 +222,19 @@ function baseCase(difficulty, settings, random, exerciseDate) {
   const checkDate = addDays(today, -randomInteger(0, 35, random));
   const idExpiration = addDays(today, 365 * randomInteger(1, 5, random));
   const birthDate = dateBirthFor(today, random);
-  const routingControl = '990' + String(randomInteger(100000, 999999, random));
-  const accountControl = 'TRN-' + String(randomInteger(1000, 9999, random)) + '-' + String(randomInteger(10, 99, random));
+  const routingNumber = '990' + String(randomInteger(100000, 999999, random));
+  const accountNumber = String(randomInteger(1000000000, 9999999999, random));
+  const payeeIdNumber = 'ID-' + String(randomInteger(100000000, 999999999, random));
+  let makerIdNumber = 'ID-' + String(randomInteger(100000000, 999999999, random));
+  if (makerIdNumber === payeeIdNumber) makerIdNumber = 'ID-' + String(Number(makerIdNumber.slice(3)) === 999999999 ? 100000000 : Number(makerIdNumber.slice(3)) + 1);
   const variation = signatureVariation(random);
-  const checkSignature = customerIsMaker ? person.name : randomPerson(random).name;
+  const makerVariation = signatureVariation(random);
   return {
     caseId: 'fraud-' + String(randomInteger(100000, 999999, random)),
     difficulty,
     exerciseDate: isoDate(today),
     staleAfterDays: settings.staleAfterDays,
-    customerIsMaker,
+    customerIsMaker: false,
     signatureVariationIsValid: true,
     document: { palette, layout: randomInteger(0, 2, random), olderDesign: random() < 0.18 },
     id: {
@@ -239,7 +243,7 @@ function baseCase(difficulty, settings, random, exerciseDate) {
       middleInitial: person.middle,
       lastName: person.last,
       address: address + ', ' + city + ', ' + state + ' ' + zip,
-      idNumber: 'TRN-' + String(today.getUTCFullYear()).slice(-2) + '-' + String(randomInteger(100000, 999999, random)),
+      idNumber: payeeIdNumber,
       issuingState: state,
       dateOfBirth: compactDate(birthDate),
       expirationDate: isoDate(idExpiration),
@@ -250,11 +254,29 @@ function baseCase(difficulty, settings, random, exerciseDate) {
       issueDate: isoDate(addDays(today, -365 * randomInteger(1, 4, random))),
       alterationMarks: [],
     },
+    makerId: {
+      legalName: maker.name,
+      firstName: maker.first,
+      middleInitial: maker.middle,
+      lastName: maker.last,
+      address: randomInteger(10, 989, random) + ' ' + choice(STREETS, random) + ', ' + city + ', ' + state + ' ' + zip,
+      idNumber: makerIdNumber,
+      issuingState: state,
+      dateOfBirth: compactDate(dateBirthFor(today, random)),
+      expirationDate: isoDate(idExpiration),
+      expirationText: compactDate(idExpiration),
+      signature: maker.name,
+      signatureVariation: makerVariation,
+      portrait: ID_PORTRAIT_BY_FIRST_NAME[maker.first] ?? 'male',
+      issueDate: isoDate(addDays(today, -365 * randomInteger(1, 4, random))),
+      alterationMarks: [],
+    },
+    tellerFile: { routingNumber, accountNumber },
     check: {
       payeeName: person.name,
-      makerName,
-      makerSignature: checkSignature,
-      makerSignatureVariation: customerIsMaker ? variation : signatureVariation(random),
+      makerName: maker.name,
+      makerSignature: maker.name,
+      makerSignatureVariation: makerVariation,
       date: isoDate(checkDate),
       dateText: formatExerciseDate(checkDate, random),
       numericAmount: dollars(amountCents / 100),
@@ -262,10 +284,8 @@ function baseCase(difficulty, settings, random, exerciseDate) {
       writtenAmount: amountInWords(amountCents),
       checkNumber,
       micrCheckNumber: checkNumber,
-      routingNumber: routingControl,
-      routingControl,
-      accountNumber: accountControl,
-      accountControl,
+      routingNumber,
+      accountNumber,
       referenceNumber: 'R-' + String(randomInteger(10000, 99999, random)),
       endorsementSignature: person.name,
       endorsementVariation: signatureVariation(random),
@@ -347,25 +367,25 @@ function applyIssue(challenge, id, settings, random) {
     issue.regions = ['check-endorsement', 'id-signature'];
     issue.explanation = 'The endorsement reads ' + check.endorsementSignature + ', while the ID signature is ' + identity.signature + '.';
   } else if (id === 'maker-signature-suspicious') {
-    check.makerSignature = mutateSignature(identity.legalName, settings.signatureDifficulty, random);
+    check.makerSignature = mutateSignature(challenge.makerId.legalName, settings.signatureDifficulty, random);
     check.makerSignatureVariation = signatureVariation(random);
     challenge.signatureVariationIsValid = false;
-    issue.regions = ['check-maker-signature', 'id-signature'];
-    issue.explanation = 'This scenario names the customer as the maker. The front signature differs from the customer ID signature.';
+    issue.regions = ['check-maker-signature', 'maker-id-signature'];
+    issue.explanation = 'The front maker signature differs from the separate maker ID signature.';
   } else if (id === 'check-number-mismatch') {
     check.micrCheckNumber = String(Number(check.checkNumber) + 7).padStart(check.checkNumber.length, '0');
     issue.regions = ['check-number', 'check-micr'];
     issue.explanation = 'Printed check number ' + check.checkNumber + ' does not match MICR number ' + check.micrCheckNumber + '.';
   } else if (id === 'routing-issue') {
     check.routingNumber = '990' + String(randomInteger(100000, 999999, random));
-    if (check.routingNumber === check.routingControl) check.routingNumber = check.routingControl.slice(0, -1) + (Number(check.routingControl.slice(-1)) + 1) % 10;
-    issue.regions = ['check-micr', 'routing-control'];
-    issue.explanation = 'The routing field ' + check.routingNumber + ' differs from the simulator control ' + check.routingControl + '.';
+    if (check.routingNumber === challenge.tellerFile.routingNumber) check.routingNumber = challenge.tellerFile.routingNumber.slice(0, -1) + (Number(challenge.tellerFile.routingNumber.slice(-1)) + 1) % 10;
+    issue.regions = ['check-micr'];
+    issue.explanation = 'The check routing number ' + check.routingNumber + ' differs from the teller file routing number ' + challenge.tellerFile.routingNumber + '.';
   } else if (id === 'account-information-issue') {
-    check.accountNumber = 'TRN-' + String(randomInteger(1000, 9999, random)) + '-' + String(randomInteger(10, 99, random));
-    if (check.accountNumber === check.accountControl) check.accountNumber = 'TRN-0000-00';
-    issue.regions = ['check-micr', 'account-control'];
-    issue.explanation = 'The account field does not match the simulator control ' + check.accountControl + '.';
+    check.accountNumber = String(randomInteger(1000000000, 9999999999, random));
+    if (check.accountNumber === challenge.tellerFile.accountNumber) check.accountNumber = String(Number(challenge.tellerFile.accountNumber) === 9999999999 ? 1000000000 : Number(challenge.tellerFile.accountNumber) + 1);
+    issue.regions = ['check-micr'];
+    issue.explanation = 'The check account number ' + check.accountNumber + ' differs from the teller file account number ' + challenge.tellerFile.accountNumber + '.';
   } else if (id === 'id-expired') {
     identity.expirationDate = isoDate(addDays(new Date(challenge.exerciseDate + 'T00:00:00Z'), -randomInteger(1, 720, random)));
     identity.expirationText = compactDate(new Date(identity.expirationDate + 'T00:00:00Z'));
@@ -401,7 +421,7 @@ function applyIssue(challenge, id, settings, random) {
 }
 
 function eligibleCategoryIds(challenge, settings) {
-  return settings.enabledCategories.filter((id) => id !== 'maker-signature-suspicious' || challenge.customerIsMaker);
+  return settings.enabledCategories;
 }
 
 export function createFraudInspectionCase(difficulty = 'Easy', overrides = {}, random = Math.random, exerciseDate = new Date()) {

@@ -6,7 +6,7 @@ import {
   resolveFraudInspectionSettings,
   scoreFraudInspectionAttempt,
   summarizeFraudHistory,
-} from './fraud-inspection.mjs?v=20260922-signature-portrait';
+} from './fraud-inspection.mjs?v=20260925-maker-ids';
 import { PRACTICE_GAMES, rankPracticeCandidates, recommendPractice, practiceSettings } from './adaptive-practice.mjs?v=20260918-progress';
 import {
   buildChartSpecs, buildConditionalReport, buildErrorAnalytics, buildGameFilters, buildProgressModel, comparePeriods,
@@ -68,7 +68,7 @@ const refs = Object.fromEntries([
   'history-charts', 'history-insights', 'history-comparison', 'history-recommendations', 'previous-challenges', 'history-attempt-summary',
   'attempt-detail-dialog', 'attempt-detail-summary', 'attempt-detail-content', 'close-attempt-detail',
   'chart-data-dialog', 'chart-data-heading', 'chart-data-content', 'close-chart-data',
-  'chart-settings-dialog', 'chart-settings-heading', 'chart-settings-form', 'chart-settings-scope', 'chart-settings-palette', 'chart-settings-label-color', 'chart-settings-bold', 'close-chart-settings', 'reset-chart-settings',
+  'chart-settings-dialog', 'chart-settings-heading', 'chart-settings-form', 'chart-settings-scope', 'chart-settings-palette', 'chart-settings-label-color', 'chart-settings-custom-color', 'chart-settings-color-picker', 'chart-settings-random-color', 'chart-settings-bold', 'close-chart-settings', 'reset-chart-settings',
   'memory-question-count', 'memory-read-progress', 'memory-read-timer', 'memory-number', 'memory-read-hint', 'memory-answer-now',
   'memory-answer-form', 'memory-answer-list', 'memory-answer-progress', 'memory-answer-timer', 'memory-answer-heading', 'summary-heading',
   'task-question-count', 'task-briefing-progress', 'task-briefing-timer', 'task-briefing-heading', 'task-briefing-title', 'task-instruction-list', 'task-start-demo',
@@ -91,7 +91,7 @@ const refs = Object.fromEntries([
 
 const savedPresetState = loadPresetState();
 const historyView = { filters: { game: 'all' }, activeRange: 'all', charts: new Map(), conditions: [], dataSource: 'real', sampleRecords: null, errorSort: 'error-rate' };
-const defaultChartAppearance = Object.freeze({ palette: 'current', labelColor: 'auto', bold: true });
+const defaultChartAppearance = Object.freeze({ palette: 'current', labelColor: 'auto', customColor: '#176b83', bold: true });
 const chartPalettes = Object.freeze({
   ocean: [200, 180, 145], violet: [270, 310, 345], sunset: [8, 30, 52], teal: [185, 155, 115],
 });
@@ -108,14 +108,18 @@ function chartSettings(id) {
   const candidate = { ...defaultChartAppearance, ...chartAppearance.all, ...chartAppearance.charts[id] };
   return {
     palette: candidate.palette === 'current' || chartPalettes[candidate.palette] ? candidate.palette : 'current',
-    labelColor: chartLabelColors[candidate.labelColor] ? candidate.labelColor : 'auto',
+    labelColor: candidate.labelColor === 'custom' || chartLabelColors[candidate.labelColor] ? candidate.labelColor : 'auto',
+    customColor: /^#[0-9a-f]{6}$/i.test(candidate.customColor) ? candidate.customColor : defaultChartAppearance.customColor,
     bold: candidate.bold !== false,
   };
 }
 function applyChartAppearance(element, id) {
   const settings = chartSettings(id);
-  element.style.setProperty('--chart-label-color', chartLabelColors[settings.labelColor]);
+  element.style.setProperty('--chart-label-color', settings.labelColor === 'custom' ? settings.customColor : chartLabelColors[settings.labelColor]);
   element.style.setProperty('--chart-label-weight', settings.bold ? '750' : '400');
+}
+function updateChartColorPicker() {
+  refs['chart-settings-custom-color'].hidden = refs['chart-settings-label-color'].value !== 'custom';
 }
 function saveChartAppearance() {
   localStorage.setItem(CHART_APPEARANCE_KEY, JSON.stringify(chartAppearance));
@@ -128,6 +132,8 @@ function openChartSettings(id, title) {
   const settings = chartSettings(id);
   refs['chart-settings-palette'].value = settings.palette;
   refs['chart-settings-label-color'].value = settings.labelColor;
+  refs['chart-settings-color-picker'].value = settings.customColor;
+  updateChartColorPicker();
   refs['chart-settings-bold'].checked = settings.bold;
   refs['chart-settings-dialog'].showModal();
 }
@@ -2049,7 +2055,7 @@ function renderFraudCheckSvg(challenge, feedback = false) {
     svgText(32, 412, 'Fictional drawer · invented training fields', 10, 500, '#536569'),
     challenge.settings.fieldDensity === 'low' ? '' : svgText(519, 121, 'Ref. ' + check.referenceNumber, 10, 550, '#536569'),
     '<rect x="29" y="443" width="802" height="57" rx="7" fill="#f5f4ed" stroke="' + palette.rule + '"/>',
-    svgText(44, 466, 'MICR LINE · FICTIONAL PLACEHOLDERS', 9, 800, palette.accent, 'letter-spacing="1"'),
+    svgText(44, 466, 'ROUTING · ACCOUNT · CHECK NO. · FICTIONAL MICR', 9, 800, palette.accent, 'letter-spacing="1"'),
     '<g class="fraud-doc-field ' + (feedback && markedRegion(challenge, 'check-micr') ? 'fraud-marked' : '') + '" data-region="check-micr">',
     svgText(44, 490, '⑆ ' + check.routingNumber + ' ⑆  ' + check.accountNumber + ' ⑆  ' + check.micrCheckNumber, 16, 700, palette.ink, 'font-family="ui-monospace,monospace" letter-spacing="1"'),
     '</g>',
@@ -2058,24 +2064,27 @@ function renderFraudCheckSvg(challenge, feedback = false) {
     '<rect x="8" y="520" width="844" height="158" rx="14" fill="' + palette.paper + '" stroke="' + palette.accent + '" stroke-width="3"/>',
     '<rect x="8" y="520" width="844" height="38" rx="12" fill="' + palette.rule + '"/>',
     svgText(28, 546, 'CHECK BACK · PAYEE ENDORSEMENT AREA', 13, 800, palette.ink, 'letter-spacing="1"'),
-    svgText(30, 578, 'ENDORSE HERE', 10, 750, palette.accent, 'letter-spacing="1"'),
+    svgText(30, 578, 'PAYEE SIGNATURE · ENDORSE HERE', 10, 750, palette.accent, 'letter-spacing="1"'),
     '<g class="fraud-doc-field ' + (feedback && markedRegion(challenge, 'check-endorsement') ? 'fraud-marked' : '') + '" data-region="check-endorsement">',
     '<path d="M30 641 H820" stroke="' + palette.rule + '" stroke-width="2"/>',
     check.endorsementSignature
       ? signatureSvgText(check.endorsementSignature, check.endorsementVariation, 42, 630, palette.accent, 755)
       : svgText(42, 626, '', 22, 500, palette.ink),
     '</g>',
-    svgText(30, 663, 'TRAINING EXAMPLE ONLY · endorsement comparison uses the customer ID shown beside it', 10, 550, '#536569'),
+    svgText(30, 663, 'TRAINING EXAMPLE ONLY · compare this signature with the PAYEE ID', 10, 550, '#536569'),
   ].join('');
   return '<svg class="fraud-document-svg fraud-check-svg" ' + attributes + '>' + title + front + endorsement + '</svg>';
 }
 
-function renderFraudIdSvg(challenge, feedback = false) {
-  const identity = challenge.id;
+function renderFraudIdSvg(challenge, kind = 'payee-id', feedback = false) {
+  const maker = kind === 'maker-id';
+  const identity = maker ? challenge.makerId : challenge.id;
+  const region = (name) => maker ? 'maker-' + name : name;
+  const role = maker ? 'maker' : 'payee';
   const palette = challenge.document.palette;
   const attributes = [
     'role="img"',
-    'aria-label="Fictional customer identification card for ' + escapeSvgText(identity.legalName) + '"',
+    'aria-label="Fictional ' + role + ' identification card for ' + escapeSvgText(identity.legalName) + '"',
     'viewBox="0 0 860 540"',
     'xmlns="http://www.w3.org/2000/svg"',
   ].join(' ');
@@ -2084,7 +2093,7 @@ function renderFraudIdSvg(challenge, feedback = false) {
     '<rect x="8" y="8" width="844" height="92" rx="18" fill="' + palette.accent + '"/>',
     svgText(34, 47, 'STATE OF ' + identity.issuingState + ' · RESIDENT IDENTIFICATION', 18, 800, '#ffffff', 'letter-spacing=".5"'),
     svgText(34, 76, 'FICTIONAL TRAINING CARD · NOT A REAL ID', 11, 700, '#ffffff', 'letter-spacing="1"'),
-    '<g class="fraud-doc-field ' + (feedback && markedRegion(challenge, 'id-photo') ? 'fraud-marked' : '') + '" data-region="id-photo">',
+    '<g class="fraud-doc-field ' + (feedback && markedRegion(challenge, region('id-photo')) ? 'fraud-marked' : '') + '" data-region="' + region('id-photo') + '">',
     '<image href="assets/fraud/id-portrait-' + (identity.portrait === 'female' ? 'female' : 'male')
       + '-20260922.jpg" x="44" y="136" width="194" height="242" preserveAspectRatio="xMidYMid slice" aria-label="Fictional training portrait"/>',
     identity.photoObscured
@@ -2092,30 +2101,31 @@ function renderFraudIdSvg(challenge, feedback = false) {
       : '',
     '<rect class="fraud-photo-frame" x="37" y="129" width="208" height="256" rx="9" fill="none" stroke="' + palette.rule + '" stroke-width="2"/>',
     '</g>',
-    svgField(challenge, 'id-name', 278, 129, 542, 'FULL LEGAL NAME', identity.legalName, { valueSize: 23, feedback }),
-    svgField(challenge, 'id-number', 278, 202, 248, 'ID NUMBER · FICTIONAL', identity.idNumber, { valueSize: 15, feedback }),
-    svgField(challenge, 'id-birth-date', 540, 202, 280, 'DATE OF BIRTH', identity.dateOfBirth, { valueSize: 17, feedback }),
-    svgField(challenge, 'id-address', 278, 275, 542, 'RESIDENCE ADDRESS', identity.address, { valueSize: 14, feedback }),
-    svgField(challenge, 'id-expiration', 278, 348, 248, 'EXPIRES', identity.expirationText, { valueSize: 18, feedback }),
-    svgField(challenge, 'id-issue-date', 540, 348, 280, 'ISSUED', new Date(identity.issueDate + 'T00:00:00Z').toLocaleDateString('en-US'), { valueSize: 17, feedback }),
-    '<g class="fraud-doc-field ' + (feedback && markedRegion(challenge, 'id-signature') ? 'fraud-marked' : '') + '" data-region="id-signature">',
+    svgField(challenge, region('id-name'), 278, 129, 542, 'FULL LEGAL NAME', identity.legalName, { valueSize: 23, feedback }),
+    svgField(challenge, region('id-number'), 278, 202, 248, 'ID NUMBER · FICTIONAL', identity.idNumber, { valueSize: 15, feedback }),
+    svgField(challenge, region('id-birth-date'), 540, 202, 280, 'DATE OF BIRTH', identity.dateOfBirth, { valueSize: 17, feedback }),
+    svgField(challenge, region('id-address'), 278, 275, 542, 'RESIDENCE ADDRESS', identity.address, { valueSize: 14, feedback }),
+    svgField(challenge, region('id-expiration'), 278, 348, 248, 'EXPIRES', identity.expirationText, { valueSize: 18, feedback }),
+    svgField(challenge, region('id-issue-date'), 540, 348, 280, 'ISSUED', new Date(identity.issueDate + 'T00:00:00Z').toLocaleDateString('en-US'), { valueSize: 17, feedback }),
+    '<g class="fraud-doc-field ' + (feedback && markedRegion(challenge, region('id-signature')) ? 'fraud-marked' : '') + '" data-region="' + region('id-signature') + '">',
     '<path d="M278 461h490" stroke="' + palette.rule + '" stroke-width="2"/>',
     signatureSvgText(identity.signature, identity.signatureVariation, 290, 450, palette.accent, 468),
     '</g>',
-    svgText(278, 486, 'CUSTOMER SIGNATURE', 10, 750, palette.accent, 'letter-spacing="1"'),
+    svgText(278, 486, role.toUpperCase() + ' SIGNATURE', 10, 750, palette.accent, 'letter-spacing="1"'),
     '<g transform="rotate(-17 420 260)" opacity=".11">',
     svgText(211, 280, 'SAMPLE · NOT FOR IDENTIFICATION', 38, 900, palette.accent, 'letter-spacing="3"'),
     '</g>',
     svgText(36, 416, 'REFERENCE ONLY', 10, 800, palette.accent, 'letter-spacing="1"'),
     svgText(36, 442, identity.issuingState, 17, 800, palette.ink),
   ];
-  return '<svg class="fraud-document-svg fraud-id-svg" ' + attributes + '><title>Fictional customer ID</title>'
+  return '<svg class="fraud-document-svg fraud-id-svg" ' + attributes + '><title>Fictional ' + role + ' ID</title>'
     + '<desc>Training-only identification card with made-up name, address, dates, and number.</desc>' + fields.join('') + '</svg>';
 }
 
 function makeFraudDocumentCard(kind, title, markup) {
   const article = document.createElement('article');
   article.className = 'fraud-document-card';
+  article.dataset.fraudCard = kind;
   const heading = document.createElement('h3');
   heading.textContent = title;
   const tools = document.createElement('div');
@@ -2167,8 +2177,9 @@ function setFraudDocumentZoom(kind, zoom, root = document) {
 
 function renderFraudDocuments(target, challenge, feedback = false) {
   const check = makeFraudDocumentCard('check', 'CHECK · FRONT AND ENDORSEMENT', renderFraudCheckSvg(challenge, feedback));
-  const identity = makeFraudDocumentCard('id', 'CUSTOMER IDENTIFICATION', renderFraudIdSvg(challenge, feedback));
-  target.replaceChildren(check, identity);
+  const payee = makeFraudDocumentCard('payee-id', 'PAYEE ID · ENDORSEMENT SIGNATURE', renderFraudIdSvg(challenge, 'payee-id', feedback));
+  const maker = makeFraudDocumentCard('maker-id', 'MAKER ID · AUTHORIZED SIGNATURE', renderFraudIdSvg(challenge, 'maker-id', feedback));
+  target.replaceChildren(check, payee, maker);
 }
 
 function renderFraudIssueOptions() {
@@ -2220,13 +2231,14 @@ function renderFraudInspectionQuestion() {
   const level = state.difficulty === 'Custom' ? 'CUSTOM · ' + challenge.caseDifficulty.toUpperCase() : state.difficulty.toUpperCase();
   refs['fraud-inspection-progress'].textContent = 'Case ' + state.questionNumber + ' of ' + state.questionCount + ' · ' + level;
   refs['fraud-inspection-timer'].hidden = !state.fraudSettings.showTimer;
-  refs['fraud-policy-note'].textContent = challenge.policy + ' Dates and controls are simulator examples only.';
+  refs['fraud-policy-note'].textContent = challenge.policy + ' Compare the payee endorsement with the payee ID and the authorized maker signature with the maker ID. All details are fictional.';
   refs['fraud-transaction-strip'].replaceChildren();
   const facts = [
     ['Exercise date', challenge.exerciseDateText],
-    ['Customer role', challenge.customerIsMaker ? 'Payee and check maker' : 'Payee only; front signature belongs to another maker'],
-    ['Route control', challenge.check.routingControl],
-    ['Account control', challenge.check.accountControl],
+    ['Payee', challenge.id.legalName],
+    ['Maker', challenge.makerId.legalName],
+    ['Teller file routing', challenge.tellerFile.routingNumber],
+    ['Teller file account', challenge.tellerFile.accountNumber],
   ];
   for (const [label, value] of facts) {
     const item = document.createElement('div');
@@ -2297,7 +2309,7 @@ function populateFraudInspectionFeedback(record, score) {
   refs['feedback-lead'].textContent = score.correct
     ? 'You found the complete issue set and left valid details alone.'
     : score.cleanCase ? 'This was a clean case. Review any valid details you marked.'
-      : 'Compare the check and ID again. The highlighted fields show each actual issue.';
+      : 'Compare the check, payee ID, and maker ID again. The highlighted fields show each actual issue.';
   renderFraudDocuments(refs['fraud-feedback-documents'], state.fraudChallenge, true);
   refs['fraud-feedback-issues'].replaceChildren();
   const actualById = new Map(state.fraudChallenge.expectedIssues.map((issue) => [issue.id, issue]));
@@ -2423,8 +2435,8 @@ function startFraudInspection() {
 function openFraudDocument(kind) {
   const challenge = state.fraudChallenge;
   if (!challenge) return;
-  const markup = kind === 'check' ? renderFraudCheckSvg(challenge) : renderFraudIdSvg(challenge);
-  refs['fraud-document-dialog-heading'].textContent = kind === 'check' ? 'Check front and endorsement' : 'Customer identification';
+  const markup = kind === 'check' ? renderFraudCheckSvg(challenge) : renderFraudIdSvg(challenge, kind);
+  refs['fraud-document-dialog-heading'].textContent = kind === 'check' ? 'Check front and endorsement' : kind === 'maker-id' ? 'Maker identification' : 'Payee identification';
   refs['fraud-document-dialog-view'].innerHTML = markup;
   state.fraudDialogZoom = 1;
   const svg = refs['fraud-document-dialog-view'].querySelector('svg');
@@ -5216,11 +5228,24 @@ refs['clear-history-filters'].addEventListener('click', () => {
 refs['close-attempt-detail'].addEventListener('click', () => refs['attempt-detail-dialog'].close());
 refs['close-chart-data'].addEventListener('click', () => refs['chart-data-dialog'].close());
 refs['close-chart-settings'].addEventListener('click', () => refs['chart-settings-dialog'].close());
+refs['chart-settings-label-color'].addEventListener('change', updateChartColorPicker);
+refs['chart-settings-random-color'].addEventListener('click', () => {
+  const dark = document.documentElement.dataset.theme === 'dark';
+  const colors = dark
+    ? ['#ff9b9b', '#8cd4ff', '#c7b1ff', '#8ee5c4', '#ffd18b', '#ffa9cf', '#bbdf8e', '#91dedc']
+    : ['#9b3030', '#075c87', '#603d9b', '#066a51', '#874b08', '#9b285f', '#486a16', '#00676c'];
+  const bytes = new Uint32Array(1);
+  crypto.getRandomValues(bytes);
+  refs['chart-settings-color-picker'].value = colors[bytes[0] % colors.length];
+  refs['chart-settings-label-color'].value = 'custom';
+  updateChartColorPicker();
+});
 refs['chart-settings-form'].addEventListener('submit', (event) => {
   event.preventDefault();
   const settings = {
     palette: refs['chart-settings-palette'].value,
     labelColor: refs['chart-settings-label-color'].value,
+    customColor: refs['chart-settings-color-picker'].value,
     bold: refs['chart-settings-bold'].checked,
   };
   if (refs['chart-settings-scope'].value === 'all') chartAppearance = { all: settings, charts: {} };

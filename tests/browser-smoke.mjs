@@ -57,6 +57,9 @@ try {
     await checkProgress(browser, base);
     await checkSampleHistory(browser, base);
     console.log('Focused History and Progress browser checks passed.');
+  } else if (process.env.QUIZ_FOCUSED === 'fraud') {
+    await checkFraudInspection(browser, base);
+    console.log('Focused Fraud Inspection browser checks passed.');
   } else {
   await checkResponsive(browser, base);
   await checkGuidance(browser, base);

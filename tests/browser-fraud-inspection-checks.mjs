@@ -25,9 +25,17 @@ export async function checkFraudInspection(browser, base) {
     await page.getByRole('button', { name: 'Start quiz' }).click();
     await page.locator('#fraud-inspection-screen').waitFor({ state: 'visible' });
     assert.match(await page.locator('#fraud-inspection-progress').textContent(), /Case 1 of 1 · CUSTOM/);
-    assert.equal(await page.locator('#fraud-document-grid .fraud-document-card').count(), 2);
+    assert.equal(await page.locator('#fraud-document-grid .fraud-document-card').count(), 3);
     assert.match(await page.locator('#fraud-document-grid').textContent(), /TRAINING SAMPLE/);
     assert.match(await page.locator('#fraud-document-grid').textContent(), /FICTIONAL TRAINING CARD/);
+    assert.match(await page.locator('#fraud-document-grid').textContent(), /PAYEE SIGNATURE · ENDORSE HERE/);
+    assert.match(await page.locator('#fraud-document-grid').textContent(), /PAYEE ID · ENDORSEMENT SIGNATURE/);
+    assert.match(await page.locator('#fraud-document-grid').textContent(), /MAKER ID · AUTHORIZED SIGNATURE/);
+    assert.equal(await page.locator('#fraud-document-grid [data-region="maker-id-signature"]').count(), 1);
+    assert.equal(await page.locator('#fraud-document-grid [data-region="id-signature"]').count(), 1);
+    assert.match(await page.locator('#fraud-transaction-strip').textContent(), /Teller file routing/);
+    assert.match(await page.locator('#fraud-transaction-strip').textContent(), /Teller file account/);
+    assert.doesNotMatch(await page.locator('#fraud-inspection-screen').textContent(), /account control/i);
     assert.equal(await page.locator('#fraud-inspection-timer').textContent(), '2:00');
     assert.equal(await page.locator('#fraud-document-grid .fraud-marked').count(), 0, 'inspection documents do not reveal actual issue locations');
 
@@ -37,13 +45,18 @@ export async function checkFraudInspection(browser, base) {
     await page.locator('[data-fraud-dialog-zoom="0.15"]').click();
     assert.match(await page.locator('#fraud-document-dialog-view svg').getAttribute('style'), /115%/);
     await page.locator('#close-fraud-document-dialog').click();
+    await page.locator('[data-fraud-document-action="enlarge"][data-fraud-document="maker-id"]').click();
+    assert.equal(await page.locator('#fraud-document-dialog-heading').textContent(), 'Maker identification');
+    assert.equal(await page.locator('#fraud-document-dialog-view [data-region="maker-id-signature"]').count(), 1);
+    await page.locator('#close-fraud-document-dialog').click();
 
     for (const width of [320, 390, 768, 1024, 1440]) {
       await page.setViewportSize({ width, height: 900 });
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'inspection screen fits ' + width + 'px');
-      assert.equal(await page.locator('#fraud-document-grid .fraud-document-card').count(), 2);
+      assert.equal(await page.locator('#fraud-document-grid .fraud-document-card').count(), 3);
     }
     await page.setViewportSize({ width: 1280, height: 1000 });
+    assert.ok(await page.locator('#fraud-document-grid [data-fraud-card="check"] .fraud-doc-viewport').evaluate((viewport) => viewport.scrollHeight <= viewport.clientHeight + 1), 'full check and payee endorsement are visible without vertical scrolling inside the card');
     await page.screenshot({ path: (process.env.TEMP || '/tmp') + '/fraud-inspection-desktop.png', fullPage: true });
 
     await page.locator('[data-issue-id="payee-mismatch"]').click();

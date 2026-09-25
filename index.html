@@ -7,7 +7,7 @@
     <meta name="theme-color" content="#12343b">
     <title>Cash, Memory &amp; Detail Trainer</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="style.css?v=20260924-chart-appearance">
+    <link rel="stylesheet" href="style.css?v=20260925-maker-ids-color">
   </head>
   <body>
     <main class="app-shell">
@@ -490,10 +490,10 @@
           <p class="eyebrow" id="fraud-inspection-progress">Case 1 of 10 · EASY</p>
           <time class="timer" id="fraud-inspection-timer" aria-label="Time remaining for this inspection">1:00</time>
         </div>
-        <h2 id="fraud-inspection-heading" tabindex="-1">Inspect the check and customer ID</h2>
+        <h2 id="fraud-inspection-heading" tabindex="-1">Inspect the check, payee ID, and maker ID</h2>
         <p class="fraud-policy-note" id="fraud-policy-note">Fictional training documents. Use the simulator's stated rules for this exercise.</p>
         <div class="fraud-transaction-strip" id="fraud-transaction-strip"></div>
-        <section class="fraud-document-grid" id="fraud-document-grid" aria-label="Fictional check and customer ID"></section>
+        <section class="fraud-document-grid" id="fraud-document-grid" aria-label="Fictional check, payee ID, and maker ID"></section>
         <form class="answer-form" id="fraud-inspection-form">
           <fieldset>
             <legend>Select every issue you found</legend>
@@ -735,7 +735,11 @@
       <form id="chart-settings-form" class="chart-settings-form">
         <label>Apply to <select id="chart-settings-scope"><option value="chart">This chart</option><option value="all">All History charts</option></select></label>
         <label>Color gradient <select id="chart-settings-palette"><option value="current">Current</option><option value="ocean">Ocean</option><option value="violet">Violet</option><option value="sunset">Sunset</option><option value="teal">Teal</option></select></label>
-        <label>Data label color <select id="chart-settings-label-color"><option value="auto">Automatic</option><option value="ink">Theme text</option><option value="blue">Blue</option><option value="purple">Purple</option><option value="red">Red</option></select></label>
+        <label>Data label color <select id="chart-settings-label-color"><option value="auto">Automatic</option><option value="ink">Theme text</option><option value="blue">Blue</option><option value="purple">Purple</option><option value="red">Red</option><option value="custom">Custom color</option></select></label>
+        <div id="chart-settings-custom-color" class="chart-settings-custom-color" hidden>
+          <label for="chart-settings-color-picker">Choose your color <input id="chart-settings-color-picker" type="color" value="#176b83"></label>
+        </div>
+        <button class="secondary-button" id="chart-settings-random-color" type="button">Pick a random label color</button>
         <label class="chart-settings-check"><input id="chart-settings-bold" type="checkbox" checked> Bold data labels</label>
         <div class="action-row"><button class="secondary-button" type="submit">Save appearance</button><button class="text-button" id="reset-chart-settings" type="button">Reset everything</button></div>
       </form>
@@ -755,6 +759,6 @@
     </dialog>
 
     <footer>Browser edition. The original PowerShell quiz remains in this repository.</footer>
-    <script type="module" src="app.js?v=20260924-chart-appearance"></script>
+    <script type="module" src="app.js?v=20260925-maker-ids-color"></script>
   </body>
 </html>
