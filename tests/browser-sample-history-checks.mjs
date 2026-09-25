@@ -130,9 +130,9 @@ export async function checkSampleHistory(browser, site) {
     assert.equal(colors.ticks[0], colors.high, 'hue maximum matches the plotted maximum');
     assert.equal(colors.ticks.at(-1), colors.low, 'hue minimum matches the plotted minimum');
     assert.ok(await scatter.locator('.chart-hover').count(), 'scatter has a hover status area');
-    await scatter.locator('.analytics-mark').first().hover();
+    await scatter.locator('.analytics-mark circle').first().hover();
     assert.match(await scatter.locator('.chart-hover').textContent(), /% from .* attempts/);
-    await scatter.locator('.analytics-mark').first().click();
+    await scatter.locator('.analytics-mark circle').first().click();
     const detailOpened = await page.locator('#attempt-detail-dialog').evaluate((dialog) => dialog.open);
     assert.equal(detailOpened, true, 'tapping a plotted point opens its attempt details');
     assert.match(await page.locator('#attempt-detail-summary').textContent(), /X .* seconds; Y .*%/);
@@ -173,7 +173,7 @@ export async function checkSampleHistory(browser, site) {
         width: layout.getBoundingClientRect().width,
       }));
       if (width === 320) assert.equal(hueLayout.columns.trim().split(/\s+/).length, 1, 'mobile places the hue scale below a full-width chart');
-      if (width === 1440) assert.ok(hueLayout.chart > hueLayout.scale * 2, 'desktop keeps the chart readable beside the scale');
+      if (width === 1440) assert.ok(hueLayout.chart >= 600 && hueLayout.scale <= hueLayout.width, 'desktop keeps a readable chart above its color scale');
     }
     assert.deepEqual(errors, [], `sample-history browser errors: ${errors.join('\n')}`);
   } finally {

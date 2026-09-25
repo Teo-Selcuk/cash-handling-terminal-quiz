@@ -3927,7 +3927,7 @@ function renderChartCard(spec, records) {
     mark.append(tooltip, shape);
     if (spec.kind === 'bar' || spec.kind === 'line' || spec.kind === 'scatter') {
       const label = chartSvgElement('text', { class: 'chart-value-label', x, y: Math.max(plot.top + 11, y - 7), 'text-anchor': 'middle' });
-      label.textContent = spec.kind === 'scatter' ? `${point.label}: ${chartValue(point, series.metric)}` : chartValue(point, series.metric);
+      label.textContent = chartValue(point, series.metric);
       mark.append(label);
     }
     svg.append(mark);
@@ -4012,7 +4012,10 @@ function renderChartCard(spec, records) {
   }, true);
   const plotLayout = document.createElement('div');
   plotLayout.className = 'chart-plot-layout';
-  plotLayout.append(svg);
+  const plotScroll = document.createElement('div');
+  plotScroll.className = 'chart-plot-scroll';
+  plotScroll.append(svg);
+  plotLayout.append(plotScroll);
   const legend = renderChartHueLegend(spec, allPoints, series.metric);
   if (legend) plotLayout.append(legend);
   card.append(plotLayout);

@@ -61,6 +61,28 @@ export async function checkProgress(browser, site) {
     assert.ok(await page.locator('#history-error-combination-table tbody tr').count() > 0, 'supported raw-input combinations render');
     assert.ok(await page.locator('#history-error-charts h4').allTextContents().then((titles) => titles.includes('Error Rate by Category') && titles.includes('Error Rate by Raw Input') && titles.includes('Error Rate Over Time')),
       'category, raw-input, and trend charts render when their saved fields exist');
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const chartRows = await page.locator('#history-error-charts .interactive-chart').evaluateAll((cards) => cards.slice(0, 3).map((card) => Math.round(card.getBoundingClientRect().top)));
+    assert.equal(chartRows[0], chartRows[1], 'two error charts share the first desktop row');
+    assert.ok(chartRows[2] > chartRows[1], 'a third error chart starts a new row');
+    const labelReadability = async () => page.locator('#history-error-charts .chart-value-label').first().evaluate((label) => {
+      const card = label.closest('.interactive-chart');
+      const foreground = getComputedStyle(label).fill.match(/[\d.]+/g).slice(0, 3).map(Number);
+      const background = getComputedStyle(card).backgroundColor.match(/[\d.]+/g).slice(0, 3).map(Number);
+      const luminance = (rgb) => rgb.map((channel) => {
+        const value = channel / 255;
+        return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+      }).reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0);
+      const a = luminance(foreground); const b = luminance(background);
+      return { height: label.getBoundingClientRect().height, contrast: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05) };
+    });
+    for (const theme of ['light', 'dark']) {
+      const readability = await labelReadability();
+      assert.ok(readability.height >= 12, `${theme} chart labels remain at least 12px high: ${JSON.stringify(readability)}`);
+      assert.ok(readability.contrast >= 4.5, `${theme} chart labels have readable contrast: ${JSON.stringify(readability)}`);
+      if (theme === 'light') await page.locator('#theme-toggle').click();
+    }
+    await page.locator('#theme-toggle').click();
     assert.equal(await page.locator('#history-rows tr').first().locator('td').count(), 8, 'attempt table includes raw-input and numeric-error columns');
     assert.equal(await page.locator('#qralarm-connection').evaluate((details) => details.open), false);
     await page.locator('#qralarm-connection summary').click();
