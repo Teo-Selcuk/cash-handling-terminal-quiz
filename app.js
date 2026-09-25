@@ -49,6 +49,7 @@ const THEME_KEY = 'cash-handling-terminal-quiz-theme-v1';
 const PRESET_KEY = 'cash-handling-terminal-quiz-presets-v1';
 const CURRENT_CHALLENGE_KEY = 'cash-handling-terminal-quiz-current-challenge-v1';
 const SAMPLE_HISTORY_KEY = 'cash-handling-terminal-quiz-sample-history-v1';
+const CHART_APPEARANCE_KEY = 'cash-handling-terminal-quiz-chart-appearance-v1';
 const screens = ['setup', 'quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'error-detection-briefing', 'error-detection', 'fraud-inspection', 'feedback', 'summary', 'history'];
 const refs = Object.fromEntries([
   'setup-form', 'setup-screen', 'quiz-screen', 'feedback-screen', 'summary-screen', 'history-screen',
@@ -66,6 +67,8 @@ const refs = Object.fromEntries([
   'history-game-tabs', 'history-quick-ranges', 'history-common-filters', 'history-game-filters', 'clear-history-filters',
   'history-charts', 'history-insights', 'history-comparison', 'history-recommendations', 'previous-challenges', 'history-attempt-summary',
   'attempt-detail-dialog', 'attempt-detail-summary', 'attempt-detail-content', 'close-attempt-detail',
+  'chart-data-dialog', 'chart-data-heading', 'chart-data-content', 'close-chart-data',
+  'chart-settings-dialog', 'chart-settings-heading', 'chart-settings-form', 'chart-settings-scope', 'chart-settings-palette', 'chart-settings-label-color', 'chart-settings-bold', 'close-chart-settings', 'reset-chart-settings',
   'memory-question-count', 'memory-read-progress', 'memory-read-timer', 'memory-number', 'memory-read-hint', 'memory-answer-now',
   'memory-answer-form', 'memory-answer-list', 'memory-answer-progress', 'memory-answer-timer', 'memory-answer-heading', 'summary-heading',
   'task-question-count', 'task-briefing-progress', 'task-briefing-timer', 'task-briefing-heading', 'task-briefing-title', 'task-instruction-list', 'task-start-demo',
@@ -88,6 +91,82 @@ const refs = Object.fromEntries([
 
 const savedPresetState = loadPresetState();
 const historyView = { filters: { game: 'all' }, activeRange: 'all', charts: new Map(), conditions: [], dataSource: 'real', sampleRecords: null, errorSort: 'error-rate' };
+const defaultChartAppearance = Object.freeze({ palette: 'current', labelColor: 'auto', bold: true });
+const chartPalettes = Object.freeze({
+  ocean: [200, 180, 145], violet: [270, 310, 345], sunset: [8, 30, 52], teal: [185, 155, 115],
+});
+const chartLabelColors = Object.freeze({ auto: 'var(--ink)', ink: 'var(--ink)', blue: 'var(--chart-label-blue)', purple: 'var(--chart-label-purple)', red: 'var(--chart-label-red)' });
+function loadChartAppearance() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(CHART_APPEARANCE_KEY) ?? 'null');
+    return saved && typeof saved === 'object' ? { all: saved.all ?? {}, charts: saved.charts ?? {} } : { all: {}, charts: {} };
+  } catch { return { all: {}, charts: {} }; }
+}
+let chartAppearance = loadChartAppearance();
+let editingChartId = null;
+function chartSettings(id) {
+  const candidate = { ...defaultChartAppearance, ...chartAppearance.all, ...chartAppearance.charts[id] };
+  return {
+    palette: candidate.palette === 'current' || chartPalettes[candidate.palette] ? candidate.palette : 'current',
+    labelColor: chartLabelColors[candidate.labelColor] ? candidate.labelColor : 'auto',
+    bold: candidate.bold !== false,
+  };
+}
+function applyChartAppearance(element, id) {
+  const settings = chartSettings(id);
+  element.style.setProperty('--chart-label-color', chartLabelColors[settings.labelColor]);
+  element.style.setProperty('--chart-label-weight', settings.bold ? '750' : '400');
+}
+function saveChartAppearance() {
+  localStorage.setItem(CHART_APPEARANCE_KEY, JSON.stringify(chartAppearance));
+  renderHistory();
+}
+function openChartSettings(id, title) {
+  editingChartId = id;
+  refs['chart-settings-heading'].textContent = `${title} appearance`;
+  refs['chart-settings-scope'].value = 'chart';
+  const settings = chartSettings(id);
+  refs['chart-settings-palette'].value = settings.palette;
+  refs['chart-settings-label-color'].value = settings.labelColor;
+  refs['chart-settings-bold'].checked = settings.bold;
+  refs['chart-settings-dialog'].showModal();
+}
+function makeChartDataTable(headers, rows) {
+  const table = document.createElement('table');
+  const head = document.createElement('thead');
+  const headerRow = document.createElement('tr');
+  headers.forEach((name) => { const cell = document.createElement('th'); cell.scope = 'col'; cell.textContent = name; headerRow.append(cell); });
+  head.append(headerRow);
+  const body = document.createElement('tbody');
+  rows.forEach((values) => {
+    const row = document.createElement('tr');
+    values.forEach((value) => { const cell = document.createElement('td'); cell.textContent = String(value ?? '—'); row.append(cell); });
+    body.append(row);
+  });
+  if (!rows.length) { const row = document.createElement('tr'); const cell = document.createElement('td'); cell.colSpan = headers.length; cell.textContent = 'No values for the current filters.'; row.append(cell); body.append(row); }
+  table.append(head, body);
+  return table;
+}
+function openChartData(title, table) {
+  refs['chart-data-heading'].textContent = `${title} data`;
+  refs['chart-data-content'].replaceChildren(table);
+  refs['chart-data-dialog'].showModal();
+}
+function chartSpecDataTable(spec) {
+  const metric = spec.series[0].metric;
+  const scatter = spec.kind === 'scatter';
+  const headers = scatter ? ['Category', 'Response time', 'Value', 'Evidence', '95% interval'] : ['Category', 'Value', 'Evidence', '95% interval'];
+  const rows = spec.series[0].points.map((point) => {
+    const correct = point.correct ?? point.detail?.correct;
+    const evidence = metric === 'accuracy' && point.measure !== 'mean' && correct !== undefined
+      ? `${correct} / ${point.count}` : Number.isFinite(point.opportunities) && Number.isFinite(point.errors)
+        ? `${point.errors} / ${point.opportunities} errors across ${point.attemptCount ?? point.attemptIds.length} attempts`
+        : `${point.attemptIds.length} attempts`;
+    return [point.label, ...(scatter ? [point.x === null || point.x === undefined ? 'Not recorded' : `${Number(point.x).toFixed(1)}s`] : []),
+      chartValue({ value: scatter ? point.y : point.value }, metric), evidence, point.interval ? `${point.interval[0]}–${point.interval[1]}%` : '—'];
+  });
+  return makeChartDataTable(headers, rows);
+}
 
 const state = {
   activeScreen: 'setup',
@@ -3205,6 +3284,21 @@ function renderSummary() {
 }
 
 function renderHistoryVisuals(summary) {
+  const outcomeCard = refs['history-outcome-diagram'].closest('.visual-card');
+  const accuracyCard = refs['history-accuracy-chart'].closest('.visual-card');
+  applyChartAppearance(outcomeCard, 'outcomes');
+  applyChartAppearance(accuracyCard, 'accuracy-by-difficulty');
+  const palette = chartSettings('outcomes').palette;
+  outcomeCard.querySelectorAll('[data-chart-data], [data-chart-settings]').forEach((button) => {
+    button.onclick = button.dataset.chartData
+      ? () => openChartData('Answer outcomes', makeChartDataTable(['Outcome', 'Answers', 'Share'], summary.outcomes.map((outcome) => [outcome.label, outcome.count, `${outcome.percent}%`])))
+      : () => openChartSettings('outcomes', 'Answer outcomes');
+  });
+  accuracyCard.querySelectorAll('[data-chart-data], [data-chart-settings]').forEach((button) => {
+    button.onclick = button.dataset.chartData
+      ? () => openChartData('Accuracy by difficulty', makeChartDataTable(['Difficulty', 'Correct', 'Answered', 'Accuracy'], summary.byDifficulty.map((level) => [level.level, level.correct, level.answered, `${level.accuracyPercent}%`])))
+      : () => openChartSettings('accuracy-by-difficulty', 'Accuracy by difficulty');
+  });
   refs['history-outcomes-summary'].textContent = summary.answered
     ? `${summary.correct} of ${summary.answered} correct`
     : 'No answers yet';
@@ -3216,19 +3310,21 @@ function renderHistoryVisuals(summary) {
     empty.textContent = 'Complete a question to populate this diagram.';
     refs['history-outcome-diagram'].append(empty);
   } else {
-    for (const outcome of summary.outcomes) {
+    for (const [index, outcome] of summary.outcomes.entries()) {
       const segment = document.createElement('span');
       segment.className = `outcome-segment outcome-${outcome.key}`;
       segment.style.setProperty('--segment-size', `${outcome.percent}%`);
+      if (palette !== 'current') segment.style.backgroundColor = chartPaletteColor(index / Math.max(1, summary.outcomes.length - 1), palette);
       segment.setAttribute('aria-hidden', 'true');
       refs['history-outcome-diagram'].append(segment);
     }
   }
 
-  refs['history-outcome-legend'].replaceChildren(...summary.outcomes.map((outcome) => {
+  refs['history-outcome-legend'].replaceChildren(...summary.outcomes.map((outcome, index) => {
     const item = document.createElement('li');
     const marker = document.createElement('span');
     marker.className = `legend-marker outcome-${outcome.key}`;
+    if (palette !== 'current') marker.style.backgroundColor = chartPaletteColor(index / Math.max(1, summary.outcomes.length - 1), palette);
     marker.setAttribute('aria-hidden', 'true');
     const label = document.createElement('span');
     label.textContent = `${outcome.label}: ${outcome.count} (${outcome.percent}%)`;
@@ -3266,7 +3362,7 @@ function renderHistoryVisuals(summary) {
     const fill = document.createElement('span');
     fill.className = `bar-chart-fill ${chartColorClass({ id: 'accuracy-by-difficulty', kind: 'bar', series: [{ metric: 'accuracy' }] }, { key: level.level, value: level.accuracyPercent }, 0)}`;
     fill.style.setProperty('--bar-size', `${level.accuracyPercent}%`);
-    fill.style.setProperty('--chart-color', chartHueColor(level.accuracyPercent, 0, 100, 'accuracy'));
+    fill.style.setProperty('--chart-color', chartHueColor(level.accuracyPercent, 0, 100, 'accuracy', 'accuracy-by-difficulty'));
     track.append(fill);
     const value = document.createElement('span');
     value.className = 'bar-chart-value';
@@ -3277,7 +3373,7 @@ function renderHistoryVisuals(summary) {
   const layout = document.createElement('div');
   layout.className = 'chart-plot-layout summary-chart-layout';
   layout.append(plot);
-  if (summary.byDifficulty.length) layout.append(renderChartHueLegend({ axisLabel: 'Accuracy (%)' }, summary.byDifficulty.map((level) => ({ value: level.accuracyPercent })), 'accuracy'));
+  if (summary.byDifficulty.length) layout.append(renderChartHueLegend({ id: 'accuracy-by-difficulty', axisLabel: 'Accuracy (%)' }, summary.byDifficulty.map((level) => ({ value: level.accuracyPercent })), 'accuracy'));
   refs['history-accuracy-chart'].replaceChildren(layout);
 }
 
@@ -3565,8 +3661,18 @@ function chartValue(point, metric) {
   return `${point.value}%`;
 }
 
-function chartHueColor(value, minimum, maximum, metric) {
+function chartPaletteColor(ratio, palette) {
+  const hues = chartPalettes[palette];
+  const position = Math.max(0, Math.min(1, ratio)) * 2;
+  const index = Math.min(1, Math.floor(position));
+  const hue = hues[index] + (hues[index + 1] - hues[index]) * (position - index);
+  return `hsl(${hue.toFixed(2)} 68% var(--chart-hue-lightness))`;
+}
+
+function chartHueColor(value, minimum, maximum, metric, chartId = '') {
   const ratio = maximum === minimum ? 0.5 : Math.max(0, Math.min(1, (value - minimum) / (maximum - minimum)));
+  const palette = chartSettings(chartId).palette;
+  if (palette !== 'current') return chartPaletteColor(ratio, palette);
   const errorMetric = metric === 'error-rate' || metric === 'percentage-error';
   const hue = metric === 'accuracy'
     ? ratio < 0.6 ? 7 + 38 * ratio / 0.6 : ratio < 0.85 ? 45 + 80 * (ratio - 0.6) / 0.25 : 125 + 30 * (ratio - 0.85) / 0.15
@@ -3594,7 +3700,7 @@ function renderChartHueLegend(spec, points, metric) {
     const ratio = index / (steps - 1);
     const sampleValue = minimum + (maximum - minimum) * ratio;
     const swatch = document.createElement('span');
-    swatch.style.backgroundColor = chartHueColor(sampleValue, minimum, maximum, metric);
+    swatch.style.backgroundColor = chartHueColor(sampleValue, minimum, maximum, metric, spec.id);
     gradient.append(swatch);
   }
   const tickList = document.createElement('div');
@@ -3623,7 +3729,7 @@ function renderChartCategoryLegend(spec, points) {
     const item = document.createElement('li');
     const swatch = document.createElement('span');
     swatch.className = `chart-category-swatch ${chartColorClass(spec, point, index)}`;
-    swatch.style.setProperty('--chart-color', chartHueColor(Number(point.value), 0, maximum, metric));
+    swatch.style.setProperty('--chart-color', chartHueColor(Number(point.value), 0, maximum, metric, spec.id));
     swatch.setAttribute('aria-hidden', 'true');
     const text = document.createElement('span');
     text.textContent = point.label;
@@ -3781,6 +3887,7 @@ function renderChartCard(spec, records) {
   card.className = `interactive-chart visual-card${view.expanded ? ' is-maximized' : ''}`;
   card.dataset.chartKind = spec.kind;
   card.dataset.chartId = spec.id;
+  applyChartAppearance(card, spec.id);
   card.tabIndex = -1;
   if (view.expanded) {
     card.setAttribute('role', 'dialog');
@@ -3793,7 +3900,7 @@ function renderChartCard(spec, records) {
   title.textContent = spec.title;
   const controls = document.createElement('div');
   controls.className = 'chart-controls';
-  const control = (label, action, disabled = false) => {
+  const control = (label, action, disabled = false, rerender = true) => {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'text-button';
@@ -3802,6 +3909,7 @@ function renderChartCard(spec, records) {
     button.addEventListener('click', () => {
       const restoreFocus = view.expanded || label === 'Maximize';
       action();
+      if (!rerender) return;
       renderHistory();
       if (restoreFocus) {
         const nextCard = [...document.querySelectorAll('.interactive-chart')].find((item) => item.dataset.chartId === spec.id);
@@ -3818,7 +3926,9 @@ function renderChartCard(spec, records) {
   control('Earlier', () => { view.start = Math.max(0, view.start - Math.max(1, Math.floor(view.count / 2))); }, isScatter || view.start === 0);
   control('Later', () => { view.start = Math.min(Math.max(0, allPoints.length - view.count), view.start + Math.max(1, Math.floor(view.count / 2))); }, isScatter || view.start >= allPoints.length - view.count);
   control('Reset', () => { Object.assign(view, { start: 0, count: 12, xMin: 0, xMax: fullXMax, visible: true, compare: false, notice: 'Showing the default chart range.' }); });
+  control('Data table', () => openChartData(spec.title, chartSpecDataTable(spec)), false, false);
   control(view.compare ? 'Hide comparison' : 'Compare periods', () => { view.compare = !view.compare; });
+  control('Appearance', () => openChartSettings(spec.id, spec.title), false, false);
   control(view.expanded ? 'Restore size' : 'Maximize', () => { view.expanded = !view.expanded; });
   heading.append(title, controls);
   card.append(heading);
@@ -3926,7 +4036,7 @@ function renderChartCard(spec, records) {
       ? `${point.errors} of ${point.opportunities} error opportunities across ${point.attemptCount ?? point.attemptIds.length} attempts`
       : `from ${point.attemptIds.length} attempt${point.attemptIds.length === 1 ? '' : 's'}`;
     const mark = chartSvgElement('g', { class: `analytics-mark ${colorClass}`, role: 'button', tabindex: '0', 'aria-label': `${point.label}: ${chartValue(point, series.metric)} ${evidence}` });
-    mark.style.setProperty('--chart-color', chartHueColor(value, hueMinimum, hueMaximum, series.metric));
+    mark.style.setProperty('--chart-color', chartHueColor(value, hueMinimum, hueMaximum, series.metric, spec.id));
     const shape = chartSvgElement(spec.kind === 'line' || spec.kind === 'scatter' ? 'circle' : 'rect', spec.kind === 'line' || spec.kind === 'scatter'
       ? { cx: x, cy: y, r: Math.max(4, Math.min(8, width * 0.18)) }
       : { x: x - Math.max(3, width * 0.32), y, width: Math.max(5, width * 0.64), height, rx: 2 });
@@ -3956,7 +4066,7 @@ function renderChartCard(spec, records) {
     const gradient = chartSvgElement('linearGradient', { id: gradientId, x1: '0%', x2: '100%', y1: '0%', y2: '0%' });
     points.forEach((point, index) => {
       const stop = chartSvgElement('stop', { offset: `${(xFor(point, index) - xFor(points[0], 0)) / (xFor(points.at(-1), points.length - 1) - xFor(points[0], 0)) * 100}%` });
-      stop.style.stopColor = chartHueColor(Number(point.value), hueMinimum, hueMaximum, metric);
+      stop.style.stopColor = chartHueColor(Number(point.value), hueMinimum, hueMaximum, metric, spec.id);
       gradient.append(stop);
     });
     defs.append(gradient);
@@ -5104,6 +5214,25 @@ refs['clear-history-filters'].addEventListener('click', () => {
   renderHistory();
 });
 refs['close-attempt-detail'].addEventListener('click', () => refs['attempt-detail-dialog'].close());
+refs['close-chart-data'].addEventListener('click', () => refs['chart-data-dialog'].close());
+refs['close-chart-settings'].addEventListener('click', () => refs['chart-settings-dialog'].close());
+refs['chart-settings-form'].addEventListener('submit', (event) => {
+  event.preventDefault();
+  const settings = {
+    palette: refs['chart-settings-palette'].value,
+    labelColor: refs['chart-settings-label-color'].value,
+    bold: refs['chart-settings-bold'].checked,
+  };
+  if (refs['chart-settings-scope'].value === 'all') chartAppearance = { all: settings, charts: {} };
+  else chartAppearance.charts[editingChartId] = settings;
+  refs['chart-settings-dialog'].close();
+  saveChartAppearance();
+});
+refs['reset-chart-settings'].addEventListener('click', () => {
+  chartAppearance = { all: {}, charts: {} };
+  refs['chart-settings-dialog'].close();
+  saveChartAppearance();
+});
 refs['attempt-detail-dialog'].addEventListener('click', (event) => {
   if (event.target === refs['attempt-detail-dialog']) refs['attempt-detail-dialog'].close();
 });
