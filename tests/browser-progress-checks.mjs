@@ -61,10 +61,23 @@ export async function checkProgress(browser, site) {
     assert.ok(await page.locator('#history-error-combination-table tbody tr').count() > 0, 'supported raw-input combinations render');
     assert.ok(await page.locator('#history-error-charts h4').allTextContents().then((titles) => titles.includes('Error Rate by Category') && titles.includes('Error Rate by Raw Input') && titles.includes('Error Rate Over Time')),
       'category, raw-input, and trend charts render when their saved fields exist');
+    assert.equal(await page.locator('#history-error-charts .interactive-chart button:text-is("Maximize")').count(), await page.locator('#history-error-charts .interactive-chart').count(), 'every error chart has a maximize control');
     await page.setViewportSize({ width: 1440, height: 900 });
     const chartRows = await page.locator('#history-error-charts .interactive-chart').evaluateAll((cards) => cards.slice(0, 3).map((card) => Math.round(card.getBoundingClientRect().top)));
     assert.equal(chartRows[0], chartRows[1], 'two error charts share the first desktop row');
     assert.ok(chartRows[2] > chartRows[1], 'a third error chart starts a new row');
+    const errorCard = page.locator('#history-error-charts .interactive-chart').first();
+    const errorWindow = await errorCard.locator('.analytics-svg').getAttribute('data-chart-window');
+    await errorCard.getByRole('button', { name: 'Maximize' }).click();
+    assert.ok(await errorCard.evaluate((card) => card.classList.contains('is-maximized') && card.getBoundingClientRect().width >= innerWidth - 40 && card.getBoundingClientRect().height >= innerHeight - 40), 'error chart fills the viewport');
+    assert.equal(await errorCard.locator('.analytics-svg').getAttribute('data-chart-window'), errorWindow, 'maximizing preserves the visible chart range');
+    await errorCard.getByRole('button', { name: 'Zoom in' }).click();
+    assert.notEqual(await errorCard.locator('.analytics-svg').getAttribute('data-chart-window'), errorWindow, 'zoom works while maximized');
+    await errorCard.getByRole('button', { name: 'Zoom out' }).click();
+    await errorCard.getByRole('button', { name: 'Reset' }).click();
+    assert.equal(await errorCard.locator('.analytics-svg').getAttribute('data-chart-window'), errorWindow, 'reset restores the full range while maximized');
+    await errorCard.getByRole('button', { name: 'Restore size' }).click();
+    assert.equal(await errorCard.evaluate((card) => card.classList.contains('is-maximized')), false, 'restore returns the error chart to its grid');
     const labelReadability = async () => page.locator('#history-error-charts .chart-value-label').first().evaluate((label) => {
       const card = label.closest('.interactive-chart');
       const foreground = getComputedStyle(label).fill.match(/[\d.]+/g).slice(0, 3).map(Number);
@@ -122,6 +135,7 @@ export async function checkProgress(browser, site) {
     assert.equal(await page.locator('#error-analysis-sort').inputValue(), 'alphabetical', 'error breakdowns can be sorted');
     await page.locator('#error-analysis-sort').selectOption('error-rate');
     const chart = page.locator('#history-charts .interactive-chart').first();
+    assert.equal(await page.locator('#history-charts .interactive-chart button:text-is("Maximize")').count(), await page.locator('#history-charts .interactive-chart').count(), 'every progress chart has a maximize control');
     assert.ok(await chart.locator('.chart-axis').count() >= 2, 'charts render visible X and Y axes');
     assert.ok(await chart.locator('.chart-axis-title').count() >= 2, 'charts label both axes');
     assert.ok(await chart.locator('.chart-y-tick').count() >= 3, 'charts show numeric Y-axis ticks');
@@ -134,6 +148,14 @@ export async function checkProgress(browser, site) {
     assert.match(await chart.locator('.analytics-svg').getAttribute('data-chart-window'), /:\d+$/);
     await chart.getByRole('button', { name: 'Later' }).click();
     await chart.getByRole('button', { name: 'Earlier' }).click();
+    await chart.getByRole('button', { name: 'Reset' }).click();
+    await chart.getByRole('button', { name: 'Zoom in' }).click();
+    const windowBeforeMaximize = await chart.locator('.analytics-svg').getAttribute('data-chart-window');
+    await chart.getByRole('button', { name: 'Maximize' }).click();
+    assert.equal(await chart.locator('.analytics-svg').getAttribute('data-chart-window'), windowBeforeMaximize, 'maximizing a progress chart keeps its zoom');
+    await page.keyboard.press('Escape');
+    assert.equal(await chart.evaluate((card) => card.classList.contains('is-maximized')), false, 'Escape restores the chart size');
+    assert.equal(await chart.locator('.analytics-svg').getAttribute('data-chart-window'), windowBeforeMaximize, 'restoring keeps the zoom');
     await chart.getByRole('button', { name: 'Reset' }).click();
     const scatter = page.locator('#history-charts .interactive-chart').filter({ has: page.getByRole('heading', { name: 'Speed versus accuracy' }) });
     assert.equal(await scatter.locator('.analytics-mark').count(), 3, 'scatter has one point for each difficulty');
@@ -180,6 +202,16 @@ export async function checkProgress(browser, site) {
         elements: [...document.querySelectorAll('*')].filter((element) => element.getBoundingClientRect().right > innerWidth + 1)
           .slice(0, 8).map((element) => `${element.tagName}#${element.id}.${element.className?.baseVal ?? element.className}: ${Math.round(element.getBoundingClientRect().right)}`) }));
       assert.ok(overflow.page <= overflow.width, `progress history fits ${width}px: ${JSON.stringify(overflow)}`);
+      if (width === 320) {
+        await chart.getByRole('button', { name: 'Maximize' }).click();
+        assert.ok(await chart.evaluate((card) => {
+          const bounds = card.getBoundingClientRect();
+          const plot = card.querySelector('.chart-plot-scroll');
+          return bounds.left >= 0 && bounds.right <= innerWidth && bounds.top >= 0 && bounds.bottom <= innerHeight
+            && plot.scrollWidth > plot.clientWidth;
+        }), 'mobile maximized chart fits the viewport and scrolls its full-sized plot internally');
+        await chart.getByRole('button', { name: 'Restore size' }).click();
+      }
       if (width === 1440) {
         assert.ok(await page.locator('.app-shell').evaluate((shell) => shell.getBoundingClientRect().width >= 1400), 'desktop layout uses the available width');
         assert.ok(await chart.locator('.analytics-svg').evaluate((svg) => svg.getBoundingClientRect().height >= 320), 'desktop charts have a readable height');

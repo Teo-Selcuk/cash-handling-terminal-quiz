@@ -3763,7 +3763,7 @@ function renderChartCard(spec, records) {
   const allX = isScatter ? allPoints.map((point) => Number(point.x)).filter(Number.isFinite) : [];
   const fullXMax = isScatter ? chartScale(allX, 'time').max : 0;
   const dataKey = `${historyView.filters.game}:${spec.attemptIds.join('|')}`;
-  if (view.dataKey !== dataKey) Object.assign(view, { dataKey, start: 0, count: 12, xMin: 0, xMax: fullXMax });
+  if (view.dataKey !== dataKey) Object.assign(view, { dataKey, start: 0, count: 12, xMin: 0, xMax: fullXMax, expanded: false });
   if (isScatter) {
     view.xMin = Math.max(0, Math.min(view.xMin ?? 0, fullXMax - 0.1));
     view.xMax = Math.max(view.xMin + 0.1, Math.min(view.xMax ?? fullXMax, fullXMax));
@@ -3778,8 +3778,15 @@ function renderChartCard(spec, records) {
     view.notice = `Showing ${view.xMin.toFixed(1)}–${view.xMax.toFixed(1)} seconds.`;
   };
   const card = document.createElement('article');
-  card.className = 'interactive-chart visual-card';
+  card.className = `interactive-chart visual-card${view.expanded ? ' is-maximized' : ''}`;
   card.dataset.chartKind = spec.kind;
+  card.dataset.chartId = spec.id;
+  card.tabIndex = -1;
+  if (view.expanded) {
+    card.setAttribute('role', 'dialog');
+    card.setAttribute('aria-modal', 'true');
+    card.setAttribute('aria-label', `${spec.title} enlarged chart`);
+  }
   const heading = document.createElement('div');
   heading.className = 'visual-heading';
   const title = document.createElement('h4');
@@ -3792,7 +3799,17 @@ function renderChartCard(spec, records) {
     button.className = 'text-button';
     button.textContent = label;
     button.disabled = disabled;
-    button.addEventListener('click', () => { action(); renderHistory(); });
+    button.addEventListener('click', () => {
+      const restoreFocus = view.expanded || label === 'Maximize';
+      action();
+      renderHistory();
+      if (restoreFocus) {
+        const nextCard = [...document.querySelectorAll('.interactive-chart')].find((item) => item.dataset.chartId === spec.id);
+        const nextLabel = label === 'Maximize' ? 'Restore size' : label === 'Restore size' ? 'Maximize' : label;
+        const nextButton = [...(nextCard?.querySelectorAll('.chart-controls button') ?? [])].find((item) => item.textContent === nextLabel && !item.disabled);
+        (nextButton ?? nextCard)?.focus({ preventScroll: true });
+      }
+    });
     controls.append(button);
   };
   control(view.visible ? 'Hide data' : 'Show data', () => { view.visible = !view.visible; });
@@ -3802,6 +3819,7 @@ function renderChartCard(spec, records) {
   control('Later', () => { view.start = Math.min(Math.max(0, allPoints.length - view.count), view.start + Math.max(1, Math.floor(view.count / 2))); }, isScatter || view.start >= allPoints.length - view.count);
   control('Reset', () => { Object.assign(view, { start: 0, count: 12, xMin: 0, xMax: fullXMax, visible: true, compare: false, notice: 'Showing the default chart range.' }); });
   control(view.compare ? 'Hide comparison' : 'Compare periods', () => { view.compare = !view.compare; });
+  control(view.expanded ? 'Restore size' : 'Maximize', () => { view.expanded = !view.expanded; });
   heading.append(title, controls);
   card.append(heading);
   const status = document.createElement('p');
@@ -4967,6 +4985,26 @@ refs['next-question'].addEventListener('click', () => {
   else if (state.game === 'fraud-inspection') showNextFraudInspectionCase();
   else showNextQuestion();
 });
+document.addEventListener('keydown', (event) => {
+  const expandedChart = document.querySelector('.interactive-chart.is-maximized');
+  if (!expandedChart || event.target.closest?.('dialog[open]')) return;
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    const chartId = expandedChart.dataset.chartId;
+    historyView.charts.get(chartId).expanded = false;
+    renderHistory();
+    const restored = [...document.querySelectorAll('.interactive-chart')].find((card) => card.dataset.chartId === chartId);
+    restored?.querySelector('.chart-controls button:last-child')?.focus({ preventScroll: true });
+  } else if (event.key === 'Tab') {
+    const focusable = [...expandedChart.querySelectorAll('button:not(:disabled), [tabindex="0"], summary')].filter((item) => item.getClientRects().length);
+    const first = focusable[0];
+    const last = focusable.at(-1);
+    if (first && (event.shiftKey ? document.activeElement === first || !expandedChart.contains(document.activeElement) : document.activeElement === last || !expandedChart.contains(document.activeElement))) {
+      event.preventDefault();
+      (event.shiftKey ? last : first).focus();
+    }
+  }
+}, true);
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Enter' || event.defaultPrevented || event.isComposing || event.repeat) return;
   if (state.activeScreen !== 'feedback' || event.target.closest('dialog[open]')) return;

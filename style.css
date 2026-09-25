@@ -203,6 +203,10 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 .insight-columns ul { margin: .5rem 0 0; padding-left: 1.25rem; }
 .insight-columns li + li { margin-top: .5rem; }
 .interactive-chart { overflow: hidden; }
+body:has(.interactive-chart.is-maximized) { overflow: hidden; }
+.interactive-chart.is-maximized { position: fixed; inset: 0; z-index: 100; width: 100vw; height: 100dvh; overflow: auto; overscroll-behavior: contain; padding: clamp(1rem, 3vw, 2rem); border: 0; border-radius: 0; background: var(--surface); }
+.interactive-chart.is-maximized .chart-plot-layout { width: 100%; max-width: 100rem; margin-inline: auto; }
+.interactive-chart.is-maximized .analytics-svg { min-width: 48rem; max-width: 100rem; margin-inline: auto; }
 .chart-plot-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.5rem; min-width: 0; }
 .chart-plot-scroll { min-width: 0; max-width: 100%; overflow-x: auto; }
 .chart-hue-legend { display: grid; grid-template-columns: minmax(1rem, 1fr) 1.25rem 2rem; grid-template-rows: auto 1fr; align-items: stretch; gap: 0.4rem 0.25rem; min-height: 15rem; padding: 0.4rem 0 0.4rem 0.4rem; border-left: 1px solid var(--line); }
