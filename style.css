@@ -155,7 +155,7 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 .error-analysis-highlight { min-width: 0; margin: 0; padding: 0.75rem; border-left: 0.2rem solid var(--accent); background: var(--surface); line-height: 1.45; overflow-wrap: anywhere; }
 .history-error-comparison { margin-top: 1.25rem; padding: 0.75rem; border: 0.0625rem solid var(--line); border-radius: 0.3rem; background: var(--surface); }
 .history-error-comparison .chart-note + .chart-note { margin-top: 0.45rem; }
-.history-error-charts > div { display: grid; gap: 1rem; grid-template-columns: minmax(0, 1fr); min-width: 0; margin-top: 0.75rem; }
+.history-error-charts > div { display: grid; gap: 1rem; grid-template-columns: repeat(2, minmax(0, 1fr)); min-width: 0; margin-top: 0.75rem; }
 .history-error-charts .interactive-chart { min-width: 0; }
 .error-analysis-tables { display: grid; gap: 0.75rem; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 1.25rem; }
 .error-analysis-tables > section { min-width: 0; padding: 0.75rem; border: 0.0625rem solid var(--line); border-radius: 0.3rem; background: var(--surface); }
@@ -194,7 +194,7 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 .comparison-metric strong, .comparison-metric span { display: block; }
 .comparison-metric strong { font-size: 1.25rem; font-variant-numeric: tabular-nums; }
 .comparison-metric span { color: var(--muted); font-size: 0.8125rem; }
-.history-charts > #history-charts { display: grid; gap: 1rem; margin-top: 1rem; }
+.history-charts > #history-charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-top: 1rem; }
 .insight-conditions { display: flex; flex-wrap: wrap; gap: .75rem; margin: 1rem 0; }
 .insight-conditions label { display: grid; gap: .25rem; min-width: min(100%, 17rem); flex: 1; font-weight: 600; }
 .insight-conditions select { width: 100%; min-height: 2.75rem; padding: .5rem; border: 1px solid var(--line); border-radius: .5rem; background: var(--surface); color: var(--ink); font-size: 1rem; }
@@ -244,6 +244,7 @@ body { --chart-label-blue: #0754a8; --chart-label-purple: #7036a5; --chart-label
 .analytics-svg text { fill: var(--muted); font-family: inherit; font-size: 1rem; }
 .analytics-svg .chart-axis-line { stroke: var(--ink); stroke-width: 1.25; }
 .analytics-svg .chart-grid-line { stroke: var(--line); stroke-width: 1; }
+.analytics-svg .chart-selection-band { fill: var(--brand-fill); fill-opacity: 0.2; stroke: var(--brand-fill); stroke-width: 1.5; pointer-events: none; }
 .analytics-svg .chart-axis-title { fill: var(--ink); font-size: 1.05rem; font-weight: 750; }
 .analytics-svg .chart-y-tick, .analytics-svg .chart-x-tick { fill: var(--muted); font-variant-numeric: tabular-nums; }
 .analytics-svg .chart-series-line { stroke: var(--brand-fill); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
@@ -587,11 +588,11 @@ footer { width: min(100% - 1.25rem, 112rem); margin: 0 auto; padding-bottom: 2re
   .error-detection-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .metric-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .history-visuals { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .history-charts > #history-charts { grid-template-columns: minmax(0, 1fr); }
+  .history-charts > #history-charts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (min-width: 72rem) {
-  .history-error-charts > div { grid-template-columns: minmax(0, 1fr); }
+  .history-error-charts > div { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 64rem) {
@@ -759,6 +760,11 @@ body:has(#fraud-inspection-screen:not([hidden])) .app-shell { padding-top: 0.5re
   .fraud-document-grid .fraud-document-card:not([data-fraud-card="check"]) { grid-column: 2; }
   .fraud-document-grid .fraud-document-card:not([data-fraud-card="check"]) .fraud-document-tools button:not([data-fraud-document-action="enlarge"]) { display: none; }
   .fraud-transaction-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 42rem) {
+  .history-charts > #history-charts { grid-template-columns: minmax(0, 1fr); }
+  .history-error-charts > div { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (max-width: 36rem) {

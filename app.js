@@ -4028,7 +4028,62 @@ function renderChartCard(spec, records) {
     : points.every((point) => /^Attempt \d+$/.test(point.label)) ? 'Attempt number' : 'Category';
   xAxis.append(xTitle);
   svg.append(yAxis, xAxis);
+  let dragStartX = null;
+  let selectionBand = null;
+  const chartX = (event) => {
+    const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(svg.getScreenCTM().inverse());
+    return Math.max(plot.left, Math.min(plot.left + plotWidth, point.x));
+  };
+  svg.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0 || event.target.closest?.('.analytics-mark')) return;
+    const x = chartX(event);
+    if (x <= plot.left || x >= plot.left + plotWidth) return;
+    dragStartX = x;
+    selectionBand = chartSvgElement('rect', { class: 'chart-selection-band', x, y: plot.top, width: 0, height: plotHeight, rx: 2 });
+    svg.append(selectionBand);
+    svg.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  });
+  svg.addEventListener('pointermove', (event) => {
+    if (dragStartX === null || !selectionBand) return;
+    const x = chartX(event);
+    selectionBand.setAttribute('x', String(Math.min(dragStartX, x)));
+    selectionBand.setAttribute('width', String(Math.abs(x - dragStartX)));
+  });
+  const finishSelection = (event) => {
+    if (dragStartX === null) return;
+    const from = dragStartX;
+    const to = chartX(event);
+    dragStartX = null;
+    selectionBand?.remove();
+    selectionBand = null;
+    if (Math.abs(to - from) < 8) return;
+    if (isScatter) {
+      const low = view.xMin + ((Math.min(from, to) - plot.left) / plotWidth) * (view.xMax - view.xMin);
+      const high = view.xMin + ((Math.max(from, to) - plot.left) / plotWidth) * (view.xMax - view.xMin);
+      if (high - low < 0.1) return;
+      view.xMin = low;
+      view.xMax = high;
+    } else {
+      const selected = points.map((point, index) => ({ index, x: xFor(point, index) }))
+        .filter((point) => point.x >= Math.min(from, to) && point.x <= Math.max(from, to));
+      if (selected.length < 2) return;
+      view.start += selected[0].index;
+      view.count = selected.at(-1).index - selected[0].index + 1;
+    }
+    view.notice = isScatter ? `Showing ${view.xMin.toFixed(1)}–${view.xMax.toFixed(1)} seconds.` : `Showing ${view.count} selected data points.`;
+    renderHistory();
+  };
+  svg.addEventListener('pointerup', finishSelection);
+  svg.addEventListener('pointercancel', (event) => {
+    dragStartX = null;
+    selectionBand?.remove();
+    selectionBand = null;
+  });
   const lineSegments = [];
+  const labelStride = Math.max(1, Math.ceil(points.length / 12));
+  const labeledValues = new Set();
+  const labelBounds = [];
   points.forEach((point, index) => {
     const value = Number(spec.kind === 'scatter' ? point.y : point.value);
     if (!Number.isFinite(value)) return;
@@ -4065,9 +4120,20 @@ function renderChartCard(spec, records) {
     tooltip.textContent = `${point.label}: ${chartValue(point, series.metric)}; ${evidence}`;
     mark.append(tooltip, shape);
     if (spec.kind === 'bar' || spec.kind === 'line' || spec.kind === 'scatter') {
-      const label = chartSvgElement('text', { class: 'chart-value-label', x, y: Math.max(plot.top + 11, y - 7), 'text-anchor': 'middle' });
-      label.textContent = chartValue(point, series.metric);
-      mark.append(label);
+      const labelText = chartValue(point, series.metric);
+      const labelY = Math.max(plot.top + 11, y - 7);
+      const labelWidth = labelText.length * 8;
+      const duplicate = labeledValues.has(labelText);
+      const collides = labelBounds.some((bounds) => Math.abs(bounds.y - labelY) < 18
+        && x - labelWidth / 2 < bounds.right + 5 && x + labelWidth / 2 > bounds.left - 5);
+      const clipsAxis = x - labelWidth / 2 < plot.left + 2 || x + labelWidth / 2 > plot.left + plotWidth - 2;
+      if (index % labelStride === 0 && !duplicate && !collides && !clipsAxis) {
+        const label = chartSvgElement('text', { class: 'chart-value-label', x, y: labelY, 'text-anchor': 'middle' });
+        label.textContent = labelText;
+        mark.append(label);
+        labeledValues.add(labelText);
+        labelBounds.push({ left: x - labelWidth / 2, right: x + labelWidth / 2, y: labelY });
+      }
     }
     svg.append(mark);
   });
