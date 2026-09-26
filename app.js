@@ -4007,7 +4007,20 @@ function renderChartCard(spec, records) {
   yAxis.append(yTitle);
   const xAxis = chartSvgElement('g', { class: 'chart-axis chart-x-axis' });
   xAxis.append(chartSvgElement('line', { class: 'chart-axis-line', x1: plot.left, y1: plot.bottom, x2: plot.left + plotWidth, y2: plot.bottom }));
-  const tickIndexes = points.length <= 6 ? points.map((_, index) => index) : [...new Set([0, Math.round((points.length - 1) / 4), Math.round((points.length - 1) / 2), Math.round((points.length - 1) * 3 / 4), points.length - 1])];
+  const tickCandidates = points.length <= 6 ? points.map((_, index) => index) : [...new Set([0, Math.round((points.length - 1) / 4), Math.round((points.length - 1) / 2), Math.round((points.length - 1) * 3 / 4), points.length - 1])];
+  const tickIndexes = [];
+  const visibleTickLabels = new Set();
+  tickCandidates.forEach((index) => {
+    const text = points[index].label.length > 12 ? `${points[index].label.slice(0, 11)}…` : points[index].label;
+    const x = xFor(points[index], index);
+    const width = text.length * 8;
+    if (visibleTickLabels.has(text) || tickIndexes.some((shown) => {
+      const shownText = points[shown].label.length > 12 ? `${points[shown].label.slice(0, 11)}…` : points[shown].label;
+      return Math.abs(xFor(points[shown], shown) - x) < (shownText.length * 8 + width) / 2 + 8;
+    })) return;
+    visibleTickLabels.add(text);
+    tickIndexes.push(index);
+  });
   if (spec.kind === 'scatter') {
     xScale.ticks.forEach((tick) => {
       const x = plot.left + ((tick - xScale.min) / (xScale.max - xScale.min) * plotWidth);
