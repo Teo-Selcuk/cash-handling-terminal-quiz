@@ -68,7 +68,7 @@ const refs = Object.fromEntries([
   'history-charts', 'history-insights', 'history-comparison', 'history-recommendations', 'previous-challenges', 'history-attempt-summary',
   'attempt-detail-dialog', 'attempt-detail-summary', 'attempt-detail-content', 'close-attempt-detail',
   'chart-data-dialog', 'chart-data-heading', 'chart-data-content', 'close-chart-data',
-  'chart-settings-dialog', 'chart-settings-heading', 'chart-settings-form', 'chart-settings-scope', 'chart-settings-palette', 'chart-settings-label-color', 'chart-settings-custom-color', 'chart-settings-color-picker', 'chart-settings-random-color', 'chart-settings-bold', 'close-chart-settings', 'reset-chart-settings',
+  'chart-settings-dialog', 'chart-settings-heading', 'chart-settings-form', 'chart-settings-scope', 'chart-settings-palette', 'chart-settings-label-color', 'chart-settings-custom-color', 'chart-settings-color-picker', 'chart-settings-random-color', 'chart-settings-bold', 'chart-settings-reset-target', 'close-chart-settings', 'reset-chart-settings',
   'memory-question-count', 'memory-read-progress', 'memory-read-timer', 'memory-number', 'memory-read-hint', 'memory-answer-now',
   'memory-answer-form', 'memory-answer-list', 'memory-answer-progress', 'memory-answer-timer', 'memory-answer-heading', 'summary-heading',
   'task-question-count', 'task-briefing-progress', 'task-briefing-timer', 'task-briefing-heading', 'task-briefing-title', 'task-instruction-list', 'task-start-demo',
@@ -129,6 +129,7 @@ function openChartSettings(id, title) {
   editingChartId = id;
   refs['chart-settings-heading'].textContent = `${title} appearance`;
   refs['chart-settings-scope'].value = 'chart';
+  refs['chart-settings-reset-target'].value = 'all';
   const settings = chartSettings(id);
   refs['chart-settings-palette'].value = settings.palette;
   refs['chart-settings-label-color'].value = settings.labelColor;
@@ -3874,14 +3875,14 @@ function openAttemptDetails(records, attemptIds, heading) {
 }
 
 function renderChartCard(spec, records) {
-  const view = historyView.charts.get(spec.id) ?? { start: 0, count: 12, visible: true, compare: false };
+  const view = historyView.charts.get(spec.id) ?? { start: 0, count: spec.series[0].points.length, visible: true, compare: false };
   historyView.charts.set(spec.id, view);
   const allPoints = spec.series[0].points;
   const isScatter = spec.kind === 'scatter';
   const allX = isScatter ? allPoints.map((point) => Number(point.x)).filter(Number.isFinite) : [];
   const fullXMax = isScatter ? chartScale(allX, 'time').max : 0;
   const dataKey = `${historyView.filters.game}:${spec.attemptIds.join('|')}`;
-  if (view.dataKey !== dataKey) Object.assign(view, { dataKey, start: 0, count: 12, xMin: 0, xMax: fullXMax, expanded: false });
+  if (view.dataKey !== dataKey) Object.assign(view, { dataKey, start: 0, count: allPoints.length, xMin: 0, xMax: fullXMax, expanded: false });
   if (isScatter) {
     view.xMin = Math.max(0, Math.min(view.xMin ?? 0, fullXMax - 0.1));
     view.xMax = Math.max(view.xMin + 0.1, Math.min(view.xMax ?? fullXMax, fullXMax));
@@ -3937,7 +3938,7 @@ function renderChartCard(spec, records) {
   control('Zoom out', () => { if (isScatter) scatterZoom(1.5); else view.count = Math.min(allPoints.length, view.count + 6); }, isScatter ? view.xMin <= 0 && view.xMax >= fullXMax : view.count >= allPoints.length);
   control('Earlier', () => { view.start = Math.max(0, view.start - Math.max(1, Math.floor(view.count / 2))); }, isScatter || view.start === 0);
   control('Later', () => { view.start = Math.min(Math.max(0, allPoints.length - view.count), view.start + Math.max(1, Math.floor(view.count / 2))); }, isScatter || view.start >= allPoints.length - view.count);
-  control('Reset', () => { Object.assign(view, { start: 0, count: 12, xMin: 0, xMax: fullXMax, visible: true, compare: false, notice: 'Showing the default chart range.' }); });
+  control('Reset', () => { Object.assign(view, { start: 0, count: allPoints.length, xMin: 0, xMax: fullXMax, visible: true, compare: false, notice: 'Showing all chart data.' }); });
   control('Data table', () => openChartData(spec.title, chartSpecDataTable(spec)), false, false);
   control(view.compare ? 'Hide comparison' : 'Compare periods', () => { view.compare = !view.compare; });
   control('Appearance', () => openChartSettings(spec.id, spec.title), false, false);
@@ -3950,7 +3951,7 @@ function renderChartCard(spec, records) {
   card.append(status);
   const selectionHint = document.createElement('p');
   selectionHint.className = 'chart-selection-hint';
-  selectionHint.textContent = 'Drag across the plot to zoom to those marks. Reset returns to the default range.';
+  selectionHint.textContent = 'All data fits by default. Use Zoom in or Maximize for a closer look; Reset shows everything.';
   card.append(selectionHint);
   const series = spec.series[0];
   const sourcePoints = isScatter ? series.points : series.points.slice(view.start, view.start + view.count);
@@ -3967,7 +3968,7 @@ function renderChartCard(spec, records) {
     card.append(empty);
     return card;
   }
-  const svg = chartSvgElement('svg', { class: 'analytics-svg', viewBox: '0 0 760 330', role: 'img', 'aria-label': `${spec.title}. Drag across the plot to zoom to selected marks. Each mark can be selected to inspect exact attempts.`, 'data-chart-window': isScatter ? `${view.xMin.toFixed(2)}:${view.xMax.toFixed(2)}` : `${view.start}:${view.count}` });
+  const svg = chartSvgElement('svg', { class: 'analytics-svg', viewBox: '0 0 760 330', role: 'img', 'aria-label': `${spec.title}. Use chart controls to zoom. Each mark can be selected to inspect exact attempts.`, 'data-chart-window': isScatter ? `${view.xMin.toFixed(2)}:${view.xMax.toFixed(2)}` : `${view.start}:${view.count}` });
   const plot = { left: 72, right: 24, top: 24, bottom: 254 };
   const plotWidth = 760 - plot.left - plot.right;
   const plotHeight = plot.bottom - plot.top;
@@ -4027,8 +4028,6 @@ function renderChartCard(spec, records) {
     : points.every((point) => /^Attempt \d+$/.test(point.label)) ? 'Attempt number' : 'Category';
   xAxis.append(xTitle);
   svg.append(yAxis, xAxis);
-  const selection = chartSvgElement('rect', { class: 'chart-selection', x: plot.left, y: plot.top, width: 0, height: plotHeight, visibility: 'hidden' });
-  svg.append(selection);
   const lineSegments = [];
   points.forEach((point, index) => {
     const value = Number(spec.kind === 'scatter' ? point.y : point.value);
@@ -4088,68 +4087,6 @@ function renderChartCard(spec, records) {
     svg.insertBefore(path, svg.querySelector('.analytics-mark'));
   }
   if (lineSegments.length && spec.kind !== 'line') lineSegments.forEach((segment) => svg.insertBefore(chartSvgElement('line', { class: `chart-series-segment ${segment.color}`, x1: segment.x1, y1: segment.y1, x2: segment.x2, y2: segment.y2 }), svg.querySelector('.analytics-mark')));
-  let drag = null;
-  let suppressClick = false;
-  const plotX = (event) => {
-    const matrix = svg.getScreenCTM();
-    if (!matrix) return plot.left;
-    const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse());
-    return Math.max(plot.left, Math.min(plot.left + plotWidth, point.x));
-  };
-  const updateSelection = () => {
-    const left = Math.min(drag.startX, drag.currentX);
-    selection.setAttribute('x', left);
-    selection.setAttribute('width', Math.abs(drag.currentX - drag.startX));
-    selection.setAttribute('visibility', drag.moved ? 'visible' : 'hidden');
-  };
-  svg.addEventListener('pointerdown', (event) => {
-    if (event.isPrimary === false || (event.pointerType === 'mouse' && event.button !== 0)) return;
-    if (event.target.closest?.('.analytics-mark')) return;
-    const x = plotX(event);
-    drag = { pointerId: event.pointerId, startX: x, currentX: x, moved: false };
-    svg.setPointerCapture(event.pointerId);
-  });
-  svg.addEventListener('pointermove', (event) => {
-    if (!drag || event.pointerId !== drag.pointerId) return;
-    drag.currentX = plotX(event);
-    drag.moved ||= Math.abs(drag.currentX - drag.startX) > 12;
-    if (drag.moved) event.preventDefault();
-    updateSelection();
-  });
-  const finishSelection = (event) => {
-    if (!drag || event.pointerId !== drag.pointerId) return;
-    const completed = drag;
-    drag = null;
-    if (svg.hasPointerCapture(event.pointerId)) svg.releasePointerCapture(event.pointerId);
-    if (!completed.moved) return;
-    const left = Math.min(completed.startX, completed.currentX);
-    const right = Math.max(completed.startX, completed.currentX);
-    if (isScatter) {
-      const chosenMin = xScale.min + (left - plot.left) / plotWidth * (xScale.max - xScale.min);
-      const chosenMax = xScale.min + (right - plot.left) / plotWidth * (xScale.max - xScale.min);
-      if (!points.some((point) => point.x >= chosenMin && point.x <= chosenMax)) return;
-      const width = Math.max(0.5, chosenMax - chosenMin);
-      view.xMin = Math.max(0, Math.min(fullXMax - width, (chosenMin + chosenMax - width) / 2));
-      view.xMax = view.xMin + width;
-      view.notice = `Showing ${view.xMin.toFixed(1)}–${view.xMax.toFixed(1)} seconds.`;
-    } else {
-      const selected = points.map((point, index) => ({ index, x: xFor(point, index) })).filter(({ x }) => x >= left && x <= right).map(({ index }) => index);
-      if (!selected.length || selected.length === points.length) return;
-      view.start += selected[0];
-      view.count = selected.at(-1) - selected[0] + 1;
-      view.notice = `Zoomed to ${view.count} selected mark${view.count === 1 ? '' : 's'}.`;
-    }
-    suppressClick = true;
-    renderHistory();
-  };
-  svg.addEventListener('pointerup', finishSelection);
-  svg.addEventListener('pointercancel', () => { drag = null; selection.setAttribute('visibility', 'hidden'); });
-  svg.addEventListener('click', (event) => {
-    if (!suppressClick) return;
-    event.preventDefault();
-    event.stopPropagation();
-    suppressClick = false;
-  }, true);
   const plotLayout = document.createElement('div');
   plotLayout.className = 'chart-plot-layout';
   const plotScroll = document.createElement('div');
@@ -4164,7 +4101,7 @@ function renderChartCard(spec, records) {
   if (view.compare) {
     const compare = document.createElement('p');
     compare.className = 'chart-note';
-    compare.textContent = 'The range comparison above uses the same active filters; pan and zoom keep this chart focused on the selected marks.';
+    compare.textContent = 'The range comparison above uses the same active filters; chart controls keep this view focused on the selected marks.';
     card.append(compare);
   }
   const tableDetails = document.createElement('details');
@@ -5254,7 +5191,24 @@ refs['chart-settings-form'].addEventListener('submit', (event) => {
   saveChartAppearance();
 });
 refs['reset-chart-settings'].addEventListener('click', () => {
-  chartAppearance = { all: {}, charts: {} };
+  const scope = refs['chart-settings-scope'].value;
+  const target = refs['chart-settings-reset-target'].value;
+  if (scope === 'all' && target === 'all') chartAppearance = { all: {}, charts: {} };
+  else if (scope === 'chart' && target === 'all') chartAppearance.charts[editingChartId] = { ...defaultChartAppearance };
+  else if (scope === 'all') {
+    delete chartAppearance.all[target];
+    if (target === 'labelColor') delete chartAppearance.all.customColor;
+    Object.values(chartAppearance.charts).forEach((settings) => {
+      delete settings[target];
+      if (target === 'labelColor') delete settings.customColor;
+    });
+  } else {
+    chartAppearance.charts[editingChartId] = {
+      ...chartAppearance.charts[editingChartId],
+      [target]: defaultChartAppearance[target],
+    };
+    if (target === 'labelColor') chartAppearance.charts[editingChartId].customColor = defaultChartAppearance.customColor;
+  }
   refs['chart-settings-dialog'].close();
   saveChartAppearance();
 });

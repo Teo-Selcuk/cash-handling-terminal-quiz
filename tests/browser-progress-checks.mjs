@@ -64,8 +64,7 @@ export async function checkProgress(browser, site) {
     assert.equal(await page.locator('#history-error-charts .interactive-chart button:text-is("Maximize")').count(), await page.locator('#history-error-charts .interactive-chart').count(), 'every error chart has a maximize control');
     await page.setViewportSize({ width: 1440, height: 900 });
     const chartRows = await page.locator('#history-error-charts .interactive-chart').evaluateAll((cards) => cards.slice(0, 3).map((card) => Math.round(card.getBoundingClientRect().top)));
-    assert.equal(chartRows[0], chartRows[1], 'two error charts share the first desktop row');
-    assert.ok(chartRows[2] > chartRows[1], 'a third error chart starts a new row');
+    assert.ok(chartRows[0] < chartRows[1] && chartRows[1] < chartRows[2], 'desktop error charts use full-width rows');
     const summaryCards = page.locator('.history-visuals .visual-card');
     assert.equal(await summaryCards.count(), 2);
     assert.ok(await summaryCards.nth(1).evaluate((card) => card.getBoundingClientRect().height < 500), 'accuracy summary keeps its color scale compact');
@@ -99,10 +98,26 @@ export async function checkProgress(browser, site) {
     await page.locator('#chart-settings-form button[type="submit"]').click();
     assert.equal(await page.locator('#history-accuracy-chart .bar-chart-fill').first().evaluate((fill) => getComputedStyle(fill).backgroundColor), oceanFill, 'per-chart palette does not change summary chart');
     assert.notEqual(await page.locator('#history-error-charts .analytics-mark').first().evaluate((mark) => getComputedStyle(mark).fill), oceanError, 'per-chart palette changes only its marks');
+    const sunsetError = await page.locator('#history-error-charts .analytics-mark').first().evaluate((mark) => getComputedStyle(mark).fill);
+    await page.locator('#history-error-charts .interactive-chart').first().getByRole('button', { name: 'Appearance' }).click();
+    await page.locator('#chart-settings-reset-target').selectOption('palette');
+    await page.locator('#reset-chart-settings').click();
+    assert.notEqual(await page.locator('#history-error-charts .analytics-mark').first().evaluate((mark) => getComputedStyle(mark).fill), sunsetError, 'single-chart gradient reset restores the default gradient');
+    assert.equal(await page.locator('#history-error-charts .chart-value-label').first().evaluate((label) => getComputedStyle(label).fontWeight), '400', 'single-chart gradient reset preserves label weight');
+    await page.locator('#history-error-charts .interactive-chart').first().getByRole('button', { name: 'Appearance' }).click();
+    await page.locator('#chart-settings-label-color').selectOption('red');
+    await page.locator('#chart-settings-form button[type="submit"]').click();
+    const redLabel = await page.locator('#history-error-charts .chart-value-label').first().evaluate((label) => getComputedStyle(label).fill);
+    await page.locator('#history-error-charts .interactive-chart').first().getByRole('button', { name: 'Appearance' }).click();
+    await page.locator('#chart-settings-reset-target').selectOption('labelColor');
+    await page.locator('#reset-chart-settings').click();
+    assert.notEqual(await page.locator('#history-error-charts .chart-value-label').first().evaluate((label) => getComputedStyle(label).fill), redLabel, 'single-chart label reset restores the default color');
+    assert.equal(await page.locator('#history-error-charts .chart-value-label').first().evaluate((label) => getComputedStyle(label).fontWeight), '400', 'single-chart label reset preserves weight');
     await page.reload();
     await page.locator('#open-history').click();
     assert.equal(await page.locator('#history-error-charts .chart-value-label').first().evaluate((label) => getComputedStyle(label).fontWeight), '400', 'label style survives reload');
     await page.locator('[data-chart-settings="outcomes"]').click();
+    await page.locator('#chart-settings-scope').selectOption('all');
     await page.locator('#reset-chart-settings').click();
     assert.equal(await page.locator('#history-error-charts .chart-value-label').first().evaluate((label) => getComputedStyle(label).fontWeight), '750', 'reset restores default label style');
     await page.locator('[data-chart-settings="outcomes"]').click();
@@ -117,6 +132,7 @@ export async function checkProgress(browser, site) {
     await page.locator('[data-chart-settings="outcomes"]').click();
     await page.locator('#chart-settings-scope').selectOption('all');
     await page.locator('#chart-settings-random-color').click();
+    await page.locator('#chart-settings-palette').selectOption('ocean');
     assert.equal(await page.locator('#chart-settings-label-color').inputValue(), 'custom');
     const randomColor = await page.locator('#chart-settings-color-picker').inputValue();
     assert.match(randomColor, /^#[0-9a-f]{6}$/i);
@@ -124,6 +140,13 @@ export async function checkProgress(browser, site) {
     await page.locator('#chart-settings-form button[type="submit"]').click();
     assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('cash-handling-terminal-quiz-chart-appearance-v1')).all.customColor), randomColor, 'random color is saved');
     await page.locator('[data-chart-settings="outcomes"]').click();
+    await page.locator('#chart-settings-scope').selectOption('all');
+    await page.locator('#chart-settings-reset-target').selectOption('labelColor');
+    await page.locator('#reset-chart-settings').click();
+    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('cash-handling-terminal-quiz-chart-appearance-v1')).all.palette), 'ocean', 'all-chart label reset preserves the gradient');
+    await page.locator('[data-chart-settings="outcomes"]').click();
+    await page.locator('#chart-settings-scope').selectOption('all');
+    await page.locator('#chart-settings-reset-target').selectOption('all');
     await page.locator('#reset-chart-settings').click();
     const errorCard = page.locator('#history-error-charts .interactive-chart').first();
     const errorWindow = await errorCard.locator('.analytics-svg').getAttribute('data-chart-window');
@@ -230,7 +253,7 @@ export async function checkProgress(browser, site) {
     await page.mouse.down();
     await page.mouse.move(scatterBox.x + scatterBox.width * .9, scatterBox.y + scatterBox.height * .45);
     await page.mouse.up();
-    assert.notEqual(await scatter.locator('.analytics-svg').getAttribute('data-chart-window'), scatterFull, 'scatter drag selection changes its time domain');
+    assert.equal(await scatter.locator('.analytics-svg').getAttribute('data-chart-window'), scatterFull, 'dragging does not move scatter data');
     await scatter.getByRole('button', { name: 'Reset' }).click();
     assert.equal(await scatter.locator('.analytics-svg').getAttribute('data-chart-window'), scatterFull);
     const svg = chart.locator('.analytics-svg');
@@ -242,8 +265,8 @@ export async function checkProgress(browser, site) {
     await page.mouse.down();
     await page.mouse.move(bounds.x + bounds.width * 0.6, bounds.y + bounds.height * 0.45);
     await page.mouse.up();
-    assert.notEqual(await chart.locator('.analytics-svg').getAttribute('data-chart-window'), initialWindow, 'dragging a chart range zooms to the selected marks');
-    assert.ok(await chart.locator('.chart-selection-hint').count(), 'charts explain drag-to-zoom interaction');
+    assert.equal(await chart.locator('.analytics-svg').getAttribute('data-chart-window'), initialWindow, 'dragging does not move chart data');
+    assert.match(await chart.locator('.chart-selection-hint').textContent(), /All data fits by default/);
     assert.ok(await page.locator('#history-charts .chart-value-danger').count(), 'low accuracy and incorrect outcomes use a distinct warning color');
     assert.ok(await page.locator('#history-charts .chart-value-series-1').count(), 'category bars use more than one series color');
     const lightMarkColor = await chart.locator('.analytics-mark circle').first().evaluate((mark) => getComputedStyle(mark).fill);
@@ -267,8 +290,8 @@ export async function checkProgress(browser, site) {
           const bounds = card.getBoundingClientRect();
           const plot = card.querySelector('.chart-plot-scroll');
           return bounds.left >= 0 && bounds.right <= innerWidth && bounds.top >= 0 && bounds.bottom <= innerHeight
-            && plot.scrollWidth > plot.clientWidth;
-        }), 'mobile maximized chart fits the viewport and scrolls its full-sized plot internally');
+            && plot.scrollWidth <= plot.clientWidth + 1;
+        }), 'mobile maximized chart fits the viewport without horizontal panning');
         await chart.getByRole('button', { name: 'Restore size' }).click();
       }
       if (width === 1440) {

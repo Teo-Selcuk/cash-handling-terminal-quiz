@@ -52,8 +52,14 @@ export async function checkFraudInspection(browser, base) {
 
     for (const width of [320, 390, 768, 1024, 1440]) {
       await page.setViewportSize({ width, height: 900 });
+      await page.evaluate(() => window.scrollTo(0, 0));
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'inspection screen fits ' + width + 'px');
       assert.equal(await page.locator('#fraud-document-grid .fraud-document-card').count(), 3);
+      const documents = await page.locator('#fraud-document-grid').evaluate((grid) => ({ bottom: grid.getBoundingClientRect().bottom,
+        internalScroll: [...grid.querySelectorAll('.fraud-doc-viewport')].some((viewport) => viewport.scrollWidth > viewport.clientWidth + 1 || viewport.scrollHeight > viewport.clientHeight + 1) }));
+      assert.equal(documents.internalScroll, false, `all documents fit their cards at ${width}px`);
+      if (width >= 1024) assert.ok(documents.bottom <= 900, `all documents are visible in a 900px-high desktop inspection viewport at ${width}px: ${JSON.stringify(documents)}`);
+      if (width === 320) await page.screenshot({ path: (process.env.TEMP || '/tmp') + '/fraud-inspection-phone.png' });
     }
     await page.setViewportSize({ width: 1280, height: 1000 });
     assert.ok(await page.locator('#fraud-document-grid [data-fraud-card="check"] .fraud-doc-viewport').evaluate((viewport) => viewport.scrollHeight <= viewport.clientHeight + 1), 'full check and payee endorsement are visible without vertical scrolling inside the card');

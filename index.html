@@ -7,7 +7,7 @@
     <meta name="theme-color" content="#12343b">
     <title>Cash, Memory &amp; Detail Trainer</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="style.css?v=20260925-maker-ids-color">
+    <link rel="stylesheet" href="style.css?v=20260925-fit-charts-docs">
   </head>
   <body>
     <main class="app-shell">
@@ -741,7 +741,8 @@
         </div>
         <button class="secondary-button" id="chart-settings-random-color" type="button">Pick a random label color</button>
         <label class="chart-settings-check"><input id="chart-settings-bold" type="checkbox" checked> Bold data labels</label>
-        <div class="action-row"><button class="secondary-button" type="submit">Save appearance</button><button class="text-button" id="reset-chart-settings" type="button">Reset everything</button></div>
+        <label>Reset setting <select id="chart-settings-reset-target"><option value="all">All appearance settings</option><option value="labelColor">Data label color</option><option value="palette">Color gradient</option><option value="bold">Label weight</option></select></label>
+        <div class="action-row"><button class="secondary-button" type="submit">Save appearance</button><button class="text-button" id="reset-chart-settings" type="button">Reset selected setting</button></div>
       </form>
     </dialog>
 
@@ -759,6 +760,6 @@
     </dialog>
 
     <footer>Browser edition. The original PowerShell quiz remains in this repository.</footer>
-    <script type="module" src="app.js?v=20260925-maker-ids-color"></script>
+    <script type="module" src="app.js?v=20260925-fit-charts-docs"></script>
   </body>
 </html>
