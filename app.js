@@ -68,7 +68,7 @@ const refs = Object.fromEntries([
   'history-charts', 'history-insights', 'history-comparison', 'history-recommendations', 'previous-challenges', 'history-attempt-summary',
   'attempt-detail-dialog', 'attempt-detail-summary', 'attempt-detail-content', 'close-attempt-detail',
   'chart-data-dialog', 'chart-data-heading', 'chart-data-content', 'close-chart-data',
-  'chart-settings-dialog', 'chart-settings-heading', 'chart-settings-form', 'chart-settings-scope', 'chart-settings-palette', 'chart-settings-label-color', 'chart-settings-custom-color', 'chart-settings-color-picker', 'chart-settings-random-color', 'chart-settings-bold', 'chart-settings-reset-target', 'close-chart-settings', 'reset-chart-settings',
+  'chart-settings-dialog', 'chart-settings-heading', 'chart-settings-form', 'chart-settings-scope', 'chart-settings-palette', 'chart-settings-label-color', 'chart-settings-custom-color', 'chart-settings-color-picker', 'chart-settings-random-color', 'chart-settings-bold', 'chart-settings-label-background', 'chart-settings-background-color', 'chart-settings-reset-target', 'close-chart-settings', 'reset-chart-settings',
   'memory-question-count', 'memory-read-progress', 'memory-read-timer', 'memory-number', 'memory-read-hint', 'memory-answer-now',
   'memory-answer-form', 'memory-answer-list', 'memory-answer-progress', 'memory-answer-timer', 'memory-answer-heading', 'summary-heading',
   'task-question-count', 'task-briefing-progress', 'task-briefing-timer', 'task-briefing-heading', 'task-briefing-title', 'task-instruction-list', 'task-start-demo',
@@ -91,7 +91,7 @@ const refs = Object.fromEntries([
 
 const savedPresetState = loadPresetState();
 const historyView = { filters: { game: 'all' }, activeRange: 'all', charts: new Map(), conditions: [], dataSource: 'real', sampleRecords: null, errorSort: 'error-rate' };
-const defaultChartAppearance = Object.freeze({ palette: 'current', labelColor: 'auto', customColor: '#176b83', bold: true });
+const defaultChartAppearance = Object.freeze({ palette: 'current', labelColor: 'auto', customColor: '#176b83', bold: true, labelBackground: false, backgroundColor: '#17383a' });
 const chartPalettes = Object.freeze({
   ocean: [200, 180, 145], violet: [270, 310, 345], sunset: [8, 30, 52], teal: [185, 155, 115],
 });
@@ -111,12 +111,15 @@ function chartSettings(id) {
     labelColor: candidate.labelColor === 'custom' || chartLabelColors[candidate.labelColor] ? candidate.labelColor : 'auto',
     customColor: /^#[0-9a-f]{6}$/i.test(candidate.customColor) ? candidate.customColor : defaultChartAppearance.customColor,
     bold: candidate.bold !== false,
+    labelBackground: candidate.labelBackground === true,
+    backgroundColor: /^#[0-9a-f]{6}$/i.test(candidate.backgroundColor) ? candidate.backgroundColor : defaultChartAppearance.backgroundColor,
   };
 }
 function applyChartAppearance(element, id) {
   const settings = chartSettings(id);
   element.style.setProperty('--chart-label-color', settings.labelColor === 'custom' ? settings.customColor : chartLabelColors[settings.labelColor]);
   element.style.setProperty('--chart-label-weight', settings.bold ? '750' : '400');
+  element.style.setProperty('--chart-label-background', settings.labelBackground ? settings.backgroundColor : 'transparent');
 }
 function updateChartColorPicker() {
   refs['chart-settings-custom-color'].hidden = refs['chart-settings-label-color'].value !== 'custom';
@@ -136,6 +139,8 @@ function openChartSettings(id, title) {
   refs['chart-settings-color-picker'].value = settings.customColor;
   updateChartColorPicker();
   refs['chart-settings-bold'].checked = settings.bold;
+  refs['chart-settings-label-background'].checked = settings.labelBackground;
+  refs['chart-settings-background-color'].value = settings.backgroundColor;
   refs['chart-settings-dialog'].showModal();
 }
 function makeChartDataTable(headers, rows) {
@@ -4097,6 +4102,32 @@ function renderChartCard(spec, records) {
   const labelStride = Math.max(1, Math.ceil(points.length / 12));
   const labeledValues = new Set();
   const labelBounds = [];
+  const requiredExtrema = [];
+  const localExtrema = [];
+  const pointValues = points.map((point) => Number(spec.kind === 'scatter' ? point.y : point.value));
+  if (['line', 'scatter'].includes(spec.kind)) {
+    const validIndexes = pointValues.map((value, index) => Number.isFinite(value) ? index : -1).filter((index) => index >= 0);
+    if (validIndexes.length) {
+      const maximumIndex = validIndexes.reduce((best, index) => pointValues[index] > pointValues[best] ? index : best, validIndexes[0]);
+      const minimumIndex = validIndexes.reduce((best, index) => pointValues[index] < pointValues[best] ? index : best, validIndexes[0]);
+      requiredExtrema.push(maximumIndex, minimumIndex);
+      validIndexes.forEach((index, order) => {
+        if (!order || order === validIndexes.length - 1) return;
+        const previous = pointValues[validIndexes[order - 1]];
+        const value = pointValues[index];
+        const next = pointValues[validIndexes[order + 1]];
+        if ((value > previous && value >= next) || (value < previous && value <= next)) {
+          localExtrema.push({ index, prominence: Math.min(Math.abs(value - previous), Math.abs(value - next)) });
+        }
+      });
+    }
+  }
+  const labelCandidates = [...new Set([
+    ...requiredExtrema,
+    ...localExtrema.filter((entry) => !requiredExtrema.includes(entry.index)).sort((a, b) => b.prominence - a.prominence).map((entry) => entry.index),
+    ...points.map((_, index) => index).filter((index) => index % labelStride === 0),
+  ])].slice(0, 12);
+  const labelIndexes = new Set(labelCandidates);
   points.forEach((point, index) => {
     const value = Number(spec.kind === 'scatter' ? point.y : point.value);
     if (!Number.isFinite(value)) return;
@@ -4140,7 +4171,7 @@ function renderChartCard(spec, records) {
       const collides = labelBounds.some((bounds) => Math.abs(bounds.y - labelY) < 18
         && x - labelWidth / 2 < bounds.right + 5 && x + labelWidth / 2 > bounds.left - 5);
       const clipsAxis = x - labelWidth / 2 < plot.left + 2 || x + labelWidth / 2 > plot.left + plotWidth - 2;
-      if (index % labelStride === 0 && !duplicate && !collides && !clipsAxis) {
+      if (labelIndexes.has(index) && !duplicate && !collides && !clipsAxis) {
         const label = chartSvgElement('text', { class: 'chart-value-label', x, y: labelY, 'text-anchor': 'middle' });
         label.textContent = labelText;
         mark.append(label);
@@ -5263,6 +5294,8 @@ refs['chart-settings-form'].addEventListener('submit', (event) => {
     labelColor: refs['chart-settings-label-color'].value,
     customColor: refs['chart-settings-color-picker'].value,
     bold: refs['chart-settings-bold'].checked,
+    labelBackground: refs['chart-settings-label-background'].checked,
+    backgroundColor: refs['chart-settings-background-color'].value,
   };
   if (refs['chart-settings-scope'].value === 'all') chartAppearance = { all: settings, charts: {} };
   else chartAppearance.charts[editingChartId] = settings;

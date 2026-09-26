@@ -7,7 +7,7 @@
     <meta name="theme-color" content="#12343b">
     <title>Cash, Memory &amp; Detail Trainer</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="style.css?v=20260926-chart-readability">
+    <link rel="stylesheet" href="style.css?v=20260926-chart-extrema-backgrounds">
   </head>
   <body>
     <main class="app-shell">
@@ -741,7 +741,9 @@
         </div>
         <button class="secondary-button" id="chart-settings-random-color" type="button">Pick a random label color</button>
         <label class="chart-settings-check"><input id="chart-settings-bold" type="checkbox" checked> Bold data labels</label>
-        <label>Reset setting <select id="chart-settings-reset-target"><option value="all">All appearance settings</option><option value="labelColor">Data label color</option><option value="palette">Color gradient</option><option value="bold">Label weight</option></select></label>
+        <label class="chart-settings-check"><input id="chart-settings-label-background" type="checkbox"> Show label background</label>
+        <label for="chart-settings-background-color">Label background color <input id="chart-settings-background-color" type="color" value="#17383a"></label>
+        <label>Reset setting <select id="chart-settings-reset-target"><option value="all">All appearance settings</option><option value="labelColor">Data label color</option><option value="palette">Color gradient</option><option value="bold">Label weight</option><option value="labelBackground">Label background</option><option value="backgroundColor">Background color</option></select></label>
         <div class="action-row"><button class="secondary-button" type="submit">Save appearance</button><button class="text-button" id="reset-chart-settings" type="button">Reset selected setting</button></div>
       </form>
     </dialog>
@@ -760,6 +762,6 @@
     </dialog>
 
     <footer>Browser edition. The original PowerShell quiz remains in this repository.</footer>
-    <script type="module" src="app.js?v=20260926-chart-readability"></script>
+    <script type="module" src="app.js?v=20260926-chart-extrema-backgrounds"></script>
   </body>
 </html>
