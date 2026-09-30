@@ -56,6 +56,10 @@ const ID_PORTRAIT_BY_FIRST_NAME = {
   Maya: 'female', Julian: 'male', Imani: 'female', Noah: 'male', Leila: 'female', Caleb: 'male',
   Rosa: 'female', Devon: 'male', Priya: 'female', Mateo: 'male',
 };
+const ID_PORTRAITS_BY_GENDER = {
+  female: ['female', 'female-2'],
+  male: ['male', 'male-2'],
+};
 const LAST_NAMES = ['Bennett', 'Patel', 'Rodriguez', 'Chen', 'Johnson', 'Kim', 'Okafor', 'Rivera', 'Foster', 'Nguyen', 'Miller', 'Brooks', 'Garcia', 'Reed', 'Alvarez', 'Carter'];
 const STREETS = ['Maple Row', 'Harbor Lane', 'Juniper Street', 'Cedar Walk', 'Orchard Avenue', 'Lakeview Drive', 'Willow Court', 'Beacon Road'];
 const CITIES = ['Fairview', 'Lakehurst', 'Brookdale', 'Northfield', 'Millhaven', 'Cedar Point'];
@@ -215,6 +219,10 @@ function baseCase(difficulty, settings, random, exerciseDate) {
     ? { ...chosenMaker, first: FIRST_NAMES[(FIRST_NAMES.indexOf(person.first) + 1) % FIRST_NAMES.length],
       name: [FIRST_NAMES[(FIRST_NAMES.indexOf(person.first) + 1) % FIRST_NAMES.length], chosenMaker.middle, chosenMaker.last].filter(Boolean).join(' ') }
     : chosenMaker;
+  const payeePortraitGroup = ID_PORTRAITS_BY_GENDER[ID_PORTRAIT_BY_FIRST_NAME[person.first] ?? 'male'];
+  const makerPortraitGroup = ID_PORTRAITS_BY_GENDER[ID_PORTRAIT_BY_FIRST_NAME[maker.first] ?? 'male'];
+  const payeePortrait = choice(payeePortraitGroup, random);
+  const makerPortrait = choice(makerPortraitGroup.filter((portrait) => portrait !== payeePortrait), random);
   const checkNumber = String(randomInteger(1042, 9987, random));
   const amountDollars = choice([57, 125, 280, 625, 1250, 2400, 7300], random);
   const amountCents = amountDollars * 100;
@@ -250,7 +258,7 @@ function baseCase(difficulty, settings, random, exerciseDate) {
       expirationText: compactDate(idExpiration),
       signature: person.name,
       signatureVariation: variation,
-      portrait: ID_PORTRAIT_BY_FIRST_NAME[person.first] ?? 'male',
+      portrait: payeePortrait,
       issueDate: isoDate(addDays(today, -365 * randomInteger(1, 4, random))),
       alterationMarks: [],
     },
@@ -267,7 +275,7 @@ function baseCase(difficulty, settings, random, exerciseDate) {
       expirationText: compactDate(idExpiration),
       signature: maker.name,
       signatureVariation: makerVariation,
-      portrait: ID_PORTRAIT_BY_FIRST_NAME[maker.first] ?? 'male',
+      portrait: makerPortrait,
       issueDate: isoDate(addDays(today, -365 * randomInteger(1, 4, random))),
       alterationMarks: [],
     },

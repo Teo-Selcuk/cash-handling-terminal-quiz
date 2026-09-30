@@ -2085,6 +2085,12 @@ function renderFraudCheckSvg(challenge, feedback = false) {
 function renderFraudIdSvg(challenge, kind = 'payee-id', feedback = false) {
   const maker = kind === 'maker-id';
   const identity = maker ? challenge.makerId : challenge.id;
+  const portraitFiles = {
+    female: 'id-portrait-female-20260922.jpg',
+    male: 'id-portrait-male-20260922.jpg',
+    'female-2': 'id-portrait-female-2-20260929.jpg',
+    'male-2': 'id-portrait-male-2-20260929.jpg',
+  };
   const region = (name) => maker ? 'maker-' + name : name;
   const role = maker ? 'maker' : 'payee';
   const palette = challenge.document.palette;
@@ -2100,8 +2106,8 @@ function renderFraudIdSvg(challenge, kind = 'payee-id', feedback = false) {
     svgText(34, 47, 'STATE OF ' + identity.issuingState + ' · RESIDENT IDENTIFICATION', 18, 800, '#ffffff', 'letter-spacing=".5"'),
     svgText(34, 76, 'FICTIONAL TRAINING CARD · NOT A REAL ID', 11, 700, '#ffffff', 'letter-spacing="1"'),
     '<g class="fraud-doc-field ' + (feedback && markedRegion(challenge, region('id-photo')) ? 'fraud-marked' : '') + '" data-region="' + region('id-photo') + '">',
-    '<image href="assets/fraud/id-portrait-' + (identity.portrait === 'female' ? 'female' : 'male')
-      + '-20260922.jpg" x="44" y="136" width="194" height="242" preserveAspectRatio="xMidYMid slice" aria-label="Fictional training portrait"/>',
+    '<image href="assets/fraud/' + (portraitFiles[identity.portrait] ?? portraitFiles.male)
+      + '" x="44" y="136" width="194" height="242" preserveAspectRatio="xMidYMid slice" aria-label="Fictional training portrait"/>',
     identity.photoObscured
       ? '<path d="M45 244 C88 230 136 254 237 237 L237 271 C172 286 101 260 45 280 Z" fill="#fffef8" fill-opacity=".77" stroke="#9c866b" stroke-width="1.2"/><path d="M52 252 Q130 250 231 246 M49 269 Q133 266 231 257" fill="none" stroke="#aa9476" stroke-width="1" opacity=".75"/>'
       : '',
