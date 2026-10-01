@@ -1,0 +1,4 @@
+# Keep pinned upstream chess assets byte-for-byte identical across platforms.
+assets/chess/* -text whitespace=cr-at-eol
+# The generated upstream parser mixes spaces and tabs; preserve its release bytes.
+assets/chess/chess.mjs whitespace=-space-before-tab,cr-at-eol

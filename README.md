@@ -12,6 +12,8 @@ configured answer timer. History labels the mode. See [mode details](docs/cash-s
 
 The [browser edition](https://teo-selcuk.github.io/cash-handling-terminal-quiz/) also includes Number Memory, Task Simulation, 15 rotating Error Detection games, and Check & ID Fraud Inspection. Fraud Inspection generates fictional check and ID documents with selectable Easy, Medium, Hard, and Custom settings, zoomable SVG previews, exact-set scoring, clean cases, speed modes, local category history, and issue-by-issue feedback. During inspection, document fields have no answer-revealing highlights; learners inspect the details and select one or more issue labels or No Issues Found. After submission, feedback marks the actual issue fields. Its documents use invented training values and do not make authenticity decisions.
 
+The website also includes **Chess**: four computer difficulty levels, untimed and timed games, 24 interactive lessons, optional coaching, move replay, and separate progress analytics. See [Chess mode](docs/chess-mode.md) for timing, recovery, analysis, and local engine details.
+
 - Easy, Medium, and Hard difficulty levels
 - Random customer totals and random cash combinations
 - Bills: $100, $50, $20, $10, $5, and $1

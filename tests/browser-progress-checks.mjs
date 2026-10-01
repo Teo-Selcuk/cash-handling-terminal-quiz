@@ -64,7 +64,7 @@ export async function checkProgress(browser, site) {
     assert.equal(await page.locator('#history-error-charts .interactive-chart button:text-is("Maximize")').count(), await page.locator('#history-error-charts .interactive-chart').count(), 'every error chart has a maximize control');
     await page.setViewportSize({ width: 1440, height: 900 });
     const chartRows = await page.locator('#history-error-charts .interactive-chart').evaluateAll((cards) => cards.slice(0, 3).map((card) => Math.round(card.getBoundingClientRect().top)));
-    assert.ok(chartRows[0] < chartRows[1] && chartRows[1] < chartRows[2], 'desktop error charts use full-width rows');
+    assert.ok(chartRows[0] === chartRows[1] && chartRows[2] > chartRows[1], 'desktop error charts use two columns');
     const summaryCards = page.locator('.history-visuals .visual-card');
     assert.equal(await summaryCards.count(), 2);
     assert.ok(await summaryCards.nth(1).evaluate((card) => card.getBoundingClientRect().height < 500), 'accuracy summary keeps its color scale compact');
@@ -253,7 +253,7 @@ export async function checkProgress(browser, site) {
     await page.mouse.down();
     await page.mouse.move(scatterBox.x + scatterBox.width * .9, scatterBox.y + scatterBox.height * .45);
     await page.mouse.up();
-    assert.equal(await scatter.locator('.analytics-svg').getAttribute('data-chart-window'), scatterFull, 'dragging does not move scatter data');
+    assert.notEqual(await scatter.locator('.analytics-svg').getAttribute('data-chart-window'), scatterFull, 'dragging zooms the scatter time domain');
     await scatter.getByRole('button', { name: 'Reset' }).click();
     assert.equal(await scatter.locator('.analytics-svg').getAttribute('data-chart-window'), scatterFull);
     const svg = chart.locator('.analytics-svg');
@@ -265,7 +265,7 @@ export async function checkProgress(browser, site) {
     await page.mouse.down();
     await page.mouse.move(bounds.x + bounds.width * 0.6, bounds.y + bounds.height * 0.45);
     await page.mouse.up();
-    assert.equal(await chart.locator('.analytics-svg').getAttribute('data-chart-window'), initialWindow, 'dragging does not move chart data');
+    assert.notEqual(await chart.locator('.analytics-svg').getAttribute('data-chart-window'), initialWindow, 'dragging zooms the chart point window');
     assert.match(await chart.locator('.chart-selection-hint').textContent(), /All data fits by default/);
     assert.ok(await page.locator('#history-charts .chart-value-danger').count(), 'low accuracy and incorrect outcomes use a distinct warning color');
     assert.ok(await page.locator('#history-charts .chart-value-series-1').count(), 'category bars use more than one series color');
@@ -296,7 +296,7 @@ export async function checkProgress(browser, site) {
       }
       if (width === 1440) {
         assert.ok(await page.locator('.app-shell').evaluate((shell) => shell.getBoundingClientRect().width >= 1400), 'desktop layout uses the available width');
-        assert.ok(await chart.locator('.analytics-svg').evaluate((svg) => svg.getBoundingClientRect().height >= 320), 'desktop charts have a readable height');
+        assert.ok(await chart.locator('.analytics-svg').evaluate((svg) => { const bounds = svg.getBoundingClientRect(); return bounds.width >= 400 && bounds.height >= 180; }), 'desktop charts remain readable within the two-column layout');
       }
     }
     assert.deepEqual(errors, []);

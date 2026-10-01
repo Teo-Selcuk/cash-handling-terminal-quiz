@@ -1,4 +1,5 @@
 import { PATTERN_GAME_NAMES } from './pattern-games.mjs';
+import { createChessUI } from './chess-ui.mjs?v=20261001-chess';
 import { createDistractionSamples } from './distraction-sounds.mjs';
 import {
   FRAUD_INSPECTION_CATEGORIES,
@@ -50,9 +51,9 @@ const PRESET_KEY = 'cash-handling-terminal-quiz-presets-v1';
 const CURRENT_CHALLENGE_KEY = 'cash-handling-terminal-quiz-current-challenge-v1';
 const SAMPLE_HISTORY_KEY = 'cash-handling-terminal-quiz-sample-history-v1';
 const CHART_APPEARANCE_KEY = 'cash-handling-terminal-quiz-chart-appearance-v1';
-const screens = ['setup', 'quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'error-detection-briefing', 'error-detection', 'fraud-inspection', 'feedback', 'summary', 'history'];
+const screens = ['setup', 'chess', 'quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'error-detection-briefing', 'error-detection', 'fraud-inspection', 'feedback', 'summary', 'history'];
 const refs = Object.fromEntries([
-  'setup-form', 'setup-screen', 'quiz-screen', 'feedback-screen', 'summary-screen', 'history-screen',
+  'setup-form', 'setup-screen', 'chess-screen', 'quiz-screen', 'feedback-screen', 'summary-screen', 'history-screen',
   'memory-read-screen', 'memory-answer-screen', 'task-briefing-screen', 'task-workspace-screen', 'error-detection-briefing-screen', 'error-detection-screen', 'fraud-inspection-screen', 'cash-setup-options', 'memory-setup-options', 'task-setup-options', 'error-detection-setup-options', 'fraud-setup-options',
   'question-count', 'time-limit', 'cash-builder-toggle', 'customer-bill-request-toggle', 'auto-continue-toggle', 'distraction-noise-toggle', 'question-progress', 'timer', 'amount-due',
   'tender-breakdown', 'customer-bill-request', 'customer-bill-request-text', 'customer-bill-request-status', 'flag-bill-request', 'answer-form', 'answer-amount', 'cash-builder-section', 'cash-builder-heading',
@@ -173,7 +174,7 @@ function chartSpecDataTable(spec) {
     const evidence = metric === 'accuracy' && point.measure !== 'mean' && correct !== undefined
       ? `${correct} / ${point.count}` : Number.isFinite(point.opportunities) && Number.isFinite(point.errors)
         ? `${point.errors} / ${point.opportunities} errors across ${point.attemptCount ?? point.attemptIds.length} attempts`
-        : `${point.attemptIds.length} attempts`;
+        : `${point.attemptIds.length} ${spec.evidenceUnit ?? 'attempts'}`;
     return [point.label, ...(scatter ? [point.x === null || point.x === undefined ? 'Not recorded' : `${Number(point.x).toFixed(1)}s`] : []),
       chartValue({ value: scatter ? point.y : point.value }, metric), evidence, point.interval ? `${point.interval[0]}–${point.interval[1]}%` : '—'];
   });
@@ -510,7 +511,8 @@ function showScreen(name) {
     return;
   }
   const heading = document.querySelector(`#${name}-screen h2`);
-  if (heading) window.setTimeout(() => heading.focus({ preventScroll: true }), 0);
+  if (heading && name === 'chess') heading.focus({ preventScroll: true });
+  else if (heading) window.setTimeout(() => heading.focus({ preventScroll: true }), 0);
 }
 
 function getHistory(strict = false) {
@@ -787,6 +789,8 @@ function renderPresetEditor() {
 
 function updateGameSetup() {
   const game = selectedGame();
+  chessUI.setupChanged(game);
+  if (game === 'chess') return;
   if (selectedDifficulty() === 'Custom' && game !== 'fraud-inspection') {
     document.querySelector('input[name="difficulty"][value="Easy"]').checked = true;
   }
@@ -4248,7 +4252,7 @@ function renderChartCard(spec, records) {
     const colorClass = chartColorClass(spec, point, index);
     const evidence = Number.isFinite(point.opportunities) && Number.isFinite(point.errors)
       ? `${point.errors} of ${point.opportunities} error opportunities across ${point.attemptCount ?? point.attemptIds.length} attempts`
-      : `from ${point.attemptIds.length} attempt${point.attemptIds.length === 1 ? '' : 's'}`;
+      : spec.evidenceUnit ? `from ${point.attemptIds.length} ${spec.evidenceUnit}` : `from ${point.attemptIds.length} attempt${point.attemptIds.length === 1 ? '' : 's'}`;
     const mark = chartSvgElement('g', { class: `analytics-mark ${colorClass}`, role: 'button', tabindex: '0', 'aria-label': `${point.label}: ${chartValue(point, series.metric)} ${evidence}` });
     mark.style.setProperty('--chart-color', chartHueColor(value, hueMinimum, hueMaximum, series.metric, spec.id));
     const shape = chartSvgElement(spec.kind === 'line' || spec.kind === 'scatter' ? 'circle' : 'rect', spec.kind === 'line' || spec.kind === 'scatter'
@@ -4257,7 +4261,7 @@ function renderChartCard(spec, records) {
     const pointDetail = isScatter
       ? `${spec.title}: ${point.label}; X ${Number(point.x).toFixed(1)} seconds; Y ${chartValue(point, series.metric)}`
       : `${spec.title}: ${point.label} (${chartValue(point, series.metric)}; ${evidence})`;
-    const activate = () => openAttemptDetails(records, point.attemptIds, pointDetail);
+    const activate = () => spec.onPoint ? spec.onPoint(point.attemptIds) : openAttemptDetails(records, point.attemptIds, pointDetail);
     mark.addEventListener('click', activate);
     mark.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); activate(); }
@@ -4332,7 +4336,7 @@ function renderChartCard(spec, records) {
     const evidence = series.metric === 'accuracy' && point.measure !== 'mean' && correct !== undefined
       ? `${correct} / ${point.count}` : Number.isFinite(point.opportunities) && Number.isFinite(point.errors)
         ? `${point.errors} / ${point.opportunities} errors across ${point.attemptCount ?? point.attemptIds.length} attempts`
-        : `${point.attemptIds.length} attempts`;
+        : `${point.attemptIds.length} ${spec.evidenceUnit ?? 'attempts'}`;
     [point.label, chartValue(point, series.metric), evidence, point.interval ? `${point.interval[0]}–${point.interval[1]}%` : '—'].forEach((value) => {
       const cell = document.createElement('td');
       cell.textContent = value;
@@ -4995,6 +4999,14 @@ function renderFraudHistory(records) {
 }
 
 function renderHistory() {
+  const chessSelected = historyView.filters.game === 'chess';
+  refs['history-screen'].classList.toggle('chess-history-selected', chessSelected);
+  document.getElementById('chess-history').hidden = !chessSelected;
+  if (chessSelected) {
+    refs['history-game-tabs'].querySelectorAll('button').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.historyGame === 'chess')));
+    chessUI.renderHistory();
+    return;
+  }
   const history = historyRecordsForView();
   renderHistoryDataSource(history);
   const gameOnly = filterHistory(history, { game: historyView.filters.game });
@@ -5030,6 +5042,10 @@ function openHistory() {
     return;
   }
   stopContinuousDistractionNoise();
+  if (state.activeScreen === 'chess') {
+    chessUI.onHistoryOpen();
+    historyView.filters = { game: 'chess' };
+  }
   renderHistory();
   showScreen('history');
 }
@@ -5070,8 +5086,15 @@ refs['error-analysis-sort'].addEventListener('change', () => {
   renderHistory();
 });
 
+const chessUI = createChessUI({ showScreen, renderChart: renderChartCard, showChartData: spec => openChartData(spec.title, chartSpecDataTable(spec)) });
+
 refs['setup-form'].addEventListener('submit', (event) => {
   event.preventDefault();
+  if (selectedGame() === 'chess') {
+    state.game = 'chess';
+    chessUI.start().catch(error => setMessage(error.message));
+    return;
+  }
   prepareDistractionAudio();
   const game = selectedGame();
   const difficulty = selectedDifficulty();
