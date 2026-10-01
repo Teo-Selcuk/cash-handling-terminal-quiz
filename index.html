@@ -7,7 +7,7 @@
     <meta name="theme-color" content="#12343b">
     <title>Cash, Memory &amp; Detail Trainer</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="style.css?v=20260926-chart-extrema-backgrounds">
+    <link rel="stylesheet" href="style.css?v=20260930-fraud-readable-documents">
   </head>
   <body>
     <main class="app-shell">
@@ -493,6 +493,7 @@
         <h2 id="fraud-inspection-heading" tabindex="-1">Inspect the check, payee ID, and maker ID</h2>
         <p class="fraud-policy-note" id="fraud-policy-note">Fictional training documents. Use the simulator's stated rules for this exercise.</p>
         <div class="fraud-transaction-strip" id="fraud-transaction-strip"></div>
+        <div class="fraud-reader-entry"><button class="primary-button" id="read-fraud-documents" type="button">Read documents · fit screen</button><p>Switch between the check and both IDs. Read every detail without scrolling.</p></div>
         <section class="fraud-document-grid" id="fraud-document-grid" aria-label="Fictional check, payee ID, and maker ID"></section>
         <form class="answer-form" id="fraud-inspection-form">
           <fieldset>
@@ -753,15 +754,21 @@
         <div><p class="eyebrow">Fictional training sample</p><h2 id="fraud-document-dialog-heading">Document preview</h2></div>
         <button class="secondary-button" id="close-fraud-document-dialog" type="button">Close</button>
       </div>
-      <div class="fraud-dialog-tools">
-        <button class="secondary-button" type="button" data-fraud-dialog-zoom="-0.15">Zoom out</button>
-        <button class="secondary-button" type="button" data-fraud-dialog-zoom="0.15">Zoom in</button>
-        <button class="text-button" type="button" data-fraud-dialog-reset>Reset zoom</button>
+      <div class="fraud-reader-tabs" role="group" aria-label="Document to inspect">
+        <button class="secondary-button" type="button" data-fraud-reader-kind="check">Check</button>
+        <button class="secondary-button" type="button" data-fraud-reader-kind="maker-id">Payer ID</button>
+        <button class="secondary-button" type="button" data-fraud-reader-kind="payee-id">Payee ID</button>
       </div>
-      <div class="fraud-dialog-viewport" id="fraud-document-dialog-view"></div>
+      <label class="fraud-reader-select">Detail <select id="fraud-reader-field"></select></label>
+      <div class="fraud-reader-content" id="fraud-document-dialog-view" aria-live="polite"></div>
+      <div class="fraud-reader-navigation">
+        <button class="secondary-button" type="button" id="fraud-reader-previous">Previous detail</button>
+        <span id="fraud-reader-position" role="status"></span>
+        <button class="secondary-button" type="button" id="fraud-reader-next">Next detail</button>
+      </div>
     </dialog>
 
     <footer>Browser edition. The original PowerShell quiz remains in this repository.</footer>
-    <script type="module" src="app.js?v=20260926-chart-extrema-backgrounds"></script>
+    <script type="module" src="app.js?v=20260930-fraud-readable-documents"></script>
   </body>
 </html>

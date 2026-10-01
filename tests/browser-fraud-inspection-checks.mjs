@@ -9,6 +9,8 @@ export async function checkFraudInspection(browser, base) {
     if (response.status() >= 400) errors.push(response.status() + ' ' + response.url());
   });
   try {
+    await page.clock.install();
+    await page.clock.pauseAt(new Date());
     await page.goto(base);
     await page.locator('input[name="game"][value="fraud-inspection"]').check();
     await page.locator('input[name="difficulty"][value="Custom"]').check();
@@ -42,13 +44,15 @@ export async function checkFraudInspection(browser, base) {
     await page.locator('[data-fraud-document-action="enlarge"][data-fraud-document="check"]').click();
     await page.locator('#fraud-document-dialog').waitFor({ state: 'visible' });
     assert.equal(await page.locator('#fraud-document-dialog-view .fraud-marked').count(), 0, 'enlarged document does not reveal actual issue locations');
-    await page.locator('[data-fraud-dialog-zoom="0.15"]').click();
-    assert.match(await page.locator('#fraud-document-dialog-view svg').getAttribute('style'), /115%/);
+    await page.locator('#fraud-reader-next').click();
+    assert.equal(await page.locator('#fraud-document-dialog-view h3').textContent(), 'Printed check number');
     await page.locator('#close-fraud-document-dialog').click();
     await page.locator('[data-fraud-document-action="enlarge"][data-fraud-document="maker-id"]').click();
-    assert.equal(await page.locator('#fraud-document-dialog-heading').textContent(), 'Maker identification');
+    assert.equal(await page.locator('#fraud-document-dialog-heading').textContent(), 'Payer / maker identification');
     assert.equal(await page.locator('#fraud-document-dialog-view [data-region="maker-id-signature"]').count(), 1);
     await page.locator('#close-fraud-document-dialog').click();
+
+    await checkReadableFraudDocuments(page);
 
     for (const width of [320, 390, 768, 1024, 1440]) {
       await page.setViewportSize({ width, height: 900 });
@@ -90,5 +94,54 @@ export async function checkFraudInspection(browser, base) {
   } finally {
     await context.close();
   }
-  console.log('Fraud Inspection: custom timer, isolated category, document zoom, 320–1440px layout, scoring, feedback highlights, local history and progress passed.');
+  console.log('Fraud Inspection: distinct portraits, readable document pages across phone/tablet/desktop and landscape, scoring, feedback, local history and progress passed.');
+}
+
+async function checkReadableFraudDocuments(page) {
+  const portraits = await page.locator('#fraud-document-grid image').evaluateAll((images) => images.map((image) => image.getAttribute('href')));
+  assert.equal(new Set(portraits).size, 2, 'payer and payee show different portraits');
+  for (const [width, height] of [[320, 568], [390, 844], [568, 320], [768, 1024], [1024, 768], [1440, 900]]) {
+    await page.setViewportSize({ width, height });
+    await page.locator('#read-fraud-documents').click();
+    for (const kind of ['check', 'maker-id', 'payee-id']) {
+      await page.locator('[data-fraud-reader-kind="' + kind + '"]').click();
+      const detailCount = await page.locator('#fraud-reader-field option').count();
+      for (let index = 0; index < detailCount; index += 1) {
+        await page.locator('#fraud-reader-field').selectOption(String(index));
+        const geometry = await page.locator('#fraud-document-dialog').evaluate((dialog) => {
+          const view = dialog.querySelector('.fraud-reader-content');
+          const svg = view.querySelector('svg');
+          const rect = dialog.getBoundingClientRect();
+          const visible = [...dialog.querySelectorAll('button,select,h3,.fraud-reader-value,svg')].filter((element) => element.getClientRects().length && !element.hidden);
+          return {
+            fits: rect.top >= 0 && rect.bottom <= innerHeight + 1 && rect.left >= 0 && rect.right <= innerWidth + 1,
+            noScroll: [dialog, view].every((element) => element.scrollWidth <= element.clientWidth + 1 && element.scrollHeight <= element.clientHeight + 1),
+            contentFits: visible.every((element) => { const box = element.getBoundingClientRect(); return box.top >= rect.top && box.bottom <= rect.bottom + 1 && box.left >= rect.left && box.right <= rect.right + 1; }),
+            textSizes: [...view.querySelectorAll('h3,.fraud-reader-value')].filter((element) => !element.hidden).map((element) => parseFloat(getComputedStyle(element).fontSize)),
+            canvasHeight: svg.getBoundingClientRect().height,
+            title: view.querySelector('h3').textContent,
+          };
+        });
+        const message = `${width}×${height} ${kind} detail ${index}: ${JSON.stringify(geometry)}`;
+        assert.ok(geometry.fits && geometry.noScroll && geometry.contentFits, message);
+        assert.ok(geometry.textSizes.every((size) => size >= 16), message);
+        assert.ok(geometry.canvasHeight >= 24, message);
+        if (geometry.title.toLowerCase().includes('signature')) {
+          const region = kind === 'maker-id' ? 'maker-id-signature' : kind === 'payee-id' ? 'id-signature' : geometry.title.startsWith('Payee') ? 'check-endorsement' : 'check-maker-signature';
+          const renderedPaths = await page.locator('#fraud-document-dialog-view [data-region="' + region + '"] .fraud-signature path').evaluateAll((paths) => paths.map((path) => path.getAttribute('d')));
+          const originalPaths = await page.locator('#fraud-document-grid [data-region="' + region + '"] .fraud-signature path').evaluateAll((paths) => paths.map((path) => path.getAttribute('d')));
+          assert.deepEqual(renderedPaths, originalPaths, 'reader preserves the original handwriting');
+          if (width === 320 && kind === 'maker-id') await page.screenshot({ path: (process.env.TEMP || '/tmp') + '/fraud-readable-phone-signature.png' });
+          if (width === 568 && kind === 'check') await page.screenshot({ path: (process.env.TEMP || '/tmp') + '/fraud-readable-landscape-signature.png' });
+        }
+      }
+    }
+    await page.locator('#fraud-reader-field').selectOption('2');
+    await page.locator('#fraud-reader-next').click();
+    assert.equal(await page.locator('#fraud-reader-field').inputValue(), '3');
+    await page.keyboard.press('ArrowLeft');
+    assert.equal(await page.locator('#fraud-reader-field').inputValue(), '2');
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('#fraud-document-dialog').isVisible(), false);
+  }
 }

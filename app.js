@@ -6,7 +6,7 @@ import {
   resolveFraudInspectionSettings,
   scoreFraudInspectionAttempt,
   summarizeFraudHistory,
-} from './fraud-inspection.mjs?v=20260925-maker-ids';
+} from './fraud-inspection.mjs?v=20260930-distinct-portraits';
 import { PRACTICE_GAMES, rankPracticeCandidates, recommendPractice, practiceSettings } from './adaptive-practice.mjs?v=20260918-progress';
 import {
   buildChartSpecs, buildConditionalReport, buildErrorAnalytics, buildGameFilters, buildProgressModel, comparePeriods,
@@ -221,7 +221,9 @@ const state = {
   fraudSelections: new Set(),
   fraudStartedAt: 0,
   fraudDocumentZooms: new Map(),
-  fraudDialogZoom: 1,
+  fraudReaderKind: 'check',
+  fraudReaderIndex: 0,
+  fraudReaderFeedback: false,
   fraudRoundAdvanceTimer: null,
   fraudStoppedEarly: false,
   fraudLastScore: null,
@@ -2134,7 +2136,7 @@ function renderFraudIdSvg(challenge, kind = 'payee-id', feedback = false) {
     + '<desc>Training-only identification card with made-up name, address, dates, and number.</desc>' + fields.join('') + '</svg>';
 }
 
-function makeFraudDocumentCard(kind, title, markup) {
+function makeFraudDocumentCard(kind, title, markup, feedback = false) {
   const article = document.createElement('article');
   article.className = 'fraud-document-card';
   article.dataset.fraudCard = kind;
@@ -2153,7 +2155,7 @@ function makeFraudDocumentCard(kind, title, markup) {
     ['−', 'Zoom out ' + title.toLowerCase(), 'out'],
     ['+', 'Zoom in ' + title.toLowerCase(), 'in'],
     ['Reset zoom', 'Reset ' + title.toLowerCase() + ' zoom', 'reset'],
-    ['Enlarge', 'Enlarge ' + title.toLowerCase(), 'enlarge'],
+    ['Read details', 'Read details of ' + title.toLowerCase(), 'enlarge'],
   ];
   for (const [label, accessible, action] of controls) {
     const button = document.createElement('button');
@@ -2169,11 +2171,10 @@ function makeFraudDocumentCard(kind, title, markup) {
       if (action === 'in') setFraudDocumentZoom(kind, currentZoom + 0.2, article);
       else if (action === 'out') setFraudDocumentZoom(kind, currentZoom - 0.2, article);
       else if (action === 'reset') setFraudDocumentZoom(kind, 1, article);
-      else openFraudDocument(kind);
+      else openFraudDocument(kind, feedback);
     });
     tools.append(button);
   }
-  if (!state.fraudSettings.zoomAvailable) tools.querySelector('[data-fraud-document-action="enlarge"]').hidden = true;
   article.append(heading, tools, viewport);
   setFraudDocumentZoom(kind, state.fraudDocumentZooms.get(kind) ?? 1, article);
   return article;
@@ -2188,9 +2189,9 @@ function setFraudDocumentZoom(kind, zoom, root = document) {
 }
 
 function renderFraudDocuments(target, challenge, feedback = false) {
-  const check = makeFraudDocumentCard('check', 'CHECK · FRONT AND ENDORSEMENT', renderFraudCheckSvg(challenge, feedback));
-  const payee = makeFraudDocumentCard('payee-id', 'PAYEE ID · ENDORSEMENT SIGNATURE', renderFraudIdSvg(challenge, 'payee-id', feedback));
-  const maker = makeFraudDocumentCard('maker-id', 'MAKER ID · AUTHORIZED SIGNATURE', renderFraudIdSvg(challenge, 'maker-id', feedback));
+  const check = makeFraudDocumentCard('check', 'CHECK · FRONT AND ENDORSEMENT', renderFraudCheckSvg(challenge, feedback), feedback);
+  const payee = makeFraudDocumentCard('payee-id', 'PAYEE ID · ENDORSEMENT SIGNATURE', renderFraudIdSvg(challenge, 'payee-id', feedback), feedback);
+  const maker = makeFraudDocumentCard('maker-id', 'MAKER ID · AUTHORIZED SIGNATURE', renderFraudIdSvg(challenge, 'maker-id', feedback), feedback);
   target.replaceChildren(check, payee, maker);
 }
 
@@ -2383,6 +2384,7 @@ function submitFraudInspectionAttempt(timedOut = false) {
     return;
   }
   state.answerSubmitted = true;
+  if (refs['fraud-document-dialog'].open) refs['fraud-document-dialog'].close();
   const elapsedSeconds = Math.min(state.fraudSettings.timeLimitSeconds,
     Math.max(0, (Date.now() - state.fraudStartedAt) / 1000));
   stopTimer();
@@ -2409,6 +2411,7 @@ function submitFraudInspectionAttempt(timedOut = false) {
 }
 
 function showNextFraudInspectionCase() {
+  if (refs['fraud-document-dialog'].open) refs['fraud-document-dialog'].close();
   window.clearTimeout(state.fraudRoundAdvanceTimer);
   state.fraudRoundAdvanceTimer = null;
   if (state.fraudStoppedEarly) {
@@ -2444,16 +2447,111 @@ function startFraudInspection() {
   showNextFraudInspectionCase();
 }
 
-function openFraudDocument(kind) {
+function fraudReaderFields(challenge, kind) {
+  const check = challenge.check;
+  if (kind === 'check') return [
+    ['Bank / training header', (challenge.document.olderDesign ? 'CEDARLINE SAVINGS · TRAINING DRAFT' : 'CEDARLINE COMMUNITY COOPERATIVE') + ' · TRAINING SAMPLE · NO REAL VALUE', [8, 8, 844, 55]],
+    ['Printed check number', check.checkNumber, [29, 78, 160, 58]],
+    ['Check date', check.dateText, [671, 78, 157, 58]],
+    ['Pay to the order of', check.payeeName, [29, 151, 519, 58]],
+    ['Numeric amount', check.numericAmount, [565, 151, 263, 58]],
+    ['Written amount', check.writtenAmount, [29, 223, 799, 58]],
+    ['Payer / maker signature', null, [463, 302, 365, 58]],
+    ['Memo / note', check.memoText, [29, 302, 406, 58]],
+    ['Payer / maker name', check.makerName + ' · Fictional drawer · invented training fields', [29, 371, 490, 58]],
+    ...(challenge.settings.fieldDensity === 'low' ? [] : [['Reference number', check.referenceNumber, [509, 103, 148, 26]]]),
+    ['MICR routing · account · check number', check.routingNumber + ' · ' + check.accountNumber + ' · ' + check.micrCheckNumber, [29, 443, 802, 57]],
+    ['Payee endorsement signature', null, [8, 520, 844, 158]],
+    ['Teller file reference', 'Routing: ' + challenge.tellerFile.routingNumber + ' · Account: ' + challenge.tellerFile.accountNumber + ' · Exercise date: ' + challenge.exerciseDate, [29, 443, 802, 57]],
+  ];
+  const identity = kind === 'maker-id' ? challenge.makerId : challenge.id;
+  return [
+    ['Issuing state / training header', 'STATE OF ' + identity.issuingState + ' · RESIDENT IDENTIFICATION · FICTIONAL TRAINING CARD · NOT A REAL ID', [8, 8, 844, 92]],
+    ['ID photograph', null, [37, 129, 208, 256]],
+    ['Full legal name', identity.legalName, [278, 129, 542, 58]],
+    ['ID number', identity.idNumber, [278, 202, 248, 58]],
+    ['Date of birth', identity.dateOfBirth, [540, 202, 280, 58]],
+    ['Residence address', identity.address, [278, 275, 542, 58]],
+    ['Expiration date', identity.expirationText, [278, 348, 248, 58]],
+    ['Issue date', new Date(identity.issueDate + 'T00:00:00Z').toLocaleDateString('en-US'), [540, 348, 280, 58]],
+    ['ID signature', null, [278, 402, 500, 90]],
+    ['Reference / training watermark', 'Reference only · ' + identity.issuingState + ' · SAMPLE — NOT FOR IDENTIFICATION', [8, 8, 844, 524]],
+  ];
+}
+
+function renderFraudReader() {
   const challenge = state.fraudChallenge;
   if (!challenge) return;
-  const markup = kind === 'check' ? renderFraudCheckSvg(challenge) : renderFraudIdSvg(challenge, kind);
-  refs['fraud-document-dialog-heading'].textContent = kind === 'check' ? 'Check front and endorsement' : kind === 'maker-id' ? 'Maker identification' : 'Payee identification';
-  refs['fraud-document-dialog-view'].innerHTML = markup;
-  state.fraudDialogZoom = 1;
-  const svg = refs['fraud-document-dialog-view'].querySelector('svg');
-  if (svg) svg.style.width = '100%';
+  const kind = state.fraudReaderKind;
+  const fields = fraudReaderFields(challenge, kind);
+  state.fraudReaderIndex = Math.max(0, Math.min(fields.length - 1, state.fraudReaderIndex));
+  const [label, value, crop] = fields[state.fraudReaderIndex];
+  const markup = kind === 'check' ? renderFraudCheckSvg(challenge, state.fraudReaderFeedback)
+    : renderFraudIdSvg(challenge, kind, state.fraudReaderFeedback);
+  const view = refs['fraud-document-dialog-view'];
+  view.innerHTML = markup;
+  const svg = view.querySelector('svg');
+  // Crop the original document, preserving its ink, handwriting, erasures, and photo smears.
+  let detailCrop = crop;
+  if (label.toLowerCase().includes('signature')) {
+    const region = kind !== 'check' ? (kind === 'maker-id' ? 'maker-id-signature' : 'id-signature')
+      : label.startsWith('Payee') ? 'check-endorsement' : 'check-maker-signature';
+    const signature = svg.querySelector('[data-region="' + region + '"] .fraud-signature');
+    if (signature) {
+      const box = signature.getBBox();
+      const matrix = signature.transform.baseVal.consolidate().matrix;
+      const corners = [[box.x, box.y], [box.x + box.width, box.y], [box.x, box.y + box.height], [box.x + box.width, box.y + box.height]]
+        .map(([x, y]) => new DOMPoint(x, y).matrixTransform(matrix));
+      const left = Math.min(...corners.map((point) => point.x));
+      const top = Math.min(...corners.map((point) => point.y));
+      detailCrop = [left - 12, top - 12, Math.max(...corners.map((point) => point.x)) - left + 24, Math.max(...corners.map((point) => point.y)) - top + 24];
+      const signatureRegion = signature.parentElement.cloneNode(false);
+      signatureRegion.append(signature.cloneNode(true));
+      svg.replaceChildren(signatureRegion);
+    }
+  }
+  svg.setAttribute('viewBox', detailCrop.join(' '));
+  const svgNamespace = 'http://www.w3.org/2000/svg';
+  const detailGroup = document.createElementNS(svgNamespace, 'g');
+  while (svg.firstChild) detailGroup.append(svg.firstChild);
+  const clip = document.createElementNS(svgNamespace, 'clipPath');
+  clip.id = 'fraud-reader-crop';
+  const clipRect = document.createElementNS(svgNamespace, 'rect');
+  ['x', 'y', 'width', 'height'].forEach((attribute, index) => clipRect.setAttribute(attribute, detailCrop[index]));
+  clip.append(clipRect);
+  detailGroup.setAttribute('clip-path', 'url(#fraud-reader-crop)');
+  svg.append(clip, detailGroup);
+  svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+  svg.setAttribute('aria-label', label + ' on the fictional ' + (kind === 'check' ? 'check' : 'ID'));
+  const heading = document.createElement('h3');
+  heading.textContent = label;
+  const printed = document.createElement('p');
+  printed.className = 'fraud-reader-value';
+  printed.hidden = value === null;
+  printed.textContent = value === null ? 'Inspect the original detail below.' : String(value || '(blank)');
+  view.prepend(heading, printed);
+  refs['fraud-document-dialog-heading'].textContent = kind === 'check' ? 'Check front and endorsement'
+    : kind === 'maker-id' ? 'Payer / maker identification' : 'Payee identification';
+  const dialog = refs['fraud-document-dialog'];
+  dialog.querySelectorAll('[data-fraud-reader-kind]').forEach((button) => {
+    button.setAttribute('aria-pressed', String(button.dataset.fraudReaderKind === kind));
+  });
+  const select = dialog.querySelector('#fraud-reader-field');
+  select.replaceChildren(...fields.map(([name], index) => new Option(name, String(index))));
+  select.value = String(state.fraudReaderIndex);
+  dialog.querySelector('#fraud-reader-position').textContent = (state.fraudReaderIndex + 1) + ' / ' + fields.length;
+  dialog.querySelector('#fraud-reader-previous').disabled = state.fraudReaderIndex === 0;
+  dialog.querySelector('#fraud-reader-next').disabled = state.fraudReaderIndex === fields.length - 1;
+}
+
+function openFraudDocument(kind, feedback = false) {
+  const challenge = state.fraudChallenge;
+  if (!challenge) return;
+  state.fraudReaderKind = kind;
+  state.fraudReaderIndex = 0;
+  state.fraudReaderFeedback = feedback;
   if (!refs['fraud-document-dialog'].open) refs['fraud-document-dialog'].showModal();
+  renderFraudReader();
 }
 
 function renderTaskInstructions(challenge) {
@@ -5204,15 +5302,27 @@ refs['close-fraud-document-dialog'].addEventListener('click', () => refs['fraud-
 refs['fraud-document-dialog'].addEventListener('click', (event) => {
   if (event.target === refs['fraud-document-dialog']) refs['fraud-document-dialog'].close();
 });
-refs['fraud-document-dialog'].querySelectorAll('[data-fraud-dialog-zoom]').forEach((button) => button.addEventListener('click', () => {
-  state.fraudDialogZoom = Math.max(0.7, Math.min(2.5, Math.round((state.fraudDialogZoom + Number(button.dataset.fraudDialogZoom)) * 100) / 100));
-  const svg = refs['fraud-document-dialog-view'].querySelector('svg');
-  if (svg) svg.style.width = (state.fraudDialogZoom * 100) + '%';
+document.querySelector('#read-fraud-documents').addEventListener('click', () => openFraudDocument('check'));
+refs['fraud-document-dialog'].querySelectorAll('[data-fraud-reader-kind]').forEach((button) => button.addEventListener('click', () => {
+  state.fraudReaderKind = button.dataset.fraudReaderKind;
+  state.fraudReaderIndex = 0;
+  renderFraudReader();
 }));
-refs['fraud-document-dialog'].querySelector('[data-fraud-dialog-reset]').addEventListener('click', () => {
-  state.fraudDialogZoom = 1;
-  const svg = refs['fraud-document-dialog-view'].querySelector('svg');
-  if (svg) svg.style.width = '100%';
+refs['fraud-document-dialog'].querySelector('#fraud-reader-field').addEventListener('change', (event) => {
+  state.fraudReaderIndex = Number(event.target.value);
+  renderFraudReader();
+});
+for (const [id, direction] of [['fraud-reader-previous', -1], ['fraud-reader-next', 1]]) {
+  refs['fraud-document-dialog'].querySelector('#' + id).addEventListener('click', () => {
+    state.fraudReaderIndex += direction;
+    renderFraudReader();
+  });
+}
+refs['fraud-document-dialog'].addEventListener('keydown', (event) => {
+  if (event.target.closest('select') || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+  event.preventDefault();
+  state.fraudReaderIndex += event.key === 'ArrowLeft' ? -1 : 1;
+  renderFraudReader();
 });
 refs['error-detection-start-puzzle'].addEventListener('click', startErrorDetectionPuzzle);
 refs['error-detection-no-errors'].addEventListener('change', () => {

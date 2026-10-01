@@ -721,6 +721,7 @@ body:has(#fraud-inspection-screen:not([hidden])) .app-shell { padding-top: 0.5re
 .fraud-doc-viewport { max-height: none; }
 .fraud-doc-stage { width: 100%; min-width: 0; }
 .fraud-document-svg { display: block; width: 100%; height: auto; }
+.fraud-doc-stage .fraud-document-svg { max-height: 40dvh; }
 .fraud-field-bg { transition: fill 120ms ease; }
 .fraud-marked .fraud-field-bg { fill: #ffedbd; fill-opacity: 0.88; stroke: #a22c20; stroke-width: 3; stroke-dasharray: 7 4; }
 .fraud-signature { overflow: visible; }
@@ -748,12 +749,32 @@ body:has(#fraud-inspection-screen:not([hidden])) .app-shell { padding-top: 0.5re
 .fraud-history-breakdown { min-width: 0; padding: 0.75rem; border: 0.0625rem solid var(--line); border-radius: 0.25rem; background: var(--surface); }
 .fraud-history-breakdown h4 { margin: 0; font-size: 0.95rem; }
 .fraud-history-breakdown ul { margin-bottom: 0; padding-left: 1.2rem; }
-.fraud-document-dialog { width: min(calc(100% - 1rem), 78rem); max-width: 78rem; max-height: calc(100dvh - 1rem); padding: 1rem; border: 0.0625rem solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+.fraud-reader-entry { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; margin: 0.75rem 0; }
+.fraud-reader-entry p { margin: 0; font-size: 0.875rem; }
+.fraud-document-dialog { width: min(calc(100% - 1rem), 78rem); max-width: 78rem; height: calc(100dvh - 1rem); max-height: calc(100dvh - 1rem); padding: 0.75rem; overflow: hidden; border: 0.0625rem solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+.fraud-document-dialog[open] { display: flex; flex-direction: column; gap: 0.5rem; }
+html:has(#fraud-document-dialog[open]), body:has(#fraud-document-dialog[open]) { overflow: hidden; }
 .fraud-document-dialog::backdrop { background: rgb(0 0 0 / 60%); }
-.fraud-document-dialog .dialog-heading { margin-bottom: 0.75rem; }
-.fraud-document-dialog .dialog-heading h2 { margin-bottom: 0; font-size: 1.2rem; }
-.fraud-dialog-viewport { max-height: min(72dvh, 54rem); }
-.fraud-dialog-viewport .fraud-document-svg { min-width: 40rem; }
+.fraud-document-dialog .dialog-heading { flex-direction: row; flex-shrink: 0; align-items: center; margin: 0; gap: 0.5rem; }
+.fraud-document-dialog .dialog-heading h2 { margin: 0; font-size: clamp(1rem, 2vw, 1.2rem); }
+.fraud-document-dialog .dialog-heading .eyebrow { margin: 0 0 0.25rem; font-size: 0.75rem; }
+.fraud-document-dialog button { min-height: 2.75rem; padding: 0.4rem 0.6rem; font-size: 0.875rem; }
+.fraud-reader-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.375rem; flex-shrink: 0; }
+.fraud-reader-tabs button[aria-pressed="true"] { background: var(--brand-fill); border-color: var(--brand-fill); color: #fff; }
+.fraud-reader-select { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; font-size: 0.875rem; }
+.fraud-reader-select select { min-width: 0; flex: 1; min-height: 2.75rem; margin: 0; padding: 0.4rem; font-size: 1rem; }
+.fraud-reader-content { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; gap: 0.5rem; overflow: hidden; }
+.fraud-reader-content h3 { flex-shrink: 0; margin: 0; font-size: 1rem; line-height: 1.25; overflow-wrap: anywhere; }
+.fraud-reader-value { flex-shrink: 0; margin: 0; font-size: 1rem; line-height: 1.4; font-weight: 650; overflow-wrap: anywhere; }
+.fraud-reader-content .fraud-document-svg { flex: 1; min-height: 0; width: 100%; height: 100%; padding: 0.5rem; background: #fffef8; border: 1px solid #c9d3cf; border-radius: 0.25rem; overflow: hidden; }
+.fraud-reader-navigation { flex-shrink: 0; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 0.5rem; }
+.fraud-reader-navigation span { font-size: 0.875rem; white-space: nowrap; text-align: center; }
+@media (max-height: 26rem) {
+  .fraud-document-dialog[open] { padding: 0.375rem; }
+  .fraud-document-dialog[open], .fraud-reader-content { gap: 0.25rem; }
+  .fraud-document-dialog .dialog-heading .eyebrow { display: none; }
+  .fraud-reader-content .fraud-document-svg { padding: 0.25rem; }
+}
 
 @media (max-width: 56rem) {
   .fraud-document-grid, .fraud-feedback-documents { grid-template-columns: repeat(2, minmax(0, 1fr)); }

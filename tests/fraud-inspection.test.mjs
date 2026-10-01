@@ -18,6 +18,16 @@ function sequenceRandom(seed = 19) {
 
 const fixedDate = new Date('2026-09-20T12:00:00.000Z');
 const categoryIds = FRAUD_INSPECTION_CATEGORIES.map((item) => item.id);
+test('payer and payee have distinct portraits across same and different name groups', () => {
+  const portraits = new Set();
+  for (let seed = 0; seed < 300; seed += 1) {
+    const challenge = createFraudInspectionCase('Easy', {}, sequenceRandom(seed), fixedDate);
+    assert.notEqual(challenge.id.portrait, challenge.makerId.portrait);
+    portraits.add(challenge.id.portrait);
+    portraits.add(challenge.makerId.portrait);
+  }
+  assert.equal(portraits.size, 4, 'all four fictional portraits appear');
+});
 const oneCategory = (id, extra = {}) => ({
   minimumErrors: 1,
   maximumErrors: 1,

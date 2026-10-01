@@ -16,7 +16,7 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const server = createServer(async (request, response) => {
   const path = new URL(request.url, 'http://localhost').pathname;
   const file = path === '/' ? 'index.html' : path.slice(1);
-  if (!['index.html', 'app.js', 'style.css', 'quiz-core.mjs', 'pattern-games.mjs', 'distraction-sounds.mjs', 'adaptive-practice.mjs', 'progress-analytics.mjs', 'fraud-inspection.mjs', 'sample-history.mjs', 'assets/fraud/id-portrait-female-20260922.jpg', 'assets/fraud/id-portrait-male-20260922.jpg'].includes(file)) {
+  if (!['index.html', 'app.js', 'style.css', 'quiz-core.mjs', 'pattern-games.mjs', 'distraction-sounds.mjs', 'adaptive-practice.mjs', 'progress-analytics.mjs', 'fraud-inspection.mjs', 'sample-history.mjs', 'assets/fraud/id-portrait-female-20260922.jpg', 'assets/fraud/id-portrait-male-20260922.jpg', 'assets/fraud/id-portrait-female-2-20260929.jpg', 'assets/fraud/id-portrait-male-2-20260929.jpg'].includes(file)) {
     response.writeHead(404).end(); return;
   }
   response.setHeader('Content-Type', file.endsWith('.jpg') ? 'image/jpeg' : ({ '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.mjs': 'text/javascript' })[extname(file)]);
