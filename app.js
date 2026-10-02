@@ -1,3 +1,4 @@
+import { TYPING_PRESETS, resolveTypingSettings, createTypingPrompt, scoreTyping, summarizeTyping } from './typing-core.mjs?v=20261002-typing';
 import { PATTERN_GAME_NAMES } from './pattern-games.mjs';
 import { createChessUI } from './chess-ui.mjs?v=20261001-chess';
 import { createDistractionSamples } from './distraction-sounds.mjs';
@@ -12,7 +13,7 @@ import { PRACTICE_GAMES, rankPracticeCandidates, recommendPractice, practiceSett
 import {
   buildChartSpecs, buildConditionalReport, buildErrorAnalytics, buildGameFilters, buildProgressModel, comparePeriods,
   filterHistory, recommendNextChallenge,
-} from './progress-analytics.mjs?v=20260923-error-analytics';
+} from './progress-analytics.mjs?v=20261002-typing';
 import { generateSampleHistory } from './sample-history.mjs?v=20260923-sample-history';
 import {
   DENOMINATIONS,
@@ -51,9 +52,9 @@ const PRESET_KEY = 'cash-handling-terminal-quiz-presets-v1';
 const CURRENT_CHALLENGE_KEY = 'cash-handling-terminal-quiz-current-challenge-v1';
 const SAMPLE_HISTORY_KEY = 'cash-handling-terminal-quiz-sample-history-v1';
 const CHART_APPEARANCE_KEY = 'cash-handling-terminal-quiz-chart-appearance-v1';
-const screens = ['setup', 'chess', 'quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'error-detection-briefing', 'error-detection', 'fraud-inspection', 'feedback', 'summary', 'history'];
+const screens = ['typing', 'setup', 'chess', 'quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'error-detection-briefing', 'error-detection', 'fraud-inspection', 'feedback', 'summary', 'history'];
 const refs = Object.fromEntries([
-  'setup-form', 'setup-screen', 'chess-screen', 'quiz-screen', 'feedback-screen', 'summary-screen', 'history-screen',
+  'typing-screen', 'setup-form', 'setup-screen', 'chess-screen', 'quiz-screen', 'feedback-screen', 'summary-screen', 'history-screen',
   'memory-read-screen', 'memory-answer-screen', 'task-briefing-screen', 'task-workspace-screen', 'error-detection-briefing-screen', 'error-detection-screen', 'fraud-inspection-screen', 'cash-setup-options', 'memory-setup-options', 'task-setup-options', 'error-detection-setup-options', 'fraud-setup-options',
   'question-count', 'time-limit', 'cash-builder-toggle', 'customer-bill-request-toggle', 'auto-continue-toggle', 'distraction-noise-toggle', 'question-progress', 'timer', 'amount-due',
   'tender-breakdown', 'customer-bill-request', 'customer-bill-request-text', 'customer-bill-request-status', 'flag-bill-request', 'answer-form', 'answer-amount', 'cash-builder-section', 'cash-builder-heading',
@@ -487,7 +488,7 @@ function showScreen(name) {
   state.activeScreen = name;
   const activeScreen = refs[`${name}-screen`];
   if (isCompactViewport()) activeScreen.scrollIntoView({ block: 'start', inline: 'nearest' });
-  const roundInProgress = ['quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'error-detection-briefing', 'error-detection', 'fraud-inspection'].includes(name);
+  const roundInProgress = ['typing', 'quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'error-detection-briefing', 'error-detection', 'fraud-inspection'].includes(name);
   refs['open-history'].disabled = roundInProgress;
   if (!roundInProgress) stopTimer();
   if (name === 'quiz') {
@@ -511,6 +512,7 @@ function showScreen(name) {
     return;
   }
   const heading = document.querySelector(`#${name}-screen h2`);
+  if (name === 'typing') { typingElement('begin').focus(); return; }
   if (heading && name === 'chess') heading.focus({ preventScroll: true });
   else if (heading) window.setTimeout(() => heading.focus({ preventScroll: true }), 0);
 }
@@ -733,7 +735,7 @@ function gameLabel(game) {
 function renderPresetEditor() {
   const game = selectedGame();
   const level = selectedDifficulty();
-  if (game === 'fraud-inspection') {
+  if (game === 'typing' || game === 'fraud-inspection') {
     refs['preset-editor'].hidden = true;
     return;
   }
@@ -790,7 +792,17 @@ function renderPresetEditor() {
 function updateGameSetup() {
   const game = selectedGame();
   chessUI.setupChanged(game);
+  document.getElementById('typing-setup-options').hidden = game !== 'typing';
+  document.querySelectorAll('#typing-setup-options input, #typing-setup-options select, #typing-setup-options button').forEach(node => { node.disabled = game !== 'typing'; });
   if (game === 'chess') return;
+  if (game === 'typing') {
+    if (selectedDifficulty() === 'Custom') document.querySelector('input[name="difficulty"][value="Easy"]').checked = true;
+    for (const id of ['cash-setup-options', 'memory-setup-options', 'task-setup-options', 'error-detection-setup-options', 'fraud-setup-options', 'preset-editor', 'custom-difficulty-card']) refs[id].hidden = true;
+    for (const level of ['Easy', 'Medium', 'Hard']) refs[`${level.toLowerCase()}-description`].textContent = `${TYPING_PRESETS[level].characters} characters in ${TYPING_PRESETS[level].seconds}s${level === 'Hard' ? ', symbols and mixed case' : ''}`;
+    loadTypingSetup();
+    renderPracticeRecommendations(document.getElementById('setup-recommendations'), game, selectedDifficulty());
+    return;
+  }
   if (selectedDifficulty() === 'Custom' && game !== 'fraud-inspection') {
     document.querySelector('input[name="difficulty"][value="Easy"]').checked = true;
   }
@@ -854,6 +866,7 @@ function presetFor(game, difficulty) {
 }
 
 function sessionPreset() {
+  if (state.game === 'typing') return state.typingSettings;
   if (state.game === 'fraud-inspection') return state.fraudSettings;
   return state.practicePlan?.preset ?? presetFor(state.game, state.difficulty);
 }
@@ -872,6 +885,7 @@ function appendPracticeSettings(target, plan) {
 }
 
 function renderPracticeRecommendations(target, game, difficulty, history = getHistory()) {
+  if (game === 'typing') { target.textContent = 'Build accuracy first, then increase characters or shorten the timer. Saved typing results appear in History | Progress.'; return; }
   if (game === 'fraud-inspection') {
     const fraudSummary = summarizeFraudHistory(history);
     const summary = document.createElement('p');
@@ -3336,6 +3350,7 @@ function showNextTaskQuestion() {
 function makeMetrics(records) {
   const summary = summarizeHistory(records);
   const averageTime = summary.answered ? records.reduce((sum, record) => sum + Number(record.timeUsedSeconds || 0), 0) / summary.answered : 0;
+  if (state.game === 'typing') return typingMetrics(records);
   if (state.game === 'fraud-inspection') {
     const fraud = summarizeFraudHistory(records);
     return [
@@ -3396,7 +3411,7 @@ function renderMetrics(target, metrics) {
 
 function renderSummary() {
   stopContinuousDistractionNoise();
-  refs['summary-heading'].textContent = state.game === 'memory'
+  refs['summary-heading'].textContent = state.game === 'typing' ? 'Your typing results' : state.game === 'memory'
     ? 'Your memory results'
     : state.game === 'task'
       ? 'Your task simulation results'
@@ -4999,6 +5014,7 @@ function renderFraudHistory(records) {
 }
 
 function renderHistory() {
+  document.getElementById('typing-history-panel').hidden = historyView.filters.game !== 'typing';
   const chessSelected = historyView.filters.game === 'chess';
   refs['history-screen'].classList.toggle('chess-history-selected', chessSelected);
   document.getElementById('chess-history').hidden = !chessSelected;
@@ -5012,6 +5028,7 @@ function renderHistory() {
   const gameOnly = filterHistory(history, { game: historyView.filters.game });
   renderHistoryFilters(gameOnly);
   const records = filterHistory(history, historyView.filters);
+  renderTypingHistory(records);
   const model = buildProgressModel(records);
   const errorAnalytics = renderErrorAnalysis(records, history);
   renderProgressMetrics(model);
@@ -5037,7 +5054,7 @@ function applyHistoryQuickRange(kind) {
 }
 
 function openHistory() {
-  if (['quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'error-detection'].includes(state.activeScreen)) {
+  if (['typing', 'quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'error-detection'].includes(state.activeScreen)) {
     setMessage('Finish the current round before opening history.');
     return;
   }
@@ -5086,6 +5103,142 @@ refs['error-analysis-sort'].addEventListener('change', () => {
   renderHistory();
 });
 
+const typingElement = id => document.getElementById(`typing-${id}`);
+const TYPING_SETTINGS_KEY = 'cash-handling-terminal-quiz-typing-presets-v1';
+function readTypingSettings() {
+  return resolveTypingSettings(selectedDifficulty(), {
+    mode: typingElement('mode').value, characters: Number(typingElement('characters').value),
+    seconds: Number(typingElement('seconds').value), rounds: Number(typingElement('rounds').value),
+    hidePrompt: typingElement('hide').checked, previewSeconds: Number(typingElement('preview').value),
+  });
+}
+function typingPresets() {
+  try { return JSON.parse(localStorage.getItem(TYPING_SETTINGS_KEY) ?? '{}') ?? {}; } catch { return {}; }
+}
+function loadTypingSetup() {
+  let settings;
+  try { settings = resolveTypingSettings(selectedDifficulty(), typingPresets()[selectedDifficulty()] ?? {}); }
+  catch { settings = resolveTypingSettings(selectedDifficulty()); }
+  for (const key of ['mode', 'characters', 'seconds', 'rounds']) typingElement(key).value = settings[key];
+  typingElement('preview').value = settings.previewSeconds;
+  typingElement('hide').checked = settings.hidePrompt;
+  typingElement('setup-status').textContent = 'Override the selected difficulty here, or save it as your default on this device.';
+}
+function typingMetrics(records) {
+  const summary = summarizeTyping(records);
+  return [[String(summary.rounds), 'Typing rounds'], [summary.wpm.toFixed(1), 'Correct WPM'],
+    [summary.cpm.toFixed(1), 'Correct CPM'], [`${summary.accuracy}%`, 'Character accuracy'], [String(summary.perfect), 'Exact matches']];
+}
+function startTypingSession() {
+  try { state.typingSettings = readTypingSettings(); }
+  catch (error) { typingElement('setup-status').textContent = error.message; return; }
+  clearPracticePlan();
+  prepareDistractionAudio();
+  state.game = 'typing'; state.difficulty = selectedDifficulty(); state.sessionId = makeSessionId();
+  state.questionCount = state.typingSettings.rounds; state.questionNumber = 0; state.results = [];
+  state.autoContinue = refs['auto-continue-toggle'].checked;
+  showNextTypingRound();
+}
+function typingRecord(outcome, answer = '', seconds = 0) {
+  const settings = state.typingSettings;
+  return { timestamp: new Date().toISOString(), sessionId: state.sessionId, questionNumber: state.questionNumber,
+    attemptId: `${state.sessionId}:${state.questionNumber}`, game: 'typing', gameType: 'Typing speed', difficulty: state.difficulty,
+    outcome, timeUsedSeconds: seconds, timeLimitSeconds: settings.seconds, expectedAnswer: state.typingPrompt,
+    userAnswer: answer, typingMode: settings.mode, typingCharacters: settings.characters, typingHidePrompt: settings.hidePrompt,
+    typingPreviewSeconds: settings.hidePrompt ? settings.previewSeconds : 0, ...scoreTyping(state.typingPrompt, answer, seconds) };
+}
+function showNextTypingRound() {
+  stopTimer();
+  state.questionNumber += 1;
+  if (state.questionNumber > state.questionCount) { renderSummary(); showScreen('summary'); return; }
+  state.answerSubmitted = false; state.typingPhase = 'ready';
+  state.typingPrompt = createTypingPrompt(state.typingSettings);
+  persistUnansweredRound(typingRecord('Not answered'));
+  typingElement('prompt').textContent = state.typingSettings.hidePrompt ? '' : state.typingPrompt; typingElement('prompt').hidden = state.typingSettings.hidePrompt;
+  typingElement('answer').value = ''; typingElement('answer').disabled = true;
+  typingElement('submit').disabled = true; typingElement('begin').hidden = false;
+  typingElement('live').textContent = ''; typingElement('timer').textContent = `${state.typingSettings.seconds}s to type`;
+  typingElement('progress').textContent = `Round ${state.questionNumber} of ${state.questionCount} · ${state.difficulty} · ${state.typingSettings.mode} · ${state.typingSettings.characters} characters`;
+  typingElement('instructions').textContent = state.typingSettings.hidePrompt
+    ? 'Press Ready to type to start your preview. The prompt will then disappear and the typing timer will begin.'
+    : 'Press Ready to type to start the clock. Match the text exactly. Use Backspace to correct mistakes; paste and drop are disabled.';
+  showScreen('typing');
+  startContinuousDistractionNoise();
+  typingElement('begin').focus();
+}
+function beginTyping() {
+  if (state.typingPhase !== 'ready') return;
+  typingElement('begin').hidden = true;
+  const start = () => {
+    state.typingPhase = 'typing'; state.typingStartedAt = performance.now();
+    typingElement('prompt').hidden = state.typingSettings.hidePrompt;
+    typingElement('answer').disabled = false; typingElement('submit').disabled = false;
+    typingElement('instructions').textContent = 'Type the exact text and press Enter to submit. Spaces, case, and symbols count.';
+    typingElement('answer').focus();
+    startTimer(state.typingSettings.seconds, typingElement('timer'), () => submitTyping(true));
+  };
+  if (state.typingSettings.hidePrompt) {
+    state.typingPhase = 'preview';
+    typingElement('prompt').textContent = state.typingPrompt; typingElement('prompt').hidden = false;
+    typingElement('instructions').textContent = 'Study the text. Typing begins when this preview ends.';
+    startTimer(state.typingSettings.previewSeconds, typingElement('timer'), start);
+  } else start();
+}
+function submitTyping(timedOut = false) {
+  if (state.answerSubmitted || state.typingPhase !== 'typing') return;
+  const actualSeconds = (performance.now() - state.typingStartedAt) / 1000;
+  // Enforce the deadline even when a background tab delays the timer callback.
+  timedOut ||= actualSeconds >= state.typingSettings.seconds;
+  const seconds = Math.min(state.typingSettings.seconds, Math.max(0.001, actualSeconds));
+  const answer = typingElement('answer').value;
+  const score = scoreTyping(state.typingPrompt, answer, seconds);
+  const record = typingRecord(timedOut ? 'Timed Out' : score.correct ? 'Correct' : 'Incorrect', answer, seconds);
+  state.answerSubmitted = true; state.typingPhase = 'finished'; stopTimer();
+  state.results.push(record); persistRecord(record);
+  if (state.results.length === state.questionCount) stopContinuousDistractionNoise();
+  typingElement('answer').disabled = true;
+  if (state.autoContinue) { showNextTypingRound(); return; }
+  refs['feedback-kicker'].textContent = 'Typing speed result';
+  refs['feedback-heading'].textContent = timedOut ? 'Time expired' : score.correct ? 'Exact match' : 'Review your text';
+  refs['feedback-heading'].dataset.result = record.outcome === 'Correct' ? 'correct' : 'incorrect';
+  refs['feedback-lead'].textContent = `${score.wpm.toFixed(1)} WPM · ${score.cpm.toFixed(1)} CPM · ${score.accuracyPercent}% character accuracy`;
+  appendFeedbackDetails([['Expected text', state.typingPrompt], ['Your text', answer || '(empty)'],
+    ['Character errors', `${score.wrongCharacters} wrong, ${score.missingCharacters} missing, ${score.extraCharacters} extra`], ['Typing time', `${seconds.toFixed(1)}s`]]);
+  showScreen('feedback');
+}
+function renderTypingHistory(records) {
+  const rows = records.filter(row => row.game === 'typing');
+  renderMetrics(typingElement('history-metrics'), typingMetrics(rows));
+  typingElement('history-rows').replaceChildren();
+  for (const record of rows.slice(-100).reverse()) {
+    const tr = document.createElement('tr');
+    for (const value of [new Date(record.timestamp).toLocaleString(), `${record.difficulty} / ${record.typingMode}`,
+      record.typingHidePrompt ? `Hidden after ${record.typingPreviewSeconds}s` : 'Visible', `${record.typingCharacters} / ${record.timeLimitSeconds}s`,
+      record.outcome, record.isAnswered ? `${record.wpm.toFixed(1)} / ${record.cpm.toFixed(1)}` : '—', record.isAnswered ? `${record.accuracyPercent}%` : '—', record.expectedAnswer, record.userAnswer]) {
+      const td = document.createElement('td'); td.textContent = value; tr.append(td);
+    }
+    typingElement('history-rows').append(tr);
+  }
+  if (!rows.length) typingElement('history-rows').innerHTML = '<tr><td colspan="9">Complete a typing round to see speed and accuracy here.</td></tr>';
+}
+typingElement('begin').addEventListener('click', beginTyping);
+typingElement('form').addEventListener('submit', event => { event.preventDefault(); submitTyping(); });
+typingElement('answer').addEventListener('keydown', event => { if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); submitTyping(); } });
+for (const name of ['paste', 'drop']) typingElement('answer').addEventListener(name, event => event.preventDefault());
+typingElement('answer').addEventListener('beforeinput', event => { if (['insertFromPaste', 'insertFromDrop'].includes(event.inputType)) event.preventDefault(); });
+typingElement('answer').addEventListener('input', () => {
+  // Hidden-prompt rounds must not reveal matching positions during recall.
+  typingElement('live').textContent = `${Array.from(typingElement('answer').value).length} characters typed`;
+});
+typingElement('save').addEventListener('click', () => {
+  try { const presets = typingPresets(); presets[selectedDifficulty()] = readTypingSettings(); localStorage.setItem(TYPING_SETTINGS_KEY, JSON.stringify(presets)); typingElement('setup-status').textContent = 'Typing preset saved on this device.'; }
+  catch (error) { typingElement('setup-status').textContent = error.message; }
+});
+typingElement('reset').addEventListener('click', () => {
+  try { const presets = typingPresets(); delete presets[selectedDifficulty()]; localStorage.setItem(TYPING_SETTINGS_KEY, JSON.stringify(presets)); loadTypingSetup(); typingElement('setup-status').textContent = 'Typing preset restored.'; }
+  catch (error) { typingElement('setup-status').textContent = error.message; }
+});
+
 const chessUI = createChessUI({ showScreen, renderChart: renderChartCard, showChartData: spec => openChartData(spec.title, chartSpecDataTable(spec)) });
 
 refs['setup-form'].addEventListener('submit', (event) => {
@@ -5095,6 +5248,7 @@ refs['setup-form'].addEventListener('submit', (event) => {
     chessUI.start().catch(error => setMessage(error.message));
     return;
   }
+  if (selectedGame() === 'typing') { startTypingSession(); return; }
   prepareDistractionAudio();
   const game = selectedGame();
   const difficulty = selectedDifficulty();
@@ -5275,7 +5429,8 @@ refs['flag-bill-request'].addEventListener('click', () => {
   updateCashBuilder();
 });
 refs['next-question'].addEventListener('click', () => {
-  if (state.game === 'memory') showNextMemoryQuestion();
+  if (state.game === 'typing') showNextTypingRound();
+  else if (state.game === 'memory') showNextMemoryQuestion();
   else if (state.game === 'task') showNextTaskQuestion();
   else if (state.game === 'error-detection') showNextErrorDetectionQuestion();
   else if (state.game === 'fraud-inspection') showNextFraudInspectionCase();

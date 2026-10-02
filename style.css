@@ -846,3 +846,16 @@ html:has(#fraud-document-dialog[open]), body:has(#fraud-document-dialog[open]) {
 @media (min-width: 23rem) and (max-width: 36rem) {
   .fraud-transaction-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
+:root { --typing-font: ui-monospace, Consolas, monospace; }
+.typing-prompt, .typing-answer {
+  font-family: var(--typing-font);
+  font-size: clamp(1.1rem, 3vw, 1.5rem);
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-width: 100%;
+}
+.typing-prompt { padding: 1rem; border: 1px solid var(--line); border-radius: .5rem; max-height: 18rem; overflow-y: auto; }
+.typing-answer { width: 100%; resize: vertical; min-height: 8rem; padding: .75rem; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: .5rem; }
+#typing-history-rows td:nth-last-child(-n+2) { font-family: var(--typing-font); white-space: pre-wrap; overflow-wrap: anywhere; min-width: 10rem; }

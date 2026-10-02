@@ -288,3 +288,6 @@ connection in a disposable Playwright context, including same-tab fragment
 pairing, storage failure and reconnect. Enable `QRALARM_RUN_CASH_BROWSER=1` there.
 The existing Node and browser suites remain the gameplay regression checks.
 Local testing does not publish these companion files to GitHub Pages.
+# Typing speed
+
+The browser game includes Easy, Medium, and Hard typing challenges with words, phrases, or random characters. Override character count, typing time, rounds, and optional hidden-prompt preview; save/reset presets locally. History / Progress records WPM, CPM, character accuracy, exact matches, and submitted text. See [Typing mode](docs/typing-mode.md) for scoring and timing details.

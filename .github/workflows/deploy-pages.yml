@@ -42,7 +42,7 @@ jobs:
       - name: Assemble the static site
         run: |
           mkdir -p _site
-          cp index.html style.css app.js quiz-core.mjs pattern-games.mjs distraction-sounds.mjs adaptive-practice.mjs progress-analytics.mjs fraud-inspection.mjs sample-history.mjs _site/
+          cp index.html style.css app.js typing-core.mjs quiz-core.mjs pattern-games.mjs distraction-sounds.mjs adaptive-practice.mjs progress-analytics.mjs fraud-inspection.mjs sample-history.mjs _site/
           cp chess-*.mjs _site/
           mkdir -p _site/assets/chess
           cp assets/chess/* _site/assets/chess/

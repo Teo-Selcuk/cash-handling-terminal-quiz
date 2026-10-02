@@ -4,7 +4,7 @@
 const ANSWERED_OUTCOMES = new Set(['Correct', 'Incorrect', 'Timed Out']);
 const OUTCOMES = new Set([...ANSWERED_OUTCOMES, 'Not answered']);
 const GAME_NAMES = Object.freeze({
-  cash: 'Cash handling', memory: 'Number memory', task: 'Task simulation', 'error-detection': 'Error detection',
+  typing: 'Typing speed', cash: 'Cash handling', memory: 'Number memory', task: 'Task simulation', 'error-detection': 'Error detection',
   'fraud-inspection': 'Check & ID Fraud Inspection',
 });
 const GAME_BY_NAME = new Map(Object.entries(GAME_NAMES).map(([key, value]) => [value.toLowerCase(), key]));
@@ -278,6 +278,7 @@ function gameMatches(record, filters) {
     && (!Array.isArray(fraud.issueCategories) || !fraud.issueCategories.length
       || fraud.issueCategories.some((id) => record.fraudExpectedCategories?.includes(id)))
     && (fraud.cleanCase === undefined || record.fraudCleanCase === fraud.cleanCase);
+  if (record.game === 'typing') return selected(record.typingMode, filters.typing?.modes) && range(record.typingCharacters, filters.typing?.characters) && range(record.wpm, filters.typing?.wpm);
   return true;
 }
 
@@ -321,6 +322,11 @@ export function buildGameFilters(history, game = 'all') {
   const records = Array.isArray(history) && history.every((record) => record?.attemptId) ? history : filterHistory(history, { game });
   const selectedRecords = game === 'all' ? records : records.filter((record) => record.game === game);
   const fields = game === 'all' ? commonFields(selectedRecords) : [...commonFields(selectedRecords)];
+  if (game === 'typing') fields.push(
+    facetField('typing.modes', 'Typing content', selectedRecords, row => [row.typingMode]),
+    rangeField('typing.characters', 'Prompt characters', 'characters', selectedRecords, 'typingCharacters'),
+    rangeField('typing.wpm', 'Typing speed', 'WPM', selectedRecords, 'wpm'),
+  );
   if (game === 'cash') fields.push(
     facetField('cash.denominations', 'Contains denominations', selectedRecords, (record) => record.denominations?.map((value) => `$${(value / 100).toFixed(2)}`)),
     rangeField('cash.billCount', 'Bills given', 'pieces', selectedRecords, 'billCount'), rangeField('cash.coinCount', 'Coins given', 'pieces', selectedRecords, 'coinCount'),
@@ -1272,6 +1278,12 @@ export function buildChartSpecs(history, game = 'all') {
   const strongGroups = groupedPoints(records, (record) => game === 'all' ? record.gameName : record.difficulty)
     .filter((point) => point.value !== null).sort((left, right) => right.value - left.value || right.count - left.count).slice(0, 8);
   if (strongGroups.length) specs.push(chart('strongest-variables', 'Strongest documented variables', strongGroups));
+  if (game === 'typing') {
+    const typed = records.filter(row => row.game === 'typing' && row.isAnswered && Number.isFinite(row.wpm));
+    const points = field => typed.map(row => ({ key: row.attemptId, label: new Date(row.timestamp).toLocaleString(), value: row[field], count: 1, attemptIds: [row.attemptId] }));
+    specs.push(chart('typing-speed', 'Typing speed over time (WPM)', points('wpm'), { kind: 'line', metric: 'WPM' }),
+      chart('typing-character-accuracy', 'Character accuracy over time (%)', points('accuracyPercent'), { kind: 'line', metric: '%' }));
+  }
   if (game === 'cash') specs.push(
     chart('cash-denomination-accuracy', 'Accuracy by denomination', groupedPoints(records.filter((record) => record.denominations !== null), (record) => record.denominations.map((value) => `$${(value / 100).toFixed(2)}`))),
     chart('cash-pieces', 'Performance by total pieces', groupedPoints(records, (record) => band(record.totalPieces, [[3, '1–3'], [7, '4–7'], [12, '8–12']], ' pieces'))),
