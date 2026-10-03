@@ -43,8 +43,8 @@ export async function checkSampleHistory(browser, site) {
     assert.ok(await page.locator('#history-error-raw-table tbody tr').count() > 1, 'sample mode has raw-input error rates');
     assert.ok(await page.locator('#history-error-combination-table tbody tr').count() > 1, 'sample mode has input-combination rates');
     assert.equal(await page.locator('#history-rows tr').first().locator('td').count(), 8, 'sample attempt rows include both error fields');
-    assert.equal(await page.locator('#history-rows tr').count(), 100, 'attempt table remains bounded');
-    assert.match(await page.locator('#history-attempt-summary').textContent(), /100 most recent.*1,200/);
+    assert.equal(await page.locator('#history-rows tr').count(), 1200, 'all attempts remain available inside the bounded viewport');
+    assert.match(await page.locator('#history-attempt-summary').textContent(), /1,200 matching/);
     assert.equal(await page.locator('#clear-history').isDisabled(), true, 'real history clear is disabled in sample mode');
     assert.match(await page.locator('#history-insights').innerText(), /Based on Sample Data/);
     assert.equal(await page.locator('#history-recommendations button').filter({ hasText: 'Based on Sample Data' }).count(), 0);

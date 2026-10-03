@@ -1131,6 +1131,16 @@ function groupedMeanPoints(records, getKey, getValue) {
     .sort((left, right) => left.label.localeCompare(right.label, undefined, { numeric: true }));
 }
 
+export function progressionSegments(points) {
+  const segments = [];
+  for (let index = 1; index < points.length; index += 1) {
+    const previous = points[index - 1], point = points[index];
+    if (Number.isFinite(previous.value) && Number.isFinite(point.value)
+      && previous.seriesKey === point.seriesKey) segments.push([index - 1, index]);
+  }
+  return segments;
+}
+
 function chart(id, title, points, options = {}) {
   return { id, title, kind: options.kind ?? 'bar', description: options.description ?? '', axisLabel: options.axisLabel,
     series: [{ id: options.seriesId ?? 'value', label: options.seriesLabel ?? title, metric: options.metric ?? 'accuracy', points }], attemptIds: [...new Set(points.flatMap((point) => point.attemptIds))] };
@@ -1262,7 +1272,7 @@ export function buildChartSpecs(history, game = 'all') {
   }).filter((point) => point.count);
   const specs = [
     chart('accuracy-over-time', 'Accuracy over time', daily.map((row) => ({ key: row.day, label: row.day, value: row.accuracyPercent, count: row.answered, attemptIds: row.attemptIds, detail: row })), { kind: 'line' }),
-    chart('response-time-over-time', 'Response time over time', daily.filter((row) => row.averageResponseTimeSeconds !== null).map((row) => ({ key: row.day, label: row.day, value: row.averageResponseTimeSeconds, count: row.eligibleResponseAttempts, attemptIds: row.attemptIds, detail: row })), { kind: 'line', metric: 'time' }),
+    chart('response-time-over-time', 'Response time over time', daily.map((row) => ({ key: row.day, label: row.day, value: row.averageResponseTimeSeconds, count: row.eligibleResponseAttempts, attemptIds: row.attemptIds, detail: row })), { kind: 'line', metric: 'time' }),
     chart('attempts-per-day', 'Attempts per day', daily.map((row) => ({ key: row.day, label: row.day, value: row.attempts, count: row.attempts, attemptIds: row.attemptIds, detail: row })), { metric: 'attempts' }),
     chart('outcomes', 'Correct, incorrect, and timed out', groupedPoints(records, (record) => record.outcome, 'attempts'), { metric: 'attempts' }),
     chart('speed-vs-accuracy', 'Speed versus accuracy', groupedPoints(records, (record) => record.difficulty).map((point) => ({ ...point, x: point.detail.averageResponseTimeSeconds, y: point.value })), { kind: 'scatter' }),
@@ -1279,8 +1289,9 @@ export function buildChartSpecs(history, game = 'all') {
     .filter((point) => point.value !== null).sort((left, right) => right.value - left.value || right.count - left.count).slice(0, 8);
   if (strongGroups.length) specs.push(chart('strongest-variables', 'Strongest documented variables', strongGroups));
   if (game === 'typing') {
-    const typed = records.filter(row => row.game === 'typing' && row.isAnswered && Number.isFinite(row.wpm));
-    const points = field => typed.map(row => ({ key: row.attemptId, label: new Date(row.timestamp).toLocaleString(), value: row[field], count: 1, attemptIds: [row.attemptId] }));
+    const typed = records.filter(row => row.game === 'typing');
+    const points = field => typed.map(row => ({ key: row.attemptId, label: new Date(row.timestamp).toLocaleString(), value: row.isAnswered ? row[field] : null,
+      seriesKey: JSON.stringify([row.difficulty, row.typingMode, row.typingHidePrompt, row.typingPreviewSeconds, row.typingCharacters, row.timeLimitSeconds]), count: 1, attemptIds: [row.attemptId] }));
     specs.push(chart('typing-speed', 'Typing speed over time (WPM)', points('wpm'), { kind: 'line', metric: 'WPM' }),
       chart('typing-character-accuracy', 'Character accuracy over time (%)', points('accuracyPercent'), { kind: 'line', metric: '%' }));
   }

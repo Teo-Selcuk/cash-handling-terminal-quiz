@@ -572,6 +572,22 @@ input:disabled { background: var(--disabled-surface); color: var(--muted); }
 .bar-chart-value { grid-column: 2; color: var(--chart-label-color, var(--muted)); font-size: 0.8125rem; font-weight: var(--chart-label-weight, 750); font-variant-numeric: tabular-nums; }
 
 .table-wrap { min-width: 0; max-width: 100%; overflow-x: auto; margin-top: 1.5rem; border: 0.0625rem solid var(--line); border-radius: var(--radius); }
+.history-table-container { min-width: 0; max-width: 100%; margin-block: 1rem; }
+.history-table-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; padding: 0.75rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-quiet); }
+.history-table-controls strong { flex: 1 1 12rem; }
+.history-table-count { color: var(--muted); font-size: 0.875rem; }
+.history-table-controls button[aria-pressed="true"] { background: var(--surface); outline: 1px solid var(--line); }
+.history-table-viewport { max-height: var(--table-normal-height, 84rem); overflow: auto; overscroll-behavior: contain; margin-top: 0.5rem; min-width: 0; max-width: 100%; scrollbar-gutter: stable; }
+.history-table-viewport[hidden] { display: none !important; }
+[data-table-size="expanded"] > .history-table-viewport { max-height: calc(var(--table-normal-height, 84rem) * 2); }
+.history-table-viewport thead { position: sticky; top: 0; z-index: 1; background: var(--surface-quiet); }
+.history-table-viewport td { overflow-wrap: break-word; white-space: normal; }
+.history-table-viewport table { min-width: 48rem; }
+.history-table-viewport td:first-child { min-width: 10rem; }
+#history-rows td:first-child, #typing-history-rows td:first-child, #typing-history-rows td:nth-child(5) { white-space: nowrap; }
+#history-rows td:nth-child(2) { min-width: 15rem; }
+#typing-history-rows td:nth-child(2) { min-width: 8rem; }
+#typing-history-rows td:nth-last-child(-n+2) { min-width: 16rem; }
 table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
 th, td { padding: 0.75rem; border-bottom: 0.0625rem solid var(--line); text-align: left; white-space: nowrap; }
 th { background: var(--surface-quiet); color: var(--muted); font-size: 0.75rem; letter-spacing: 0.04em; text-transform: uppercase; }

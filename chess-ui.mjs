@@ -1,3 +1,4 @@
+import { enhanceHistoryList } from './history-tables.mjs';
 import { Chess, ChessSession, DEFAULT_POSITION, DIFFICULTIES, normalizeSettings } from './chess-core.mjs';
 import { ChessBoard } from './chess-board.mjs';
 import { ChessEngine, analyzeMove } from './chess-engine.mjs';
@@ -331,6 +332,8 @@ export function createChessUI({ showScreen, renderChart, showChartData }) {
     const list = make('ul', '');
     for (const attempt of attempts) list.append(make('li', `${CHESS_LESSONS.find(l => l.id === attempt.lessonId)?.title ?? attempt.lessonId} · ${attempt.completed ? 'Completed' : 'In progress'} · ${attempt.retries} retries · ${attempt.hints} hints · ${new Date(attempt.startedAt).toLocaleString()}`));
     el('history-lessons').append(attempts.length ? list : make('p', 'No lesson attempts yet.'));
+    enhanceHistoryList(el('history-games'), 'chess-games', 'Chess game history');
+    enhanceHistoryList(el('history-lessons'), 'chess-lessons', 'Lesson attempts and hints');
     if (!el('history-status').textContent) el('history-status').textContent = data ? `Based on Sample Data · ${games.length} fictional games and lesson attempts. Move evaluations are synthetic demonstrations.` : `${games.length} saved games. Evaluations pending or unavailable are excluded from centipawn averages.`;
   }
   function leave() {

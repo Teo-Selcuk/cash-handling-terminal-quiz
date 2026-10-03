@@ -6,6 +6,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkTyping } from './browser-typing-checks.mjs';
+import { checkHistoryLayout } from './browser-history-layout-checks.mjs';
 import { checkHistory, checkAutoContinue, checkTimeouts } from './browser-history-checks.mjs';
 import { checkResponsive } from './browser-responsive-checks.mjs';
 import { checkGuidance } from './browser-guidance-checks.mjs';
@@ -18,7 +19,7 @@ const root = process.env.QUIZ_STATIC_ROOT || fileURLToPath(new URL('../', import
 const server = createServer(async (request, response) => {
   const path = new URL(request.url, 'http://localhost').pathname;
   const file = path === '/' ? 'index.html' : path.slice(1);
-  if (!['typing-core.mjs', 'index.html', 'app.js', 'style.css', 'quiz-core.mjs', 'pattern-games.mjs', 'distraction-sounds.mjs', 'adaptive-practice.mjs', 'progress-analytics.mjs', 'fraud-inspection.mjs', 'sample-history.mjs', 'chess-ui.mjs', 'chess-core.mjs', 'chess-board.mjs', 'chess-engine.mjs', 'chess-lessons.mjs', 'chess-storage.mjs', 'chess-analytics.mjs', 'assets/chess/chess.mjs', 'assets/chess/chess.js.map', 'assets/chess/stockfish-19-lite-single.js', 'assets/chess/stockfish-19-lite-single.wasm', 'assets/chess/chess-LICENSE', 'assets/chess/stockfish-COPYING.txt', 'assets/fraud/id-portrait-female-20260922.jpg', 'assets/fraud/id-portrait-male-20260922.jpg', 'assets/fraud/id-portrait-female-2-20260929.jpg', 'assets/fraud/id-portrait-male-2-20260929.jpg'].includes(file)) {
+  if (!['history-tables.mjs', 'typing-core.mjs', 'index.html', 'app.js', 'style.css', 'quiz-core.mjs', 'pattern-games.mjs', 'distraction-sounds.mjs', 'adaptive-practice.mjs', 'progress-analytics.mjs', 'fraud-inspection.mjs', 'sample-history.mjs', 'chess-ui.mjs', 'chess-core.mjs', 'chess-board.mjs', 'chess-engine.mjs', 'chess-lessons.mjs', 'chess-storage.mjs', 'chess-analytics.mjs', 'assets/chess/chess.mjs', 'assets/chess/chess.js.map', 'assets/chess/stockfish-19-lite-single.js', 'assets/chess/stockfish-19-lite-single.wasm', 'assets/chess/chess-LICENSE', 'assets/chess/stockfish-COPYING.txt', 'assets/fraud/id-portrait-female-20260922.jpg', 'assets/fraud/id-portrait-male-20260922.jpg', 'assets/fraud/id-portrait-female-2-20260929.jpg', 'assets/fraud/id-portrait-male-2-20260929.jpg'].includes(file)) {
     response.writeHead(404).end(); return;
   }
   response.setHeader('Content-Type', file.endsWith('.jpg') ? 'image/jpeg' : ({ '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.mjs': 'text/javascript', '.wasm': 'application/wasm' })[extname(file)] ?? 'text/plain');
@@ -55,7 +56,9 @@ try {
     };
   });
   const base = process.env.QUIZ_LIVE_URL || `http://127.0.0.1:${server.address().port}/`;
-  if (process.env.QUIZ_FOCUSED === 'typing') {
+  if (process.env.QUIZ_FOCUSED === 'history-layout') {
+    await checkHistoryLayout(browser, base);
+  } else if (process.env.QUIZ_FOCUSED === 'typing') {
     await checkTyping(browser, base);
   } else if (process.env.QUIZ_FOCUSED === 'chess') {
     await checkChess(browser, base);
@@ -73,6 +76,7 @@ try {
   await checkHistory(browser, base);
   await checkProgress(browser, base);
   await checkSampleHistory(browser, base);
+  await checkHistoryLayout(browser, base);
   await checkFraudInspection(browser, base);
   await checkChess(browser, base);
   await checkAutoContinue(browser, base);

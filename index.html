@@ -7,7 +7,7 @@
     <meta name="theme-color" content="#12343b">
     <title>Cash, Memory &amp; Detail Trainer</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="style.css?v=20261003-inspection-chess-typing">
+    <link rel="stylesheet" href="style.css?v=20261003-history-layout">
   </head>
   <body>
     <main class="app-shell">
@@ -633,7 +633,7 @@
           <h3 id="typing-history-heading">Typing speed progress</h3>
           <div id="typing-history-metrics" class="metric-grid"></div>
           <p>CPM counts correctly matched characters per minute; WPM = CPM ÷ 5. Accuracy compares character positions and includes omissions and extras. Speed includes time from the start of typing until submission or timeout; preview time is excluded. Compare the same difficulty, content, and visibility settings.</p>
-          <div class="table-scroll"><table><thead><tr><th>Date</th><th>Difficulty / content</th><th>Prompt visibility</th><th>Characters / limit</th><th>Result</th><th>WPM / CPM</th><th>Character accuracy</th><th>Expected text</th><th>Your text</th></tr></thead><tbody id="typing-history-rows"></tbody></table></div>
+
         </section>
         <nav class="history-tabs" id="history-game-tabs" aria-label="Game history">
           <button type="button" data-history-game="all" aria-pressed="true">All games</button>
@@ -702,31 +702,7 @@
             <h4 id="history-error-charts-heading">Error charts</h4>
             <div id="history-error-charts"></div>
           </section>
-          <div class="error-analysis-tables">
-            <section aria-labelledby="history-error-category-heading">
-              <h4 id="history-error-category-heading">Error rate by category</h4>
-              <div id="history-error-category-table"></div>
-            </section>
-            <section aria-labelledby="history-error-raw-heading">
-              <h4 id="history-error-raw-heading">Error rate by raw input</h4>
-              <div id="history-error-raw-table"></div>
-            </section>
-            <section aria-labelledby="history-error-combination-heading">
-              <h4 id="history-error-combination-heading">Error rate by raw-input combination</h4>
-              <p class="chart-note">Combined inputs enter Strengths / Weaknesses only after five relevant opportunities. Each row shows its opportunity count and unique attempts.</p>
-              <div id="history-error-combination-table"></div>
-            </section>
-            <section aria-labelledby="history-error-difficulty-heading">
-              <h4 id="history-error-difficulty-heading">Error rate by difficulty and settings</h4>
-              <div id="history-error-difficulty-table"></div>
-            </section>
-            <section aria-labelledby="history-error-numeric-heading">
-              <h4 id="history-error-numeric-heading">Numeric error magnitude</h4>
-              <p class="chart-note">Only numeric answers are compared. Categorical choices and number-memory sequences have no invented numeric distance.</p>
-              <div id="history-error-numeric-table"></div>
-              <div id="history-error-distribution"></div>
-            </section>
-          </div>
+
         </section>
         <section class="fraud-history-panel" id="fraud-history-panel" hidden aria-labelledby="fraud-history-heading">
           <div class="visual-heading">
@@ -802,6 +778,35 @@
           <button class="secondary-button" id="download-csv" type="button">Download CSV</button>
           <button class="danger-button" id="clear-history" type="button">Clear history</button>
         </div>
+          <div class="error-analysis-tables">
+            <section aria-labelledby="history-error-category-heading">
+              <h4 id="history-error-category-heading">Error rate by category</h4>
+              <div id="history-error-category-table"></div>
+            </section>
+            <section aria-labelledby="history-error-raw-heading">
+              <h4 id="history-error-raw-heading">Error rate by raw input</h4>
+              <div id="history-error-raw-table"></div>
+            </section>
+            <section aria-labelledby="history-error-combination-heading">
+              <h4 id="history-error-combination-heading">Error rate by raw-input combination</h4>
+              <p class="chart-note">Combined inputs enter Strengths / Weaknesses only after five relevant opportunities. Each row shows its opportunity count and unique attempts.</p>
+              <div id="history-error-combination-table"></div>
+            </section>
+            <section aria-labelledby="history-error-difficulty-heading">
+              <h4 id="history-error-difficulty-heading">Error rate by difficulty and settings</h4>
+              <div id="history-error-difficulty-table"></div>
+            </section>
+            <section aria-labelledby="history-error-numeric-heading">
+              <h4 id="history-error-numeric-heading">Numeric error magnitude</h4>
+              <p class="chart-note">Only numeric answers are compared. Categorical choices and number-memory sequences have no invented numeric distance.</p>
+              <div id="history-error-numeric-table"></div>
+              <div id="history-error-distribution"></div>
+            </section>
+          </div>
+        <section id="typing-history-details" hidden aria-labelledby="typing-history-details-heading">
+          <h3 id="typing-history-details-heading">Typing Speed attempts</h3>
+          <div class="table-scroll"><table><thead><tr><th>Date</th><th>Difficulty / content</th><th>Prompt visibility</th><th>Characters / limit</th><th>Result</th><th>WPM / CPM</th><th>Character accuracy</th><th>Expected text</th><th>Your text</th></tr></thead><tbody id="typing-history-rows"></tbody></table></div>
+        </section>
         <div class="table-wrap">
           <table>
             <thead><tr><th scope="col">When</th><th scope="col">Game</th><th scope="col">Level</th><th scope="col">Result</th><th scope="col">Time</th><th scope="col">Expected</th><th scope="col">Raw-input mistakes</th><th scope="col">Numeric error</th></tr></thead>
@@ -864,6 +869,6 @@
     </dialog>
 
     <footer>Browser edition. The original PowerShell quiz remains in this repository.</footer>
-    <script type="module" src="app.js?v=20261003-inspection-chess-typing"></script>
+    <script type="module" src="app.js?v=20261003-history-layout"></script>
   </body>
 </html>

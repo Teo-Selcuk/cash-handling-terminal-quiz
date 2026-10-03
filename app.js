@@ -1,6 +1,7 @@
+import { enhanceHistoryTables } from './history-tables.mjs';
 import { TYPING_PRESETS, resolveTypingSettings, createTypingPrompt, scoreTyping, summarizeTyping } from './typing-core.mjs?v=20261002-typing';
 import { PATTERN_GAME_NAMES } from './pattern-games.mjs';
-import { createChessUI } from './chess-ui.mjs?v=20261002-samples';
+import { createChessUI } from './chess-ui.mjs?v=20261003-history-layout';
 import { createDistractionSamples } from './distraction-sounds.mjs';
 import {
   FRAUD_INSPECTION_CATEGORIES,
@@ -12,8 +13,8 @@ import {
 import { PRACTICE_GAMES, rankPracticeCandidates, recommendPractice, practiceSettings } from './adaptive-practice.mjs?v=20260918-progress';
 import {
   buildChartSpecs, buildConditionalReport, buildErrorAnalytics, buildGameFilters, buildProgressModel, comparePeriods,
-  filterHistory, recommendNextChallenge,
-} from './progress-analytics.mjs?v=20261002-typing';
+  filterHistory, recommendNextChallenge, progressionSegments,
+} from './progress-analytics.mjs?v=20261003-history-layout';
 import { generateSampleHistory, generateSampleChessHistory } from './sample-history.mjs?v=20261002-all-games';
 import {
   DENOMINATIONS,
@@ -164,6 +165,7 @@ function makeChartDataTable(headers, rows) {
 function openChartData(title, table) {
   refs['chart-data-heading'].textContent = `${title} data`;
   refs['chart-data-content'].replaceChildren(table);
+  enhanceHistoryTables(refs['chart-data-dialog']);
   refs['chart-data-dialog'].showModal();
 }
 function chartSpecDataTable(spec) {
@@ -4008,7 +4010,7 @@ function chartColorClass(spec, point, index) {
 function openAttemptDetails(records, attemptIds, heading) {
   const rows = records.filter((record) => attemptIds.includes(record.attemptId));
   const errorAnalytics = buildErrorAnalytics(rows, { comparisonDisabled: true, minimumOpportunities: 1 });
-  refs['attempt-detail-summary'].textContent = `${rows.length} contributing attempt${rows.length === 1 ? '' : 's'} — ${heading}${rows.length > 100 ? ' (showing the 100 most recent)' : ''}`;
+  refs['attempt-detail-summary'].textContent = `${rows.length} contributing attempt${rows.length === 1 ? '' : 's'} — ${heading}`;
   refs['attempt-detail-content'].replaceChildren();
   if (!rows.length) refs['attempt-detail-content'].textContent = 'No saved attempts match this chart mark.';
   else {
@@ -4017,7 +4019,7 @@ function openAttemptDetails(records, attemptIds, heading) {
     const table = document.createElement('table');
     table.innerHTML = '<thead><tr><th>When</th><th>Session</th><th>Attempt</th><th>Game</th><th>Difficulty</th><th>Result</th><th>Time</th><th>Details</th><th>Raw-input mistakes</th><th>Numeric error</th></tr></thead>';
     const body = document.createElement('tbody');
-    for (const record of rows.slice(-100).reverse()) {
+    for (const record of [...rows].reverse()) {
       const row = document.createElement('tr');
       const gameDetails = record.game === 'cash'
         ? [`Due ${record.amountDueCents}¢`, `Tender ${record.cashGivenCents}¢`, `${record.tenderPieceCount} pieces`, `${record.tenderDenominationTypes} denominations`, `Change/short ${record.changeOrShortfallCents}¢`]
@@ -4048,6 +4050,7 @@ function openAttemptDetails(records, attemptIds, heading) {
     wrap.append(table);
     refs['attempt-detail-content'].append(wrap);
   }
+  enhanceHistoryTables(refs['attempt-detail-dialog']);
   if (typeof refs['attempt-detail-dialog'].showModal === 'function') refs['attempt-detail-dialog'].showModal();
   else refs['attempt-detail-dialog'].open = true;
 }
@@ -4138,8 +4141,8 @@ function renderChartCard(spec, records) {
     return value !== null && value !== undefined && Number.isFinite(Number(value))
       && (spec.kind !== 'scatter' || (point.x !== null && point.x !== undefined && Number.isFinite(Number(point.x)) && Number(point.x) >= view.xMin && Number(point.x) <= view.xMax));
   });
-  let points = availablePoints;
-  if (!view.visible || !points.length) {
+  let points = spec.kind === 'line' ? sourcePoints : availablePoints;
+  if (!view.visible || !availablePoints.length) {
     const empty = document.createElement('p');
     empty.className = 'chart-empty';
     empty.textContent = view.visible ? 'This chart has no recorded values for the current filters.' : 'Data is hidden. Choose Show data to display it.';
@@ -4188,17 +4191,20 @@ function renderChartCard(spec, records) {
   const tickCandidates = points.length <= 6 ? points.map((_, index) => index) : [...new Set([0, Math.round((points.length - 1) / 4), Math.round((points.length - 1) / 2), Math.round((points.length - 1) * 3 / 4), points.length - 1])];
   const tickIndexes = [];
   const visibleTickLabels = new Set();
-  tickCandidates.forEach((index) => {
+  const tickBounds = [];
+  const orderedTickCandidates = isDateSeries ? [0, points.length - 1, ...tickCandidates] : tickCandidates;
+  orderedTickCandidates.forEach((index) => {
     const text = points[index].label.length > 12 ? `${points[index].label.slice(0, 11)}…` : points[index].label;
     const x = xFor(points[index], index);
     const width = text.length * 8;
-    if (visibleTickLabels.has(text) || tickIndexes.some((shown) => {
-      const shownText = points[shown].label.length > 12 ? `${points[shown].label.slice(0, 11)}…` : points[shown].label;
-      return Math.abs(xFor(points[shown], shown) - x) < (shownText.length * 8 + width) / 2 + 8;
-    })) return;
+    const left = isDateSeries && index === 0 ? x : isDateSeries && index === points.length - 1 ? x - width : x - width / 2;
+    const right = left + width;
+    if (visibleTickLabels.has(text) || tickBounds.some(bounds => left < bounds.right + 8 && right > bounds.left - 8)) return;
     visibleTickLabels.add(text);
+    tickBounds.push({ left, right });
     tickIndexes.push(index);
   });
+  tickIndexes.sort((left, right) => left - right);
   if (spec.kind === 'scatter') {
     xScale.ticks.forEach((tick) => {
       const x = plot.left + ((tick - xScale.min) / (xScale.max - xScale.min) * plotWidth);
@@ -4277,7 +4283,7 @@ function renderChartCard(spec, records) {
   const labelBounds = [];
   const requiredExtrema = [];
   const localExtrema = [];
-  const pointValues = points.map((point) => Number(spec.kind === 'scatter' ? point.y : point.value));
+  const pointValues = points.map((point) => spec.kind === 'scatter' ? point.y : point.value);
   if (['line', 'scatter'].includes(spec.kind)) {
     const validIndexes = pointValues.map((value, index) => Number.isFinite(value) ? index : -1).filter((index) => index >= 0);
     if (validIndexes.length) {
@@ -4302,18 +4308,13 @@ function renderChartCard(spec, records) {
   ])].slice(0, 12);
   const labelIndexes = new Set(labelCandidates);
   points.forEach((point, index) => {
-    const value = Number(spec.kind === 'scatter' ? point.y : point.value);
-    if (!Number.isFinite(value)) return;
+    const rawValue = spec.kind === 'scatter' ? point.y : point.value;
+    if (!Number.isFinite(rawValue)) return;
+    const value = Number(rawValue);
     const x = xFor(point, index);
     const y = yFor(value);
     const width = plotWidth / Math.max(points.length, 1);
     const height = Math.max(2, plot.bottom - y);
-    if (spec.kind === 'line' && index > 0) {
-      const previous = points[index - 1];
-      const isDateSeries = /^\d{4}-\d{2}-\d{2}$/.test(previous.label) && /^\d{4}-\d{2}-\d{2}$/.test(point.label);
-      const daysApart = isDateSeries ? (Date.parse(`${point.label}T00:00:00Z`) - Date.parse(`${previous.label}T00:00:00Z`)) / 86400000 : 1;
-      if (!isDateSeries || daysApart === 1) lineSegments.push({ x1: xFor(previous, index - 1), y1: yFor(Number(previous.value)), x2: x, y2: y });
-    }
     const colorClass = chartColorClass(spec, point, index);
     const evidence = Number.isFinite(point.opportunities) && Number.isFinite(point.errors)
       ? `${point.errors} of ${point.opportunities} error opportunities across ${point.attemptCount ?? point.attemptIds.length} attempts`
@@ -4354,18 +4355,25 @@ function renderChartCard(spec, records) {
     }
     svg.append(mark);
   });
+  if (spec.kind === 'line') {
+    for (const [from, to] of progressionSegments(points)) lineSegments.push({ x1: xFor(points[from], from), y1: yFor(points[from].value), x2: xFor(points[to], to), y2: yFor(points[to].value) });
+  }
   if (lineSegments.length && spec.kind === 'line') {
     const gradientId = `chart-line-${spec.id}`;
     const defs = chartSvgElement('defs');
     const gradient = chartSvgElement('linearGradient', { id: gradientId, x1: '0%', x2: '100%', y1: '0%', y2: '0%' });
     points.forEach((point, index) => {
-      const stop = chartSvgElement('stop', { offset: `${(xFor(point, index) - xFor(points[0], 0)) / (xFor(points.at(-1), points.length - 1) - xFor(points[0], 0)) * 100}%` });
+      const stop = chartSvgElement('stop', { offset: `${(xFor(point, index) - xFor(points[0], 0)) / Math.max(1, xFor(points.at(-1), points.length - 1) - xFor(points[0], 0)) * 100}%` });
       stop.style.stopColor = chartHueColor(Number(point.value), hueMinimum, hueMaximum, metric, spec.id);
       gradient.append(stop);
     });
     defs.append(gradient);
     svg.insertBefore(defs, svg.firstChild);
-    const path = chartSvgElement('path', { class: 'chart-series-line', d: `M ${lineSegments[0].x1} ${lineSegments[0].y1} ${lineSegments.map((segment) => `L ${segment.x2} ${segment.y2}`).join(' ')}`, fill: 'none' });
+    const path = chartSvgElement('path', { class: 'chart-series-line', d: lineSegments.map((segment, index) => {
+      const previous = lineSegments[index - 1];
+      const move = previous?.x2 === segment.x1 && previous?.y2 === segment.y1 ? '' : `M ${segment.x1} ${segment.y1} `;
+      return `${move}L ${segment.x2} ${segment.y2}`;
+    }).join(' '), fill: 'none' });
     path.style.stroke = `url(#${gradientId})`;
     svg.insertBefore(path, svg.querySelector('.analytics-mark'));
   }
@@ -4412,6 +4420,7 @@ function renderChartCard(spec, records) {
   table.append(body);
   tableDetails.append(table);
   card.append(tableDetails);
+  enhanceHistoryTables(card);
   return card;
 }
 
@@ -4495,6 +4504,7 @@ function appendAnalyticsTable(target, headers, rows, emptyText, renderRow) {
   table.append(head, body);
   wrap.append(table);
   target.append(wrap);
+  enhanceHistoryTables(target);
 }
 
 function makeAnalyticsRow(values, className = '') {
@@ -4823,8 +4833,10 @@ function renderHistoryComparison(history, filtered) {
 function fallbackChallenge(recommendation) {
   if (!recommendation?.game || !recommendation?.difficulty) return null;
   const game = recommendation.game;
-  if (game === 'fraud-inspection') return null;
-  const preset = { ...presetFor(game, recommendation.difficulty) };
+  if (!['cash', 'memory', 'task', 'error-detection'].includes(game)) return null;
+  const savedPreset = presetFor(game, recommendation.difficulty);
+  if (!savedPreset) return null;
+  const preset = { ...savedPreset };
   const focus = {};
   const filters = recommendation.focusFilter ?? {};
   let axisDetail = 'Keep the recorded workload focused while you repeat this pattern.';
@@ -4957,9 +4969,7 @@ function renderRecommendedChallenge(records) {
 
 function renderHistoryRows(records, analytics = buildErrorAnalytics(records, { comparisonDisabled: true })) {
   refs['history-rows'].replaceChildren();
-  refs['history-attempt-summary'].textContent = records.length > 100
-    ? `Showing the 100 most recent attempts of ${records.length.toLocaleString()} matching records. Narrow the filters or download the CSV to work with more.`
-    : `${records.length.toLocaleString()} matching attempt${records.length === 1 ? '' : 's'}.`;
+  refs['history-attempt-summary'].textContent = `${records.length.toLocaleString()} matching attempt${records.length === 1 ? '' : 's'}. Scroll within the table to see every matching record.`;
   if (records.length === 0) {
     const row = document.createElement('tr');
     const cell = document.createElement('td');
@@ -4967,7 +4977,7 @@ function renderHistoryRows(records, analytics = buildErrorAnalytics(records, { c
     cell.textContent = 'No saved attempts match these filters.';
     row.append(cell); refs['history-rows'].append(row); return;
   }
-  for (const record of records.slice(-100).reverse()) {
+  for (const record of [...records].reverse()) {
     const row = document.createElement('tr');
     row.tabIndex = 0;
     row.title = 'Open attempt details';
@@ -5065,6 +5075,7 @@ function renderFraudHistory(records) {
 
 function renderHistory() {
   document.getElementById('typing-history-panel').hidden = historyView.filters.game !== 'typing';
+  document.getElementById('typing-history-details').hidden = historyView.filters.game !== 'typing';
   const chessSelected = historyView.filters.game === 'chess';
   refs['history-screen'].classList.toggle('chess-history-selected', chessSelected);
   document.getElementById('chess-history').hidden = !chessSelected;
@@ -5073,6 +5084,7 @@ function renderHistory() {
   if (chessSelected) {
     refs['history-game-tabs'].querySelectorAll('button').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.historyGame === 'chess')));
     chessUI.renderHistory(historyView.dataSource === 'sample' ? generateSampleChessHistory({ now: new Date(history[0].timestamp), seed: Number(history[0].attemptId.split('-')[1]) }) : null);
+    enhanceHistoryTables(refs['history-screen']);
     return;
   }
   const gameOnly = filterHistory(history, { game: historyView.filters.game });
@@ -5089,6 +5101,7 @@ function renderHistory() {
   renderHistoryInsights(records, errorAnalytics);
   renderHistoryRows(records, errorAnalytics);
   renderFraudHistory(records);
+  enhanceHistoryTables(refs['history-screen']);
 }
 
 function applyHistoryQuickRange(kind) {
@@ -5261,7 +5274,7 @@ function renderTypingHistory(records) {
   const rows = records.filter(row => row.game === 'typing');
   renderMetrics(typingElement('history-metrics'), typingMetrics(rows));
   typingElement('history-rows').replaceChildren();
-  for (const record of rows.slice(-100).reverse()) {
+  for (const record of [...rows].reverse()) {
     const tr = document.createElement('tr');
     for (const value of [new Date(record.timestamp).toLocaleString(), `${record.difficulty} / ${record.typingMode}`,
       record.typingHidePrompt ? `Hidden after ${record.typingPreviewSeconds}s` : 'Visible', `${record.typingCharacters} / ${record.timeLimitSeconds}s`,
