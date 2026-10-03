@@ -268,30 +268,33 @@ export function createChessUI({ showScreen, renderChart, showChartData }) {
     }
   }
   function historyFilters() { return { difficulty: el('filter-difficulty').value, timeControl: el('filter-time').value, practice: el('filter-practice').value, startDate: el('filter-from').value, endDate: el('filter-to').value }; }
-  function renderHistory() {
+  let sampleHistory = null;
+  function renderHistory(data = sampleHistory) {
+    sampleHistory = data;
     el('history-status').textContent = '';
-    const games = filterChessGames(storageAction(() => store.games()) ?? [], historyFilters());
-    const attempts = storageAction(() => store.lessons()) ?? [], summary = summarizeChess(games, attempts);
+    const games = filterChessGames(data?.games ?? storageAction(() => store.games()) ?? [], historyFilters());
+    const attempts = data?.lessons ?? storageAction(() => store.lessons()) ?? [], summary = summarizeChess(games, attempts);
     el('history-metrics').replaceChildren(...[
       ['Games', summary.games], ['Wins / draws / losses', `${summary.wins} / ${summary.draws} / ${summary.losses}`], ['Win rate', summary.winRate === null ? 'No games' : `${fmt(summary.winRate)}%`],
       ['Your average move', summary.averageMoveSeconds === null ? 'No moves' : `${fmt(summary.averageMoveSeconds)}s`], ['Your late moves', summary.lateMoves], ['Late-move frequency', summary.lateRate === null ? 'No moves' : `${fmt(summary.lateRate)}%`],
       ['Average centipawn loss', fmt(summary.averageLoss)], ['Evaluated moves', summary.evaluatedMoves], ['Mistakes / blunders / mate errors', summary.mistakes], ['Lessons completed', `${summary.completedLessons} / 24`], ['Lesson attempts', summary.lessonAttempts],
     ].map(([label, value]) => { const card = make('div', '', 'metric'); card.append(make('strong', String(value)), make('span', label)); return card; }));
-    el('history-charts').replaceChildren(...chessChartSpecs(games, attempts).map(spec => renderChart({ ...spec, onPoint: ids => {
-      const record = games.find(g => ids.includes(g.id)); if (record) reviewGame(record); else showChartData(spec);
+    el('history-charts').replaceChildren(...chessChartSpecs(games, attempts).map(spec => renderChart({ ...spec, description: data ? 'Fictional sample games with synthetic move evaluations.' : spec.description, onPoint: ids => {
+      const record = games.find(g => ids.includes(g.id)); if (record && !data) reviewGame(record); else showChartData(spec);
     } }, games)));
     el('history-games').replaceChildren();
     if (!games.length) el('history-games').append(make('p', 'No chess games match these filters. Finish a game to see results here.'));
     for (const game of [...games].reverse()) {
       const card = make('article', '', 'visual-card');
       card.append(make('h4', `${resultLabel(game)} vs ${game.settings.difficulty}`), make('p', `${new Date(game.startedAt).toLocaleString()} · ${game.result.reason} · ${game.settings.timeControl} · ${game.moves.length} moves${game.resumed || game.interrupted ? ' · resumed / interrupted' : ''}${game.settings.coaching || game.hints || game.feedbackUsed ? ' · assisted' : ''}${game.lessonId ? ' · lesson position' : ''} · Analysis: ${game.analysis?.status ?? 'pending'}`));
-      const button = make('button', 'Replay & review', 'secondary-button'); button.type = 'button'; button.addEventListener('click', () => reviewGame(game)); card.append(button); el('history-games').append(card);
+      if (!data) { const button = make('button', 'Replay & review', 'secondary-button'); button.type = 'button'; button.addEventListener('click', () => reviewGame(game)); card.append(button); }
+      el('history-games').append(card);
     }
     el('history-lessons').replaceChildren();
     const list = make('ul', '');
     for (const attempt of attempts) list.append(make('li', `${CHESS_LESSONS.find(l => l.id === attempt.lessonId)?.title ?? attempt.lessonId} · ${attempt.completed ? 'Completed' : 'In progress'} · ${attempt.retries} retries · ${attempt.hints} hints · ${new Date(attempt.startedAt).toLocaleString()}`));
     el('history-lessons').append(attempts.length ? list : make('p', 'No lesson attempts yet.'));
-    if (!el('history-status').textContent) el('history-status').textContent = `${games.length} saved games. Evaluations pending or unavailable are excluded from centipawn averages.`;
+    if (!el('history-status').textContent) el('history-status').textContent = data ? `Based on Sample Data · ${games.length} fictional games and lesson attempts. Move evaluations are synthetic demonstrations.` : `${games.length} saved games. Evaluations pending or unavailable are excluded from centipawn averages.`;
   }
   function leave() {
     if (session && !session.result) { session.pause(); saveCurrent(); }
@@ -340,8 +343,8 @@ export function createChessUI({ showScreen, renderChart, showChartData }) {
   el('lesson-hint').addEventListener('click', () => { if (lesson && !lesson.attempt.completed) { lesson.attempt.hints++; const chess = new Chess(lesson.chess.fen()); const move = chess.move(lesson.item.steps[lesson.index].move); hint = move.from + move.to; el('lesson-feedback').textContent = `Play ${move.san}: ${move.from} to ${move.to}${move.promotion ? ', promote to ' + move.promotion : ''}.`; saveLesson(); render(); } });
   el('lesson-restart').addEventListener('click', () => { if (lesson) startLesson(lesson.item); });
   el('lesson-play').addEventListener('click', () => { if (lesson) { const fen = lesson.chess.isGameOver() ? lesson.item.fen : lesson.chess.fen(), lessonId = lesson.item.id; el('color').value = new Chess(fen).turn(); void start({ fen, lessonId }); } });
-  for (const id of ['filter-difficulty', 'filter-time', 'filter-practice', 'filter-from', 'filter-to']) el(id).addEventListener('change', renderHistory);
-  el('download-csv').addEventListener('click', () => download(chessCsv(filterChessGames(storageAction(() => store.games()) ?? [], historyFilters())), 'chess-analytics.csv', 'text/csv;charset=utf-8'));
+  for (const id of ['filter-difficulty', 'filter-time', 'filter-practice', 'filter-from', 'filter-to']) el(id).addEventListener('change', () => renderHistory());
+  el('download-csv').addEventListener('click', () => download(chessCsv(filterChessGames(sampleHistory?.games ?? storageAction(() => store.games()) ?? [], historyFilters())), sampleHistory ? 'sample-chess-analytics.csv' : 'chess-analytics.csv', 'text/csv;charset=utf-8'));
   window.addEventListener('storage', event => { if (Object.values(CHESS_KEYS).includes(event.key) && !el('history').hidden) renderHistory(); });
   timeControls(); render();
   return { start, setupChanged, renderHistory, leave, onHistoryOpen() { active = false; engine.cancel(); busy = false; } };

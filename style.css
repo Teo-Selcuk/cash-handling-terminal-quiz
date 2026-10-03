@@ -594,7 +594,7 @@ footer { width: min(100% - 1.25rem, 112rem); margin: 0 auto; padding-bottom: 2re
 
 /* Chess uses the existing surface, typography, and chart controls. */
 #setup-form.chess-setup-selected > :not(:first-child):not(#chess-setup-options):not([type="submit"]) { display: none; }
-#history-screen.chess-history-selected > :not(.screen-title-row):not(#history-game-tabs):not(#chess-history) { display: none; }
+#history-screen.chess-history-selected > :not(.screen-title-row):not(#history-game-tabs):not(#chess-history):not(#history-data-source):not(#history-sample-banner) { display: none; }
 .chess-layout { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(16rem, 0.85fr); gap: 1.5rem; align-items: start; margin-top: 1rem; }
 .chess-board-column, .chess-sidebar { min-width: 0; }
 .chess-sidebar { display: grid; gap: 1rem; }
@@ -859,3 +859,27 @@ html:has(#fraud-document-dialog[open]), body:has(#fraud-document-dialog[open]) {
 .typing-prompt { padding: 1rem; border: 1px solid var(--line); border-radius: .5rem; max-height: 18rem; overflow-y: auto; }
 .typing-answer { width: 100%; resize: vertical; min-height: 8rem; padding: .75rem; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: .5rem; }
 #typing-history-rows td:nth-last-child(-n+2) { font-family: var(--typing-font); white-space: pre-wrap; overflow-wrap: anywhere; min-width: 10rem; }
+
+/* Readable inspection facts complement the original document and handwriting. */
+.fraud-readable-details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem .8rem; margin: .75rem 0 0; }
+.fraud-readable-details > div { min-width: 0; }
+.fraud-readable-details dt { font-size: .875rem; color: var(--muted); }
+.fraud-readable-details dd { margin: .125rem 0 0; font-size: 1rem; font-weight: 650; overflow-wrap: anywhere; }
+.fraud-document-card h3 { display: flex; align-items: center; gap: .6rem; font-size: 1rem; }
+.fraud-profile-icon { width: 2.75rem; height: 2.75rem; object-fit: cover; border-radius: 50%; flex: 0 0 auto; }
+.fraud-transaction-strip strong { font-size: .875rem; }
+.fraud-transaction-strip span { font-size: 1rem; }
+@media (max-width: 600px) {
+  .fraud-document-grid, .fraud-feedback-documents { grid-template-columns: minmax(0, 1fr); }
+  .fraud-document-grid .fraud-document-card:not([data-fraud-card="check"]) { grid-column: 1; }
+  .fraud-document-card { padding: .75rem; }
+}
+@media (min-width: 64rem) {
+  .fraud-inspection-screen { padding: 1rem; }
+  .fraud-inspection-screen .question-header { margin-bottom: .5rem; }
+  .fraud-inspection-screen h2 { margin: .4rem 0; }
+  .fraud-inspection-screen .fraud-policy-note { margin: .5rem 0; padding: .5rem .75rem; }
+  .fraud-inspection-screen .fraud-transaction-strip { margin: .5rem 0; }
+  .fraud-document-card[data-fraud-card="check"] .fraud-readable-details { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .fraud-doc-stage .fraud-document-svg { max-height: 32dvh; }
+}

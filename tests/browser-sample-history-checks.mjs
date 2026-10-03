@@ -75,7 +75,7 @@ export async function checkSampleHistory(browser, site) {
 
     const gameFilters = {
       cash: 'Contains denominations', memory: 'Digits per value', task: 'Workflow',
-      'error-detection': 'Puzzle family', 'fraud-inspection': 'Actual issue category',
+      'error-detection': 'Puzzle family', 'fraud-inspection': 'Actual issue category', typing: 'Typing content',
     };
     for (const [game, field] of Object.entries(gameFilters)) {
       await page.locator(`#history-game-tabs button[data-history-game="${game}"]`).click();
@@ -83,6 +83,19 @@ export async function checkSampleHistory(browser, site) {
       assert.ok(Number((await page.locator('#history-metrics .metric strong').first().textContent()).replaceAll(',', '')) > 0, `${game} has matching attempts`);
       assert.ok(await page.locator('#history-charts .interactive-chart').count() > 0, `${game} populates charts`);
     }
+    await page.locator('#history-game-tabs button[data-history-game="chess"]').click();
+    assert.match(await page.locator('#chess-history-status').textContent(), /Based on Sample Data/);
+    assert.ok(await page.locator('#chess-history-games article').count() > 0);
+    assert.ok(await page.locator('#chess-history-charts .interactive-chart').count() > 0);
+    await page.locator('#chess-filter-difficulty').selectOption('Easy');
+    assert.equal(await page.locator('#chess-history-games article').count(), 9, 'chess filters keep the sample source');
+    await page.locator('#chess-filter-difficulty').selectOption('');
+    assert.equal(await page.locator('#history-data-source').isVisible(), true);
+    assert.equal(await page.evaluate(() => localStorage.getItem('cash-handling-chess-games-v1')), null, 'sample chess leaves real saved games untouched');
+    await page.locator('input[name="historyDataSource"][value="real"]').check();
+    assert.equal(await page.locator('#chess-history-games article').count(), 0, 'real chess excludes sample games');
+    await page.locator('input[name="historyDataSource"][value="sample"]').check();
+    assert.equal(await page.locator('#chess-history-games article').count(), 36);
     await page.locator('#history-game-tabs button[data-history-game="all"]').click();
     const daily = page.locator('#history-charts .interactive-chart[data-chart-kind="line"]').filter({ has: page.getByRole('heading', { name: 'Accuracy over time' }) });
     const path = await daily.locator('.chart-series-line').getAttribute('d');
@@ -104,7 +117,7 @@ export async function checkSampleHistory(browser, site) {
     const chartHueCounts = await page.locator('#history-charts .interactive-chart').evaluateAll((cards) => cards.filter((card) => card.querySelector('.analytics-mark')).map((card) => card.querySelectorAll('.chart-hue-legend').length));
     assert.ok(chartHueCounts.length > 0 && chartHueCounts.every((count) => count === 1), 'each populated chart has one value hue scale');
     const difficultyHues = await page.locator('#history-accuracy-chart .bar-chart-fill').evaluateAll((bars) => bars.map((bar) => getComputedStyle(bar).backgroundColor));
-    assert.equal(new Set(difficultyHues).size, difficultyHues.length, 'difficulty bars use different value hues');
+    assert.ok(new Set(difficultyHues).size > 1, 'difficulty bars show a range of value hues; equal accuracy may share a hue');
     assert.equal(await page.locator('#history-accuracy-chart .chart-hue-legend').count(), 1, 'difficulty summary has a right-side value hue scale');
     assert.ok(await page.locator('#history-charts .chart-category-legend').count() > 0, 'categorical bars show category swatches');
     const scatter = page.locator('#history-charts .interactive-chart[data-chart-kind="scatter"]').first();

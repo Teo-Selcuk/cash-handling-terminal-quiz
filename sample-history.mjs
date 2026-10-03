@@ -1,6 +1,9 @@
+import { createTypingPrompt, scoreTyping } from './typing-core.mjs';
+import { ChessSession } from './chess-core.mjs';
+import { CHESS_LESSONS } from './chess-lessons.mjs';
 const DAY_MS = 86400000;
 const DIFFICULTIES = ['Easy', 'Medium', 'Hard', 'Custom'];
-const GAMES = ['cash', 'memory', 'task', 'error-detection', 'fraud-inspection'];
+const GAMES = ['cash', 'memory', 'task', 'error-detection', 'fraud-inspection', 'typing'];
 const DENOMINATIONS = [10000, 5000, 2000, 1000, 500, 100, 25, 10, 5, 1];
 const FRAUD_CATEGORIES = [
   'payee-mismatch', 'amount-mismatch', 'date-issue', 'check-alteration', 'handwriting-issue',
@@ -232,6 +235,38 @@ function fraudRecord(record, random) {
   };
 }
 
+function typingRecord(record, random) {
+  const difficulty = record.difficulty === 'Custom' ? 'Medium' : record.difficulty;
+  const settings = { difficulty, mode: select(random, ['words', 'phrases', 'random']), characters: select(random, [20, 40, 60, 100]) };
+  const prompt = createTypingPrompt(settings, random);
+  const answer = record.outcome === 'Correct' ? prompt : record.outcome === 'Timed Out' ? prompt.slice(0, Math.floor(prompt.length / 2)) : (prompt[0] === 'x' ? 'y' : 'x') + prompt.slice(1);
+  const hidePrompt = random() < 0.3;
+  return { ...record, game: 'typing', gameType: 'Typing speed', difficulty,
+    typingMode: settings.mode, typingCharacters: settings.characters, typingHidePrompt: hidePrompt,
+    typingPreviewSeconds: hidePrompt ? 5 : 0, expectedAnswer: prompt, userAnswer: answer,
+    ...scoreTyping(prompt, answer, record.timeUsedSeconds) };
+}
+
+/** Fictional, replayable chess demos. Never reads or writes real chess storage. */
+export function generateSampleChessHistory({ now = new Date(), seed = 42, count = 36 } = {}) {
+  const random = randomSource(seed), games = [], lessons = [];
+  for (let index = 0; index < count; index += 1) {
+    const started = new Date(now).getTime() - (index % 30) * DAY_MS;
+    const session = new ChessSession({ difficulty: ['Beginner', 'Easy', 'Medium', 'Hard'][index % 4], color: index % 2 ? 'b' : 'w',
+      timeControl: ['untimed', 'clock', 'move'][index % 3], secondsPerMove: 5, coaching: index % 5 === 0 }, { id: `sample-chess-${seed}-${index}`, now: started });
+    let time = started;
+    for (const san of ['e4', 'e5', 'Nf3', 'Nc6', 'Bc4', 'Nf6']) {
+      time += 1000 + Math.floor(random() * 9000); session.move(san, time);
+    }
+    session.finish(index % 3 === 0 ? session.player : index % 3 === 1 ? null : session.player === 'w' ? 'b' : 'w', index % 3 === 1 ? 'Draw by agreement' : 'Resignation', time);
+    const game = session.snapshot(time); game.isSample = true;
+    game.analysis = { status: 'sample', engine: 'Synthetic demo values; not an engine evaluation', rows: game.moves.map((move, i) => ({ ...move, loss: [15, 75, 150, 250][(index + i) % 4], category: ['Good', 'Inaccuracy', 'Mistake', 'Blunder'][(index + i) % 4] })) };
+    games.push(game);
+    lessons.push({ id: `sample-lesson-${index}`, lessonId: CHESS_LESSONS[index % 12].id, startedAt: game.startedAt, completed: index % 3 !== 0, hints: index % 3, moves: 3, retries: index % 2, isSample: true });
+  }
+  return { games, lessons };
+}
+
 /** Make isolated fake local-history rows. No browser storage is read or written. */
 export function generateSampleHistory({ now = new Date(), count = 1200, seed = Math.floor(Math.random() * 0xFFFFFFFF) } = {}) {
   const total = clamp(Math.floor(Number(count) || 1200), 1, 10000);
@@ -247,7 +282,7 @@ export function generateSampleHistory({ now = new Date(), count = 1200, seed = M
     const elapsed = random() < 0.025 ? 65 + Math.floor(random() * 140) : 3 + random() * (4 + (daysOnDate % 13) * 2.7);
     const timeLimitSeconds = elapsed > 60 ? 30 : 60;
     const outcome = elapsed > timeLimitSeconds ? 'Timed Out' : select(random, outcomes);
-    const game = GAMES[index % GAMES.length];
+    const game = GAMES[(index + Math.floor(index / 30)) % GAMES.length];
     const dateGameKey = `${dayIndex}:${game}`;
     const attemptInDateGame = attemptsByGameDay.get(dateGameKey) ?? 0;
     attemptsByGameDay.set(dateGameKey, attemptInDateGame + 1);
@@ -270,7 +305,7 @@ export function generateSampleHistory({ now = new Date(), count = 1200, seed = M
     const row = game === 'cash' ? cashRecord(common, random, index)
       : game === 'memory' ? memoryRecord(common, random)
         : game === 'task' ? taskRecord(common, random)
-          : game === 'error-detection' ? errorRecord(common, random) : fraudRecord(common, random);
+          : game === 'error-detection' ? errorRecord(common, random) : game === 'typing' ? typingRecord(common, random) : fraudRecord(common, random);
     rows.push(row);
   }
   return rows;

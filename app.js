@@ -1,6 +1,6 @@
 import { TYPING_PRESETS, resolveTypingSettings, createTypingPrompt, scoreTyping, summarizeTyping } from './typing-core.mjs?v=20261002-typing';
 import { PATTERN_GAME_NAMES } from './pattern-games.mjs';
-import { createChessUI } from './chess-ui.mjs?v=20261001-chess';
+import { createChessUI } from './chess-ui.mjs?v=20261002-samples';
 import { createDistractionSamples } from './distraction-sounds.mjs';
 import {
   FRAUD_INSPECTION_CATEGORIES,
@@ -14,7 +14,7 @@ import {
   buildChartSpecs, buildConditionalReport, buildErrorAnalytics, buildGameFilters, buildProgressModel, comparePeriods,
   filterHistory, recommendNextChallenge,
 } from './progress-analytics.mjs?v=20261002-typing';
-import { generateSampleHistory } from './sample-history.mjs?v=20260923-sample-history';
+import { generateSampleHistory, generateSampleChessHistory } from './sample-history.mjs?v=20261002-all-games';
 import {
   DENOMINATIONS,
   DIFFICULTY_CONFIG,
@@ -533,7 +533,7 @@ function ensureSampleHistory(regenerate = false) {
   if (!regenerate) {
     try {
       const saved = JSON.parse(sessionStorage.getItem(SAMPLE_HISTORY_KEY) ?? 'null');
-      if (Array.isArray(saved) && saved.length && saved.every((record) => record?.isSample === true)) {
+      if (Array.isArray(saved) && saved.length && saved.every((record) => record?.isSample === true) && saved.some(record => record.game === 'typing')) {
         historyView.sampleRecords = saved;
         return saved;
       }
@@ -546,7 +546,7 @@ function ensureSampleHistory(regenerate = false) {
 
 function setHistoryDataSource(source) {
   historyView.dataSource = source === 'sample' ? 'sample' : 'real';
-  historyView.filters = { game: 'all' };
+  historyView.filters = { game: historyView.filters.game ?? 'all' };
   historyView.activeRange = 'all';
   historyView.conditions = [];
   historyView.charts.clear();
@@ -2210,6 +2210,23 @@ function renderFraudDocuments(target, challenge, feedback = false) {
   const check = makeFraudDocumentCard('check', 'CHECK · FRONT AND ENDORSEMENT', renderFraudCheckSvg(challenge, feedback), feedback);
   const payee = makeFraudDocumentCard('payee-id', 'PAYEE ID · ENDORSEMENT SIGNATURE', renderFraudIdSvg(challenge, 'payee-id', feedback), feedback);
   const maker = makeFraudDocumentCard('maker-id', 'MAKER ID · AUTHORIZED SIGNATURE', renderFraudIdSvg(challenge, 'maker-id', feedback), feedback);
+  for (const [card, identity, fields] of [
+    [check, null, [['Payer / maker on check', challenge.check.makerName], ['Payee on check', challenge.check.payeeName], ['Check number', challenge.check.checkNumber], ['Date', challenge.check.dateText], ['Amount', challenge.check.numericAmount], ['Amount in words', challenge.check.writtenAmount], ['Routing', challenge.check.routingNumber], ['Account', challenge.check.accountNumber]]],
+    [payee, challenge.id], [maker, challenge.makerId],
+  ]) {
+    const details = document.createElement('dl'); details.className = 'fraud-readable-details';
+    const values = fields ?? [['Legal name', identity.legalName], ['ID number', identity.idNumber], ['Date of birth', identity.dateOfBirth], ['Address', identity.address], ['Expires', identity.expirationText], ['Issued', new Date(identity.issueDate + 'T00:00:00Z').toLocaleDateString('en-US')]];
+    if (identity) {
+      const portrait = card.querySelector('image');
+      const photo = document.createElement('img'); photo.src = portrait.getAttribute('href'); photo.alt = 'Fictional ' + (identity === challenge.id ? 'payee' : 'payer') + ' profile'; photo.className = 'fraud-profile-icon';
+      card.querySelector('h3').prepend(photo);
+    }
+    for (const [label, value] of values) {
+      const row = document.createElement('div'), term = document.createElement('dt'), description = document.createElement('dd');
+      term.textContent = label; description.textContent = value || '(blank)'; row.append(term, description); details.append(row);
+    }
+    card.append(details);
+  }
   target.replaceChildren(check, payee, maker);
 }
 
@@ -5018,13 +5035,13 @@ function renderHistory() {
   const chessSelected = historyView.filters.game === 'chess';
   refs['history-screen'].classList.toggle('chess-history-selected', chessSelected);
   document.getElementById('chess-history').hidden = !chessSelected;
-  if (chessSelected) {
-    refs['history-game-tabs'].querySelectorAll('button').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.historyGame === 'chess')));
-    chessUI.renderHistory();
-    return;
-  }
   const history = historyRecordsForView();
   renderHistoryDataSource(history);
+  if (chessSelected) {
+    refs['history-game-tabs'].querySelectorAll('button').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.historyGame === 'chess')));
+    chessUI.renderHistory(historyView.dataSource === 'sample' ? generateSampleChessHistory({ now: new Date(history[0].timestamp), seed: Number(history[0].attemptId.split('-')[1]) }) : null);
+    return;
+  }
   const gameOnly = filterHistory(history, { game: historyView.filters.game });
   renderHistoryFilters(gameOnly);
   const records = filterHistory(history, historyView.filters);
@@ -5165,6 +5182,7 @@ function showNextTypingRound() {
   showScreen('typing');
   startContinuousDistractionNoise();
   typingElement('begin').focus();
+  if (state.autoContinue && state.questionNumber > 1) beginTyping();
 }
 function beginTyping() {
   if (state.typingPhase !== 'ready') return;

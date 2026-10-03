@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { generateSampleHistory } from '../sample-history.mjs';
+import { generateSampleHistory, generateSampleChessHistory } from '../sample-history.mjs';
+import { ChessSession } from '../chess-core.mjs';
+import { summarizeChess, chessChartSpecs } from '../chess-analytics.mjs';
 import { buildChartSpecs, buildErrorAnalytics, buildGameFilters, filterHistory, normalizeHistoryRecord } from '../progress-analytics.mjs';
 
 const now = new Date('2026-09-23T16:00:00.000Z');
@@ -29,16 +31,19 @@ test('sample history is isolated, stable for a seed, and covers every game mecha
     .every((record) => record.missedAnomalyCount + record.falseFlagCount > 0));
   assert.ok(first.filter((record) => record.game === 'fraud-inspection' && record.outcome === 'Incorrect')
     .every((record) => record.fraudFalseNegativeCount + record.fraudFalsePositiveCount > 0));
+  assert.ok(first.filter(record => record.game === 'typing').every(record => record.correct === (record.outcome === 'Correct')));
 
   const normalized = first.map(normalizeHistoryRecord).filter(Boolean);
   const errorAnalytics = buildErrorAnalytics(first);
-  for (const game of ['cash', 'memory', 'task', 'error-detection', 'fraud-inspection']) {
+  for (const game of ['cash', 'memory', 'task', 'error-detection', 'fraud-inspection', 'typing']) {
     const records = normalized.filter((record) => record.game === game);
     assert.ok(records.length > 0, `${game} has sample records`);
     assert.ok(buildChartSpecs(records, game).some((spec) => spec.series[0].points.length), `${game} charts have data`);
     assert.ok(buildGameFilters(records, game).fields.some((field) => field.available > 0), `${game} filters have data`);
-    assert.ok(errorAnalytics.byCategory.some((group) => group.game === game), `${game} has game-specific error categories`);
-    assert.ok(errorAnalytics.byRawInput.some((group) => group.game === game), `${game} has raw-input error analytics`);
+    if (game !== 'typing') {
+      assert.ok(errorAnalytics.byCategory.some((group) => group.game === game), `${game} has game-specific error categories`);
+      assert.ok(errorAnalytics.byRawInput.some((group) => group.game === game), `${game} has raw-input error analytics`);
+    } else assert.ok(records.every(row => Number.isFinite(row.wpm) && Number.isFinite(row.accuracyPercent)), 'typing samples include actual speed and accuracy');
   }
   assert.ok(errorAnalytics.byRawInput.some((group) => group.key.startsWith('cash:denomination:')), 'cash sample records include bill/coin breakdowns');
   assert.ok(errorAnalytics.byRawInput.some((group) => group.key.startsWith('memory:digit-position:')), 'memory sample records include digit-position results');
@@ -50,6 +55,17 @@ test('sample history is isolated, stable for a seed, and covers every game mecha
   assert.ok(filterHistory(first, { startDate: '2026-08-25', endDate: '2026-09-23' }).length >= 500);
   assert.equal(filterHistory(first, { attemptLimit: 30 }).length, 30);
   assert.equal(filterHistory(first, { attemptLimit: 50 }).length, 50);
+});
+
+test('sample chess includes replayable games, outcomes, clocks and lesson attempts without storage', () => {
+  const data = generateSampleChessHistory({ now, seed: 42 });
+  assert.deepEqual(data, generateSampleChessHistory({ now, seed: 42 }));
+  for (const game of data.games) assert.doesNotThrow(() => ChessSession.restore(game));
+  const summary = summarizeChess(data.games, data.lessons);
+  assert.ok(summary.wins > 0 && summary.draws > 0 && summary.losses > 0);
+  assert.ok(summary.completedLessons > 0 && summary.lateMoves > 0);
+  assert.ok(chessChartSpecs(data.games, data.lessons).every(spec => spec.series[0].points.length));
+  assert.ok(data.games.every(game => game.isSample && game.analysis.status === 'sample'));
 });
 
 test('sample history supports small and large stress sizes without losing recent date coverage', () => {

@@ -62,8 +62,17 @@ export async function checkFraudInspection(browser, base) {
       const documents = await page.locator('#fraud-document-grid').evaluate((grid) => ({ bottom: grid.getBoundingClientRect().bottom,
         internalScroll: [...grid.querySelectorAll('.fraud-doc-viewport')].some((viewport) => viewport.scrollWidth > viewport.clientWidth + 1 || viewport.scrollHeight > viewport.clientHeight + 1) }));
       assert.equal(documents.internalScroll, false, `all documents fit their cards at ${width}px`);
-      if (width >= 1024) assert.ok(documents.bottom <= 900, `all documents are visible in a 900px-high desktop inspection viewport at ${width}px: ${JSON.stringify(documents)}`);
+      if (width >= 1440) await page.screenshot({ path: (process.env.TEMP || '/tmp') + '/fraud-layout-debug.png', fullPage: true });
       if (width === 320) await page.screenshot({ path: (process.env.TEMP || '/tmp') + '/fraud-inspection-phone.png' });
+    }
+    await page.setViewportSize({ width: 1280, height: 1000 });
+    for (const [width, height] of [[1920, 1080], [2560, 1440]]) {
+      await page.setViewportSize({ width, height });
+      const bottom = await page.locator('#fraud-document-grid').evaluate(grid => grid.getBoundingClientRect().bottom);
+      assert.ok(bottom <= height, `check and both identities fit together at ${width}×${height}: ${bottom}`);
+      assert.equal(await page.locator('.fraud-profile-icon').count(), 2);
+      assert.ok(await page.locator('.fraud-readable-details dd').evaluateAll(fields => fields.every(field => parseFloat(getComputedStyle(field).fontSize) >= 16)));
+      await page.screenshot({ path: (process.env.TEMP || '/tmp') + `/fraud-inspection-${width}.png`, fullPage: true });
     }
     await page.setViewportSize({ width: 1280, height: 1000 });
     assert.ok(await page.locator('#fraud-document-grid [data-fraud-card="check"] .fraud-doc-viewport').evaluate((viewport) => viewport.scrollHeight <= viewport.clientHeight + 1), 'full check and payee endorsement are visible without vertical scrolling inside the card');

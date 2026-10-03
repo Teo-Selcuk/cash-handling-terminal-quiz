@@ -81,6 +81,15 @@ export async function checkTyping(browser, base) {
     await setup(); await page.locator('#auto-continue-toggle').check(); await page.locator('#typing-seconds').fill('3'); await start(); await page.locator('#typing-begin').click();
     await page.locator('#summary-screen').waitFor({ timeout: 7000 });
     assert.equal((await history()).at(-1).outcome, 'Timed Out');
+    await setup(); await page.locator('#auto-continue-toggle').check(); await page.locator('#typing-rounds').fill('3'); await page.locator('#typing-seconds').fill('3'); await start(); await page.locator('#typing-begin').click();
+    await page.locator('#typing-answer').fill(await page.locator('#typing-prompt').textContent()); await page.locator('#typing-submit').click();
+    assert.match(await page.locator('#typing-progress').textContent(), /Round 2 of 3/);
+    assert.equal(await page.locator('#typing-answer').isDisabled(), false, 'auto-continue starts the next clock and input');
+    assert.equal(await page.locator('#typing-begin').isVisible(), false);
+    await page.locator('#typing-answer').fill('wrong'); await page.locator('#typing-submit').click();
+    assert.match(await page.locator('#typing-progress').textContent(), /Round 3 of 3/);
+    await page.locator('#summary-screen').waitFor({ timeout: 7000 });
+    assert.deepEqual((await history()).slice(-3).map(row => row.outcome), ['Correct', 'Incorrect', 'Timed Out']);
     assert.deepEqual(errors, []); console.log('Typing browser checks passed: modes, exact/incorrect/timeout, preview, presets, history, charts, responsive themes, auto-continue.');
   } finally { await context.close(); }
 }
