@@ -2,19 +2,23 @@
 
 Choose **Chess** in setup, select the computer difficulty, color, and time control, then start a game. Click or tap a piece and its destination; arrow keys navigate the board, Enter/Space select, and Escape clears the selection. Promotion offers all four pieces. Flip, resign, rematch, and PGN export are available.
 
-The computer uses pinned Stockfish 19 lite single-threaded, with skill levels 0/3/10/20 for Beginner/Easy/Medium/Hard and a bounded search (normally 400 ms). These are practice levels, not measured Elo ratings. The worker loads only when Chess is opened. Engine failures pause the game and clocks and expose a retry control.
+The computer uses pinned Stockfish 19 lite single-threaded, with default skill levels 0/3/10/20 for Beginner/Easy/Medium/Hard. The numeric slider fine-tunes any preset from 0 through 20, and the chosen level is retained in saved games, replay, PGN, CSV, and difficulty charts. Searches use that chosen level and a bounded search (normally 400 ms). These are practice levels, not measured Elo ratings. The worker loads only when Chess is opened. Engine failures pause the game and clocks and expose a retry control.
+
+## Focused arena
+
+Starting or resuming a game, opening lessons, or opening replay fills the window with the chess arena and requests browser fullscreen from the user action. Other app navigation is hidden and inert, including for keyboard users. Escape can leave browser fullscreen; the focused arena remains open and clocks continue. **Enter fullscreen** retries the request. Unsupported or denied fullscreen leaves a usable window-filling arena with an explanatory message. **Save & return to setup** deliberately saves and pauses, restores navigation, and exits fullscreen. Progress and history are available in the arena after a result, during lesson practice, and in replay. The centered board scales to the desktop height, compact tools scroll beside it, and move history sits below the board. Wide screens keep the toolbar at the top; narrow screens stack the tools below the board. Low game clocks show a distinct warning style below 20 seconds.
 
 ## Timing and recovery
 
 - Untimed is the default.
-- Game clocks offer 1/3/5/10/15-minute presets, custom 1–60 minutes per player, and 0–30 seconds increment. A flag ends the game; a player without mating possibilities cannot win on time.
+- Quick presets switch directly to a game clock: Bullet 1+0, Blitz 3+0 / 3+2 / 5+0 / 5+3, and Rapid 10+0 / 15+0. Game clocks also offer custom 1–60 minutes per player, and 0–30 seconds increment. A flag ends the game; a player without mating possibilities cannot win on time.
 - Seconds per move accepts 1–300 seconds, default 30. Passing the deadline marks that turn late once; it does not end the game. Only a legal move resets the deadline.
 - Clocks use elapsed wall time, including hidden tabs. Loading and engine failures do not consume time. **Save & return to setup** pauses the game and labels it interrupted practice.
 - Active games are checkpointed on legal moves, periodically while playing, and on page exit. Reload and choose **Resume saved game**. Downtime during reload is excluded and the game is labeled resumed practice. Starting a new game replaces the active checkpoint.
 
 ## Lessons and coaching
 
-There are eight pieces/rules lessons, eight openings lessons, and eight tactics/endgames lessons. Guided exercises let you move both sides. Legal alternatives receive feedback while the exercise waits for its intended move. Hints, retries, and completions are saved independently from game results. **Try this position against the computer** uses the selected setup settings and labels the game as a lesson position; if the exercise ended in mate/draw, it uses the lesson’s starting position.
+There are 44 lessons: eight pieces/rules, twenty openings, and sixteen tactics/endgames. The 20 additions include twelve openings and eight practical patterns such as pawn/bishop/queen forks, removing a defender, opposition, passed-pawn support, underpromotion, and making a king escape square. Each lesson starts with a step-by-step demonstration: **Show next move** moves the piece, highlights its squares, and explains its purpose. After the full demonstration, **Practice it yourself** resets the position and lets you repeat the moves for both sides. Demonstration moves do not count as practice moves or completions. Legal alternatives receive feedback while the exercise waits for its intended move. Hints, retries, and completions are saved independently from game results. **Try this position against the computer** uses the selected setup settings and labels the game as a lesson position; if the exercise ended in mate/draw, it uses the lesson’s starting position.
 
 Coaching defaults off. When enabled, hints highlight a suggested move and move feedback reports an estimated category and alternative line. Assistance is recorded. Original instructional explanations link to further reading; no opening is presented as universally best.
 

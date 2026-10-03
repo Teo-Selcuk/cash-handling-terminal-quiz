@@ -7,7 +7,7 @@
     <meta name="theme-color" content="#12343b">
     <title>Cash, Memory &amp; Detail Trainer</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="style.css?v=20261002-samples-readability">
+    <link rel="stylesheet" href="style.css?v=20261003-inspection-chess-typing">
   </head>
   <body>
     <main class="app-shell">
@@ -49,7 +49,7 @@
               <label class="choice-card"><input type="radio" name="game" value="task"><span><strong>Task simulation</strong><small>Watch a workflow, then repeat its tabs, fields, and selections from memory.</small></span></label>
               <label class="choice-card"><input type="radio" name="game" value="error-detection"><span><strong>Error detection</strong><small>15 rotating games: sequences, mirrors, rotations, binary patterns, grids, and more. Each has Easy, Medium, and Hard puzzles.</small></span></label>
               <label class="choice-card"><input type="radio" name="game" value="fraud-inspection"><span><strong>Check &amp; ID Fraud Inspection</strong><small>Inspect fictional teller documents, find every issue, and recognize clean cases.</small></span></label>
-              <label class="choice-card"><input type="radio" name="game" value="typing"><span><strong>Typing speed</strong><small>Race the clock with words, phrases, or random characters, and optional hidden prompts.</small></span></label>
+              <label class="choice-card"><input type="radio" name="game" value="typing"><span><strong>Typing speed</strong><small>Race the clock with words or random characters, and optional hidden prompts.</small></span></label>
               <label class="choice-card"><input type="radio" name="game" value="chess"><span><strong>Chess</strong><small>Play the computer, practice openings and tactics, and review your moves.</small></span></label>
             </div>
           </fieldset>
@@ -184,7 +184,7 @@
             <legend>Typing speed settings</legend>
             <p>Match every character, including case, spaces, and punctuation. Hard adds mixed case, numbers, and symbols. Long word or phrase prompts may end partway through a word to match your character count.</p>
             <div class="preset-form-grid">
-              <label for="typing-mode">Content<select id="typing-mode"><option value="words">Words</option><option value="phrases">Phrases</option><option value="random">Random characters</option></select></label>
+              <label for="typing-mode">Content<select id="typing-mode"><option value="words">Words</option><option value="random">Random characters</option></select></label>
               <label for="typing-characters">Characters per round<input id="typing-characters" type="number" min="1" max="500" value="30"></label>
               <label for="typing-seconds">Seconds to type<input id="typing-seconds" type="number" min="3" max="300" value="30"></label>
               <label for="typing-rounds">Rounds<input id="typing-rounds" type="number" min="1" max="100" value="5"></label>
@@ -321,20 +321,22 @@
             <p>Choose a pace and opponent. Lessons and coaching are available alongside ordinary games.</p>
             <div class="preset-form-grid">
               <label>Computer difficulty<select id="chess-difficulty"><option>Beginner</option><option selected>Easy</option><option>Medium</option><option>Hard</option></select></label>
+              <label>Bot level · <output id="chess-level-value">3 / 20</output><input id="chess-level" type="range" min="0" max="20" step="1" value="3" aria-describedby="chess-level-note"></label>
               <label>Your pieces<select id="chess-color"><option value="w">White</option><option value="b">Black</option><option value="random">Random</option></select></label>
               <label>Time control<select id="chess-time-control"><option value="untimed">Untimed</option><option value="clock">Game clock</option><option value="move">Seconds per move</option></select></label>
               <label id="chess-minutes-label" hidden>Minutes per player<input id="chess-minutes" type="number" min="1" max="60" step="1" value="5"></label>
               <label id="chess-increment-label" hidden>Increment (seconds)<input id="chess-increment" type="number" min="0" max="30" step="1" value="0"></label>
               <label id="chess-seconds-label" hidden>Seconds per move<input id="chess-seconds" type="number" min="1" max="300" step="1" value="30"></label>
             </div>
-            <div class="action-row" id="chess-clock-presets" hidden aria-label="Game clock presets">
-              <button type="button" class="text-button" data-chess-minutes="1">Bullet 1 min</button><button type="button" class="text-button" data-chess-minutes="3">Blitz 3 min</button><button type="button" class="text-button" data-chess-minutes="5">Blitz 5 min</button><button type="button" class="text-button" data-chess-minutes="10">Rapid 10 min</button><button type="button" class="text-button" data-chess-minutes="15">Rapid 15 min</button>
+            <p id="chess-level-note">Fine-tune any preset from 0 (gentlest) to 20 (strongest). These are Stockfish skill levels, not Elo ratings.</p>
+            <div class="action-row" id="chess-clock-presets" aria-label="Game clock presets">
+              <button type="button" class="text-button" data-chess-minutes="1">Bullet 1+0</button><button type="button" class="text-button" data-chess-minutes="3">Blitz 3+0</button><button type="button" class="text-button" data-chess-minutes="5">Blitz 5+0</button><button type="button" class="text-button" data-chess-minutes="3" data-chess-increment="2">Blitz 3+2</button><button type="button" class="text-button" data-chess-minutes="5" data-chess-increment="3">Blitz 5+3</button><button type="button" class="text-button" data-chess-minutes="10">Rapid 10 min</button><button type="button" class="text-button" data-chess-minutes="15">Rapid 15 min</button>
             </div>
             <p id="chess-time-note">Untimed games continue until a result or resignation.</p>
             <label class="toggle-row"><input id="chess-coaching" type="checkbox"><span><strong>Enable coaching</strong><small>Ask for hints and receive move feedback. Assisted games are labeled in history.</small></span></label>
             <p id="chess-setup-status" role="status"></p>
             <p id="chess-setup-storage-status" role="status" hidden></p>
-            <div class="action-row"><button class="secondary-button" type="button" id="chess-open-lessons">Learn chess · 24 lessons</button><button class="secondary-button" type="button" id="chess-resume" hidden>Resume saved game</button><button class="text-button" type="button" id="chess-setup-retry" hidden>Retry engine</button></div>
+            <div class="action-row"><button class="secondary-button" type="button" id="chess-open-lessons">Learn chess · 44 lessons</button><button class="secondary-button" type="button" id="chess-resume" hidden>Resume saved game</button><button class="text-button" type="button" id="chess-setup-retry" hidden>Retry engine</button></div>
             <p class="chart-note">Runs on this device with <a href="https://github.com/jhlywa/chess.js/tree/v1.4.0" target="_blank" rel="noopener">chess.js 1.4.0</a> and <a href="https://github.com/nmrugg/stockfish.js/tree/v19.0.0" target="_blank" rel="noopener">Stockfish 19 lite (GPLv3; source)</a>. <a href="assets/chess/stockfish-COPYING.txt">Engine license</a> · <a href="assets/chess/chess-LICENSE">Rules license</a>. Difficulty labels are practice levels, not verified Elo ratings.</p>
           </section>
           <button class="primary-button" type="submit">Start quiz</button>
@@ -343,21 +345,23 @@
 
       <section class="screen chess-screen" id="chess-screen" hidden aria-labelledby="chess-heading">
         <div class="screen-title-row"><div><p class="eyebrow">Play · learn · review</p><h2 id="chess-heading" tabindex="-1">Chess</h2></div><button class="text-button" id="chess-back" type="button">Save &amp; return to setup</button></div>
+        <p id="chess-fullscreen-note" class="chart-note" role="status">Focused arena · other app navigation is hidden. Save &amp; return when you’re done.</p>
         <p id="chess-status" role="status" aria-live="polite"></p>
         <p id="chess-storage-status" role="status" hidden></p>
-        <div class="action-row"><button type="button" class="text-button" id="chess-retry" hidden>Retry engine &amp; continue</button><button type="button" class="secondary-button" id="chess-lessons-toggle">Lessons</button><button type="button" class="text-button" id="chess-flip">Flip board</button></div>
-        <section id="chess-lessons" hidden aria-labelledby="chess-lessons-heading"><h3 id="chess-lessons-heading">Learn and practice</h3><p>Choose a lesson. Guided exercises let you play both sides and explain each move.</p><div id="chess-lesson-list" class="chess-lesson-list"></div></section>
+        <div class="action-row chess-toolbar"><button type="button" class="text-button" id="chess-retry" hidden>Retry engine &amp; continue</button><button type="button" class="secondary-button" id="chess-lessons-toggle">Lessons</button><button type="button" class="text-button" id="chess-flip">Flip board</button><button type="button" class="text-button" id="chess-fullscreen">Enter fullscreen</button><button type="button" class="text-button" id="chess-progress" hidden>Progress &amp; history</button></div>
+        <section id="chess-lessons" hidden aria-labelledby="chess-lessons-heading"><h3 id="chess-lessons-heading">Learn and practice</h3><p>Choose a lesson. Watch each move and its purpose, then reset the position and practice both sides yourself.</p><div id="chess-lesson-list" class="chess-lesson-list"></div></section>
         <div class="chess-layout">
           <div class="chess-board-column">
             <div class="chess-clocks" id="chess-clocks" aria-label="Player clocks"><div id="chess-clock-w"></div><div id="chess-clock-b"></div></div>
             <div id="chess-board" class="chess-board" role="group" aria-label="Chessboard. Select a piece then a destination. Use arrow keys to move between squares."></div>
             <p class="chart-note">Tap a piece, then a marked square. Keyboard: arrows to navigate, Enter or Space to select, Escape to clear.</p>
+            <section class="visual-card"><h3>Move history</h3><ol id="chess-moves" class="chess-moves"></ol></section>
             <div id="chess-promotion" class="visual-card" hidden><h3>Choose a promotion</h3><div class="action-row"><button type="button" data-promotion="q">Queen</button><button type="button" data-promotion="r">Rook</button><button type="button" data-promotion="b">Bishop</button><button type="button" data-promotion="n">Knight</button><button type="button" id="chess-cancel-promotion">Cancel</button></div></div>
           </div>
           <aside class="chess-sidebar">
-            <section id="chess-lesson-detail" class="visual-card" hidden><h3 id="chess-lesson-title"></h3><p id="chess-lesson-text"></p><p id="chess-lesson-step" role="status"></p><p id="chess-lesson-feedback" role="status"></p><div class="action-row"><button type="button" id="chess-lesson-hint" class="text-button">Show lesson hint</button><button type="button" id="chess-lesson-restart" class="text-button">Retry exercise</button><button type="button" id="chess-lesson-play" class="secondary-button">Try this position against the computer</button></div><a id="chess-lesson-source" target="_blank" rel="noopener">Further reading</a></section>
+            <section id="chess-lesson-detail" class="visual-card" hidden><h3 id="chess-lesson-title"></h3><p id="chess-lesson-text"></p><p id="chess-lesson-step" role="status"></p><p id="chess-lesson-feedback" role="status"></p><div class="action-row"><button type="button" id="chess-demo-next" class="secondary-button">Show next move</button><button type="button" id="chess-practice" class="secondary-button" disabled>Practice it yourself</button><button type="button" id="chess-lesson-hint" class="text-button">Show lesson hint</button><button type="button" id="chess-lesson-restart" class="text-button">Retry exercise</button><button type="button" id="chess-lesson-play" class="secondary-button">Try this position against the computer</button></div><a id="chess-lesson-source" target="_blank" rel="noopener">Further reading</a></section>
             <section id="chess-game-actions" class="visual-card"><h3 id="chess-game-label">Computer game</h3><p id="chess-game-details"></p><p id="chess-feedback" role="status"></p><div class="action-row"><button type="button" class="secondary-button" id="chess-hint" hidden>Hint</button><button type="button" class="text-button" id="chess-resign">Resign</button><button type="button" class="secondary-button" id="chess-rematch" hidden>Rematch</button><button type="button" class="secondary-button" id="chess-analyze" hidden>Analyze game</button><button type="button" class="text-button" id="chess-pgn">Export PGN</button></div></section>
-            <section class="visual-card"><h3>Move history</h3><ol id="chess-moves" class="chess-moves"></ol></section>
+
             <section id="chess-review" class="visual-card" hidden><h3>Game review</h3><p id="chess-review-status" role="status"></p><label>Replay position<input type="range" id="chess-replay" min="0" max="0" value="0"></label><div class="action-row"><button type="button" id="chess-review-prev" class="text-button">Previous</button><button type="button" id="chess-review-next" class="text-button">Next</button></div><p id="chess-review-move"></p><p id="chess-review-eval"></p><p class="chart-note">Centipawn loss compares the played move with the engine’s best move using 250 ms per search. Inaccuracy ≥50, mistake ≥100, blunder ≥200. Forced mates are separate. Short searches are estimates.</p></section>
           </aside>
         </div>
@@ -860,6 +864,6 @@
     </dialog>
 
     <footer>Browser edition. The original PowerShell quiz remains in this repository.</footer>
-    <script type="module" src="app.js?v=20261002-samples-readability"></script>
+    <script type="module" src="app.js?v=20261003-inspection-chess-typing"></script>
   </body>
 </html>

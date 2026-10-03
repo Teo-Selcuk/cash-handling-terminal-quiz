@@ -483,6 +483,10 @@ function isCompactViewport() {
 }
 
 function showScreen(name) {
+  const chessArena = name === 'chess';
+  document.body.classList.toggle('chess-arena', chessArena);
+  for (const node of document.querySelectorAll('.app-shell > :not(#chess-screen)')) node.inert = chessArena;
+  if (!chessArena && document.fullscreenElement?.id === 'chess-screen') void document.exitFullscreen().catch(() => {});
   refs['fraud-feedback'].hidden = name !== 'feedback' || state.game !== 'fraud-inspection';
   for (const screen of screens) refs[`${screen}-screen`].hidden = screen !== name;
   state.activeScreen = name;
@@ -2225,9 +2229,38 @@ function renderFraudDocuments(target, challenge, feedback = false) {
       const row = document.createElement('div'), term = document.createElement('dt'), description = document.createElement('dd');
       term.textContent = label; description.textContent = value || '(blank)'; row.append(term, description); details.append(row);
     }
-    card.append(details);
+    const secondary = document.createElement('details');
+    secondary.className = 'fraud-secondary-details';
+    const summary = document.createElement('summary'); summary.textContent = 'Written document details';
+    secondary.append(summary, details); card.append(secondary);
   }
-  target.replaceChildren(check, payee, maker);
+  const viewer = document.createElement('section');
+  viewer.className = 'fraud-id-viewer';
+  viewer.setAttribute('aria-label', 'Compare payee and maker IDs');
+  const switches = document.createElement('div');
+  switches.className = 'fraud-id-switches';
+  switches.setAttribute('role', 'group');
+  switches.setAttribute('aria-label', 'Select identification');
+  for (const [kind, label, card] of [['payee-id', 'Payee ID', payee], ['maker-id', 'Maker ID', maker]]) {
+    const button = document.createElement('button');
+    button.type = 'button'; button.className = 'secondary-button';
+    button.textContent = label; button.dataset.fraudIdSwitch = kind;
+    button.setAttribute('aria-pressed', String(kind === 'payee-id'));
+    card.hidden = kind !== 'payee-id';
+    button.addEventListener('click', () => {
+      payee.hidden = card !== payee; maker.hidden = card !== maker;
+      for (const control of switches.children) control.setAttribute('aria-pressed', String(control === button));
+    });
+    button.addEventListener('keydown', event => {
+      if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+      event.preventDefault();
+      const other = [...switches.children].find(control => control !== button);
+      other.click(); other.focus();
+    });
+    switches.append(button);
+  }
+  viewer.append(switches, payee, maker);
+  target.replaceChildren(check, viewer);
 }
 
 function renderFraudIssueOptions() {
@@ -5161,7 +5194,7 @@ function typingRecord(outcome, answer = '', seconds = 0) {
   return { timestamp: new Date().toISOString(), sessionId: state.sessionId, questionNumber: state.questionNumber,
     attemptId: `${state.sessionId}:${state.questionNumber}`, game: 'typing', gameType: 'Typing speed', difficulty: state.difficulty,
     outcome, timeUsedSeconds: seconds, timeLimitSeconds: settings.seconds, expectedAnswer: state.typingPrompt,
-    userAnswer: answer, typingMode: settings.mode, typingCharacters: settings.characters, typingHidePrompt: settings.hidePrompt,
+    userAnswer: answer, typingMode: settings.mode, typingCharacters: state.typingPrompt.length, typingHidePrompt: settings.hidePrompt,
     typingPreviewSeconds: settings.hidePrompt ? settings.previewSeconds : 0, ...scoreTyping(state.typingPrompt, answer, seconds) };
 }
 function showNextTypingRound() {
@@ -5175,10 +5208,10 @@ function showNextTypingRound() {
   typingElement('answer').value = ''; typingElement('answer').disabled = true;
   typingElement('submit').disabled = true; typingElement('begin').hidden = false;
   typingElement('live').textContent = ''; typingElement('timer').textContent = `${state.typingSettings.seconds}s to type`;
-  typingElement('progress').textContent = `Round ${state.questionNumber} of ${state.questionCount} · ${state.difficulty} · ${state.typingSettings.mode} · ${state.typingSettings.characters} characters`;
+  typingElement('progress').textContent = `Round ${state.questionNumber} of ${state.questionCount} · ${state.difficulty} · ${state.typingSettings.mode} · ${state.typingPrompt.length} characters`;
   typingElement('instructions').textContent = state.typingSettings.hidePrompt
-    ? 'Press Ready to type to start your preview. The prompt will then disappear and the typing timer will begin.'
-    : 'Press Ready to type to start the clock. Match the text exactly. Use Backspace to correct mistakes; paste and drop are disabled.';
+    ? 'Press Enter or Ready to type to start your preview. The prompt will then disappear and the typing timer will begin.'
+    : 'Press Enter or Ready to type to start the clock. Match the text exactly, then press Enter to submit. Use Backspace to correct mistakes; paste and drop are disabled.';
   showScreen('typing');
   startContinuousDistractionNoise();
   typingElement('begin').focus();
@@ -5241,7 +5274,14 @@ function renderTypingHistory(records) {
 }
 typingElement('begin').addEventListener('click', beginTyping);
 typingElement('form').addEventListener('submit', event => { event.preventDefault(); submitTyping(); });
-typingElement('answer').addEventListener('keydown', event => { if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); submitTyping(); } });
+document.getElementById('typing-screen').addEventListener('keydown', event => {
+  if (event.key !== 'Enter' || event.isComposing) return;
+  if (!['ready', 'typing'].includes(state.typingPhase)) return;
+  event.preventDefault();
+  if (event.repeat) return;
+  if (state.typingPhase === 'ready') beginTyping();
+  else submitTyping();
+});
 for (const name of ['paste', 'drop']) typingElement('answer').addEventListener(name, event => event.preventDefault());
 typingElement('answer').addEventListener('beforeinput', event => { if (['insertFromPaste', 'insertFromDrop'].includes(event.inputType)) event.preventDefault(); });
 typingElement('answer').addEventListener('input', () => {

@@ -8,18 +8,14 @@ const WORDS = {
   Medium: 'practice balance customer keyboard accuracy careful detail memory forward complete'.split(' '),
   Hard: 'Extraordinary, Precision! Keyboard-42 Verify_Case? Symbols@work Intricate; Rhythm: juxtaposition'.split(' '),
 };
-const PHRASES = {
-  Easy: ['the sun is warm', 'take your time', 'read a good book', 'keep your hands ready'],
-  Medium: ['Practice makes progress.', 'Check every detail carefully.', 'Accuracy comes before speed.'],
-  Hard: ['Verify #42: total=$19.75!', 'Type {A_B} != [x+y];', 'Case-sensitive: "Ready?" Yes!', 'Send 50% @ 09:30; OK?'],
-};
 export function resolveTypingSettings(difficulty = 'Easy', overrides = {}) {
   if (!TYPING_PRESETS[difficulty]) throw new Error('Choose Easy, Medium, or Hard.');
   const settings = { ...TYPING_PRESETS[difficulty], mode: 'words', hidePrompt: false, previewSeconds: 5, rounds: 5, ...overrides, difficulty };
   for (const [field, min, max] of [['characters', 1, 500], ['seconds', 3, 300], ['previewSeconds', 1, 60], ['rounds', 1, 100]]) {
     if (!Number.isInteger(settings[field]) || settings[field] < min || settings[field] > max) throw new Error(`${field}: choose a whole number from ${min} to ${max}.`);
   }
-  if (!['words', 'phrases', 'random'].includes(settings.mode)) throw new Error('Choose words, phrases, or random characters.');
+  if (settings.mode === 'phrases') settings.mode = 'words'; // Preserve saved presets from the old content menu.
+  if (!['words', 'random'].includes(settings.mode)) throw new Error('Choose words or random characters.');
   return settings;
 }
 export function createTypingPrompt(settings, random = Math.random) {
@@ -28,12 +24,15 @@ export function createTypingPrompt(settings, random = Math.random) {
     const alphabet = 'abcdefghijklmnopqrstuvwxyz' + (settings.difficulty !== 'Easy' ? 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789' : '') + (settings.difficulty === 'Hard' ? '!@#$%^&*()_+-=[]{};:,.<>/?' : '');
     return Array.from({ length: settings.characters }, () => pick(alphabet)).join('');
   }
-  const values = settings.mode === 'phrases' ? PHRASES[settings.difficulty] : WORDS[settings.difficulty];
+  const values = WORDS[settings.difficulty];
   let text = '';
-  while (text.length < settings.characters) text += (text ? ' ' : '') + pick(values);
-  text = text.slice(0, settings.characters);
-  // The target is always the requested length, with no invisible trailing space.
-  return text.endsWith(' ') ? text.slice(0, -1) + pick('abcdefghijklmnopqrstuvwxyz') : text;
+  while (text.length < settings.characters) {
+    const next = (text ? ' ' : '') + pick(values);
+    if (text && text.length + next.length > settings.characters) break;
+    text += next;
+  }
+  // A tiny target still gets one complete word.
+  return text;
 }
 export function scoreTyping(expected, answer, elapsedSeconds) {
   const target = Array.from(expected); const typed = Array.from(answer);

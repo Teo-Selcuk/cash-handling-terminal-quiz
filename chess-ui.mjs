@@ -25,16 +25,17 @@ export function createChessUI({ showScreen, renderChart, showChartData }) {
   function storageAction(action) {
     try { return action(); } catch (error) { const message = `Could not save or read chess progress: ${error.message} Export PGN to keep a copy.`; for (const id of ['storage-status', 'setup-storage-status']) { el(id).hidden = false; el(id).textContent = message; } el('history-status').textContent = error.message; return null; }
   }
-  function settings() { return normalizeSettings({ difficulty: el('difficulty').value, color: el('color').value, timeControl: el('time-control').value, minutes: el('minutes').value, increment: el('increment').value, secondsPerMove: el('seconds').value, coaching: el('coaching').checked }); }
+  function settings() { return normalizeSettings({ difficulty: el('difficulty').value, skillLevel: el('level').value, color: el('color').value, timeControl: el('time-control').value, minutes: el('minutes').value, increment: el('increment').value, secondsPerMove: el('seconds').value, coaching: el('coaching').checked }); }
   function setSettings(value) {
     el('difficulty').value = value.difficulty; el('color').value = value.color; el('time-control').value = value.timeControl;
     el('minutes').value = value.minutes; el('increment').value = value.increment; el('seconds').value = value.secondsPerMove; el('coaching').checked = value.coaching;
+    el('level').value = value.skillLevel; levelLabel();
     timeControls();
   }
   function timeControls() {
     const type = el('time-control').value;
     for (const id of ['minutes', 'increment']) { el(`${id}-label`).hidden = type !== 'clock'; el(id).disabled = type !== 'clock'; }
-    el('seconds-label').hidden = type !== 'move'; el('seconds').disabled = type !== 'move'; el('clock-presets').hidden = type !== 'clock';
+    el('seconds-label').hidden = type !== 'move'; el('seconds').disabled = type !== 'move';
     el('time-note').textContent = type === 'clock' ? 'The clock runs on each player’s turn. A flag ends the game; no mating material means a draw.' : type === 'move' ? 'A late move is counted once. You can still make it and continue the game.' : 'Untimed games continue until a result or resignation.';
   }
   function handleEngineError(error) {
@@ -59,7 +60,31 @@ export function createChessUI({ showScreen, renderChart, showChartData }) {
     storageAction(() => { store.saveGame(record); store.clearCurrent(record.id); });
     document.getElementById('open-history').disabled = false;
   }
-  function open() { active = true; showScreen('chess'); }
+  function levelLabel() { el('level-value').textContent = `${el('level').value} / 20`; }
+  function fitBoard() {
+    const screen = el('screen');
+    if (screen.hidden) return;
+    if (window.innerWidth <= 760) { screen.style.removeProperty('--chess-board-size'); return; }
+    // Re-measure after sizing the clocks, whose labels can wrap at narrow widths.
+    for (let pass = 0; pass < 2; pass++) {
+      const top = el('board').getBoundingClientRect().top - screen.getBoundingClientRect().top + screen.scrollTop;
+      screen.style.setProperty('--chess-board-size', `${Math.max(128, Math.floor(screen.clientHeight - top - 24))}px`);
+    }
+  }
+  function fullscreenLabel() {
+    el('fullscreen').hidden = document.fullscreenElement === el('screen');
+    el('fullscreen-note').textContent = document.fullscreenElement === el('screen') ? 'Fullscreen arena · Escape leaves browser fullscreen. Save & return pauses and saves your game.' : 'Focused arena · other app navigation is hidden. Enter fullscreen to hide browser controls.';
+    fitBoard();
+  }
+  function requestFullscreen() {
+    const screen = el('screen');
+    if (document.fullscreenElement === screen) return;
+    if (!screen.requestFullscreen) { el('fullscreen-note').textContent = 'Browser fullscreen is unavailable. The focused arena still fills this window.'; return; }
+    screen.requestFullscreen({ navigationUI: 'hide' }).catch(() => {
+      if (active) el('fullscreen-note').textContent = 'Browser fullscreen was unavailable. The focused arena still fills this window; you can retry with Enter fullscreen.';
+    });
+  }
+  function open() { active = true; showScreen('chess'); fullscreenLabel(); requestFullscreen(); }
   async function start({ fen = DEFAULT_POSITION, lessonId = null, restored = null } = {}) {
     engine.cancel(); busy = false; lesson = null; review = null; selected = null; hint = null; promotion = null;
     session = restored ? ChessSession.restore(restored) : new ChessSession(settings(), { fen, lessonId });
@@ -78,7 +103,7 @@ export function createChessUI({ showScreen, renderChart, showChartData }) {
     status(`${game.settings.difficulty} computer is thinking…`);
     try {
       const budgetMs = game.settings.timeControl === 'clock' ? Math.max(50, Math.min(600, game.clock().remaining[game.chess.turn()] / 30)) : 400;
-      const reply = await engine.search(game.positionCommand(), positionId, { skill: DIFFICULTIES[game.settings.difficulty], budgetMs: Math.floor(budgetMs) });
+      const reply = await engine.search(game.positionCommand(), positionId, { skill: game.settings.skillLevel, budgetMs: Math.floor(budgetMs) });
       if (!active || session !== game || positionId !== game.positionId() || game.result || lesson || review) return;
       game.move(uciInput(reply.move)); selected = null; hint = null;
       if (game.result) saveFinished(); else saveCurrent();
@@ -88,7 +113,7 @@ export function createChessUI({ showScreen, renderChart, showChartData }) {
   function displayChess() { return lesson?.chess ?? review?.chess ?? session?.chess ?? new Chess(); }
   function selectSquare(square) {
     if (!square) { selected = null; promotion = null; render(); return; }
-    if (review || promotion || (!lesson && (!session || session.result || session.paused || busy || session.chess.turn() !== session.player))) return;
+    if (review || promotion || lesson?.phase === 'demo' || (!lesson && (!session || session.result || session.paused || busy || session.chess.turn() !== session.player))) return;
     const chess = displayChess(), piece = chess.get(square);
     if (selected) {
       const choices = chess.moves({ square: selected, verbose: true }).filter(move => move.to === square);
@@ -127,6 +152,7 @@ export function createChessUI({ showScreen, renderChart, showChartData }) {
     const targets = selected ? chess.moves({ square: selected, verbose: true }).map(move => move.to) : [];
     const last = chess.history({ verbose: true }).at(-1);
     board.render(chess, { selected, targets, lastMove: last, hint });
+    requestAnimationFrame(fitBoard);
     el('promotion').hidden = !promotion;
     el('lesson-detail').hidden = !lesson; el('game-actions').hidden = Boolean(lesson);
     el('review').hidden = !review;
@@ -136,11 +162,12 @@ export function createChessUI({ showScreen, renderChart, showChartData }) {
     el('rematch').hidden = !session?.result || Boolean(review);
     el('analyze').hidden = !(review || session?.result); el('analyze').disabled = busy;
     el('pgn').hidden = !session && !review;
+    el('progress').hidden = Boolean(session && !session.result && !review && !lesson);
     const moves = chess.history();
     el('moves').replaceChildren(...moves.map((san, i) => make('li', `${Math.floor(i / 2) + 1}${i % 2 ? '…' : '.'} ${san}`)));
     if (session && !lesson && !review) {
       const color = session.player === 'w' ? 'White' : 'Black';
-      el('game-label').textContent = `${color} vs ${session.settings.difficulty}`;
+      el('game-label').textContent = `${color} vs ${session.settings.difficulty} · level ${session.settings.skillLevel}/20`;
       el('game-details').textContent = `${session.settings.timeControl === 'clock' ? `${session.settings.minutes}+${session.settings.increment} game clock` : session.settings.timeControl === 'move' ? `${session.settings.secondsPerMove}s per move` : 'Untimed'}${session.resumed ? ' · resumed practice' : session.interrupted ? ' · interrupted practice' : ''}${session.lessonId ? ' · lesson position' : ''}${session.settings.coaching || session.hints ? ' · assisted' : ''}`;
       if (session.result) status(`${resultLabel(session)} — ${session.result.reason}. Use Analyze game to review alternatives.`);
       else if (session.paused) status(engineError ? 'Engine unavailable. Play and clocks are paused; retry to continue.' : 'Game paused.');
@@ -157,6 +184,7 @@ export function createChessUI({ showScreen, renderChart, showChartData }) {
       if (session.settings.timeControl === 'move' && color !== turn) text = `${session.settings.secondsPerMove}s / move`;
       el(`clock-${color}`).textContent = `${name} · ${color === 'w' ? 'White' : 'Black'} · ${text}${session.settings.timeControl === 'move' ? ` · ${session.lateCount[color]} late` : ''}`;
       el(`clock-${color}`).classList.toggle('active-clock', turn === color && !session.result);
+      el(`clock-${color}`).classList.toggle('low-clock', session.settings.timeControl === 'clock' && clock.remaining[color] < 20000 && !session.result);
     }
   }
   function tick() {
@@ -187,18 +215,27 @@ export function createChessUI({ showScreen, renderChart, showChartData }) {
   function startLesson(item) {
     if (session && !session.result) { session.pause(); saveCurrent(); }
     engine.cancel(); busy = false; selected = null; promotion = null; hint = null; review = null;
-    lesson = { item, chess: new Chess(item.fen), index: 0, attempt: { id: crypto.randomUUID(), lessonId: item.id, startedAt: new Date().toISOString(), completed: false, retries: 0, hints: 0, moves: 0 } };
+    lesson = { item, phase: 'demo', chess: new Chess(item.fen), index: 0, attempt: { id: crypto.randomUUID(), lessonId: item.id, startedAt: new Date().toISOString(), completed: false, retries: 0, hints: 0, moves: 0 } };
     board.flipped = lesson.chess.turn() === 'b'; open(); document.getElementById('open-history').disabled = false;
     el('lessons').hidden = true; el('lesson-title').textContent = item.title; el('lesson-text').textContent = item.text;
     el('lesson-source').href = item.source; el('lesson-feedback').textContent = ''; lessonStep(); saveLesson(); render();
-    status('Guided lesson — play both sides. The instruction explains the next move.');
+    status('Watch the demonstration first. Show next move explains and highlights each move.');
+    el('demo-next').focus();
   }
   function lessonStep() {
+    const demo = lesson.phase === 'demo';
+    el('demo-next').hidden = !demo; el('demo-next').disabled = lesson.index === lesson.item.steps.length;
+    el('practice').hidden = !demo; el('practice').disabled = lesson.index !== lesson.item.steps.length;
+    el('lesson-play').disabled = demo; el('lesson-hint').hidden = demo;
+    if (demo) {
+      el('lesson-step').textContent = lesson.index === lesson.item.steps.length ? 'Demonstration complete. Practice it yourself resets the board so you can repeat every move.' : `Demonstration · ${lesson.index}/${lesson.item.steps.length} moves shown. Select Show next move to watch the next move.`;
+      return;
+    }
     el('lesson-step').textContent = lesson.index === lesson.item.steps.length ? 'Exercise complete. Try the position against the computer or choose another lesson.' : `Step ${lesson.index + 1}/${lesson.item.steps.length} · ${lesson.chess.turn() === 'w' ? 'White' : 'Black'}: ${lesson.item.steps[lesson.index].text}`;
     el('lesson-hint').disabled = lesson.attempt.completed;
   }
   function lessonMove(input) {
-    if (lesson.attempt.completed) return;
+    if (lesson.phase !== 'practice' || lesson.attempt.completed) return;
     const expected = lesson.item.steps[lesson.index].move;
     let move;
     try { move = lesson.chess.move(input); } catch { return; }
@@ -223,7 +260,7 @@ export function createChessUI({ showScreen, renderChart, showChartData }) {
     review = { record, chess: new Chess(record.startFen), index: 0 }; board.flipped = record.player === 'b';
     open(); document.getElementById('open-history').disabled = false; el('lessons').hidden = true;
     el('replay').max = record.moves.length; el('replay').value = 0;
-    el('game-label').textContent = `${resultLabel(record)} vs ${record.settings.difficulty}`; el('game-details').textContent = `${record.result.reason} · ${new Date(record.startedAt).toLocaleString()}`;
+    el('game-label').textContent = `${resultLabel(record)} vs ${record.settings.difficulty} · level ${normalizeSettings(record.settings).skillLevel}/20`; el('game-details').textContent = `${record.result.reason} · ${new Date(record.startedAt).toLocaleString()}`;
     status('Game review. Use the slider or Previous / Next to replay.'); renderReview(); render();
   }
   function renderReview() {
@@ -286,7 +323,7 @@ export function createChessUI({ showScreen, renderChart, showChartData }) {
     if (!games.length) el('history-games').append(make('p', 'No chess games match these filters. Finish a game to see results here.'));
     for (const game of [...games].reverse()) {
       const card = make('article', '', 'visual-card');
-      card.append(make('h4', `${resultLabel(game)} vs ${game.settings.difficulty}`), make('p', `${new Date(game.startedAt).toLocaleString()} · ${game.result.reason} · ${game.settings.timeControl} · ${game.moves.length} moves${game.resumed || game.interrupted ? ' · resumed / interrupted' : ''}${game.settings.coaching || game.hints || game.feedbackUsed ? ' · assisted' : ''}${game.lessonId ? ' · lesson position' : ''} · Analysis: ${game.analysis?.status ?? 'pending'}`));
+      card.append(make('h4', `${resultLabel(game)} vs ${game.settings.difficulty} · level ${normalizeSettings(game.settings).skillLevel}/20`), make('p', `${new Date(game.startedAt).toLocaleString()} · ${game.result.reason} · ${game.settings.timeControl} · ${game.moves.length} moves${game.resumed || game.interrupted ? ' · resumed / interrupted' : ''}${game.settings.coaching || game.hints || game.feedbackUsed ? ' · assisted' : ''}${game.lessonId ? ' · lesson position' : ''} · Analysis: ${game.analysis?.status ?? 'pending'}`));
       if (!data) { const button = make('button', 'Replay & review', 'secondary-button'); button.type = 'button'; button.addEventListener('click', () => reviewGame(game)); card.append(button); }
       el('history-games').append(card);
     }
@@ -315,8 +352,14 @@ export function createChessUI({ showScreen, renderChart, showChartData }) {
     }
   }
   el('time-control').addEventListener('change', timeControls);
-  el('clock-presets').addEventListener('click', event => { const value = event.target.dataset.chessMinutes; if (value) { el('minutes').value = value; el('increment').value = 0; } });
+  el('difficulty').addEventListener('change', () => { el('level').value = DIFFICULTIES[el('difficulty').value]; levelLabel(); });
+  el('level').addEventListener('input', levelLabel);
+  el('fullscreen').addEventListener('click', requestFullscreen);
+  document.addEventListener('fullscreenchange', fullscreenLabel);
+  window.addEventListener('resize', fitBoard);
+  el('clock-presets').addEventListener('click', event => { const button = event.target.closest('button[data-chess-minutes]'); const value = button?.dataset.chessMinutes; if (value) { el('time-control').value = 'clock'; el('minutes').value = value; el('increment').value = button.dataset.chessIncrement ?? 0; timeControls(); } });
   el('back').addEventListener('click', leave);
+  el('progress').addEventListener('click', () => document.getElementById('open-history').click());
   el('setup-retry').addEventListener('click', ensureEngine);
   el('retry').addEventListener('click', async () => { const game = session; if (await ensureEngine()) { if (session === game && game && !lesson && !review && active) { game.resume(); render(); await computerTurn(); } else if (review) { busy = false; status('Engine ready. Retry analysis to finish this review.'); render(); } } });
   el('resume').addEventListener('click', () => { const record = storageAction(() => store.current()); if (record) void start({ restored: record }).catch(error => status(error.message)); });
@@ -340,6 +383,21 @@ export function createChessUI({ showScreen, renderChart, showChartData }) {
   for (const [id, delta] of [['review-prev', -1], ['review-next', 1]]) el(id).addEventListener('click', () => { if (review) { review.index = Math.max(0, Math.min(review.record.moves.length, review.index + delta)); el('replay').value = review.index; renderReview(); render(); } });
   el('lessons-toggle').addEventListener('click', () => { el('lessons').hidden = !el('lessons').hidden; listLessons(); });
   el('open-lessons').addEventListener('click', () => { if (session && !session.result) { session.pause(); saveCurrent(); } engine.cancel(); busy = false; lesson = null; review = null; open(); document.getElementById('open-history').disabled = false; listLessons(); el('lessons').hidden = false; render(); status('Choose a lesson to learn a piece, opening, or tactical idea.'); });
+  el('demo-next').addEventListener('click', () => {
+    if (!lesson || lesson.phase !== 'demo' || lesson.index >= lesson.item.steps.length) return;
+    const step = lesson.item.steps[lesson.index], move = lesson.chess.move(step.move);
+    lesson.index++; hint = move.from + move.to;
+    el('lesson-feedback').textContent = `${lesson.index}/${lesson.item.steps.length} · ${move.color === 'w' ? 'White' : 'Black'} plays ${move.san}: ${move.from} → ${move.to}${move.promotion ? ' (promote to ' + move.promotion + ')' : ''}. ${step.text}`;
+    lessonStep(); render();
+    if (lesson.index === lesson.item.steps.length) el('practice').focus();
+  });
+  el('practice').addEventListener('click', () => {
+    if (!lesson || lesson.phase !== 'demo' || lesson.index !== lesson.item.steps.length) return;
+    lesson.phase = 'practice'; lesson.chess = new Chess(lesson.item.fen); lesson.index = 0;
+    selected = null; hint = null; promotion = null; el('lesson-feedback').textContent = 'Your turn to practice. Repeat the demonstrated moves; you can use a hint when needed.';
+    lessonStep(); render(); status('Practice — play both sides and follow the instruction for each move.');
+    board.buttons.get(board.order.find(square => lesson.chess.get(square)?.color === lesson.chess.turn()))?.focus();
+  });
   el('lesson-hint').addEventListener('click', () => { if (lesson && !lesson.attempt.completed) { lesson.attempt.hints++; const chess = new Chess(lesson.chess.fen()); const move = chess.move(lesson.item.steps[lesson.index].move); hint = move.from + move.to; el('lesson-feedback').textContent = `Play ${move.san}: ${move.from} to ${move.to}${move.promotion ? ', promote to ' + move.promotion : ''}.`; saveLesson(); render(); } });
   el('lesson-restart').addEventListener('click', () => { if (lesson) startLesson(lesson.item); });
   el('lesson-play').addEventListener('click', () => { if (lesson) { const fen = lesson.chess.isGameOver() ? lesson.item.fen : lesson.chess.fen(), lessonId = lesson.item.id; el('color').value = new Chess(fen).turn(); void start({ fen, lessonId }); } });

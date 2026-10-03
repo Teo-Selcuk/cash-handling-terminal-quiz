@@ -1,3 +1,4 @@
+import { normalizeSettings } from './chess-core.mjs';
 export const classifyLoss = loss => loss === null || !Number.isFinite(loss) ? 'Unavailable' : loss >= 200 ? 'Blunder' : loss >= 100 ? 'Mistake' : loss >= 50 ? 'Inaccuracy' : 'Good';
 const average = values => values.length ? values.reduce((a, b) => a + b, 0) / values.length : null;
 export function filterChessGames(games, filters = {}) {
@@ -33,7 +34,7 @@ export function chessChartSpecs(games, lessons = []) {
   const time = games.map((g, i) => point(`Game ${i + 1}`, summarizeChess([g]).averageMoveSeconds, [g])).filter(p => p.value !== null);
   return [
     chart('outcomes', 'Wins, draws and losses', ['Wins', 'Draws', 'Losses'].map(label => { const rows = games.filter(g => g.result && (label === 'Wins' ? g.result.winner === g.player : label === 'Draws' ? g.result.winner === null : g.result.winner !== null && g.result.winner !== g.player)); return point(label, rows.length, rows); })),
-    chart('difficulty', 'Win rate by computer difficulty', grouped(g => g.settings.difficulty), 'accuracy', 'bar', 'Win rate (%)'),
+    chart('difficulty', 'Win rate by computer difficulty', grouped(g => `${g.settings.difficulty} · ${normalizeSettings(g.settings).skillLevel}/20`), 'accuracy', 'bar', 'Win rate (%)'),
     chart('clock', 'Win rate by time control', grouped(g => g.settings.timeControl), 'accuracy', 'bar', 'Win rate (%)'),
     chart('move-time', 'Your move time over games', time, 'time', 'line', 'Seconds per move'),
     chart('late', 'Your late moves over games', games.filter(g => g.settings.timeControl === 'move').map((g, i) => point(`Game ${i + 1}`, summarizeChess([g]).lateMoves, [g])), 'attempts', 'line', 'Late moves'),
@@ -43,6 +44,6 @@ export function chessChartSpecs(games, lessons = []) {
 }
 export function chessCsv(games) {
   const escape = value => `"${String(value ?? '').replaceAll('"', '""')}"`;
-  const columns = ['id', 'startedAt', 'difficulty', 'timeControl', 'result', 'reason', 'playerMoves', 'averageMoveSeconds', 'lateMoves', 'averageCentipawnLoss', 'evaluatedMoves', 'assisted', 'resumed', 'lessonId', 'analysisStatus', 'engine'];
-  return [columns, ...games.map(g => { const s = summarizeChess([g]); return [g.id, g.startedAt, g.settings.difficulty, g.settings.timeControl, !g.result ? 'In progress' : g.result.winner === null ? 'Draw' : g.result.winner === g.player ? 'Win' : 'Loss', g.result?.reason, g.moves.filter(m => m.color === g.player).length, s.averageMoveSeconds, s.lateMoves, s.averageLoss, s.evaluatedMoves, Boolean(g.settings.coaching || g.hints || g.feedbackUsed), Boolean(g.resumed || g.interrupted), g.lessonId, g.analysis?.status, g.analysis?.engine]; })].map(row => row.map(escape).join(',')).join('\r\n');
+  const columns = ['id', 'startedAt', 'difficulty', 'timeControl', 'result', 'reason', 'playerMoves', 'averageMoveSeconds', 'lateMoves', 'averageCentipawnLoss', 'evaluatedMoves', 'assisted', 'resumed', 'lessonId', 'analysisStatus', 'engine', 'skillLevel'];
+  return [columns, ...games.map(g => { const s = summarizeChess([g]); return [g.id, g.startedAt, g.settings.difficulty, g.settings.timeControl, !g.result ? 'In progress' : g.result.winner === null ? 'Draw' : g.result.winner === g.player ? 'Win' : 'Loss', g.result?.reason, g.moves.filter(m => m.color === g.player).length, s.averageMoveSeconds, s.lateMoves, s.averageLoss, s.evaluatedMoves, Boolean(g.settings.coaching || g.hints || g.feedbackUsed), Boolean(g.resumed || g.interrupted), g.lessonId, g.analysis?.status, g.analysis?.engine, normalizeSettings(g.settings).skillLevel]; })].map(row => row.map(escape).join(',')).join('\r\n');
 }

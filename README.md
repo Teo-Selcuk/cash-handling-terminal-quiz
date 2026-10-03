@@ -12,7 +12,7 @@ configured answer timer. History labels the mode. See [mode details](docs/cash-s
 
 The [browser edition](https://teo-selcuk.github.io/cash-handling-terminal-quiz/) also includes Number Memory, Task Simulation, 15 rotating Error Detection games, and Check & ID Fraud Inspection. Fraud Inspection generates fictional check and ID documents with selectable Easy, Medium, Hard, and Custom settings, zoomable SVG previews, exact-set scoring, clean cases, speed modes, local category history, and issue-by-issue feedback. During inspection, document fields have no answer-revealing highlights; learners inspect the details and select one or more issue labels or No Issues Found. After submission, feedback marks the actual issue fields. Its documents use invented training values and do not make authenticity decisions.
 
-The website also includes **Chess**: four computer difficulty levels, untimed and timed games, 24 interactive lessons, optional coaching, move replay, and separate progress analytics. See [Chess mode](docs/chess-mode.md) for timing, recovery, analysis, and local engine details.
+The website also includes **Chess**: a fullscreen chess arena, four difficulty presets with adjustable 0–20 bot levels, quick blitz clocks, untimed and timed games, 44 demonstrate-then-practice lessons, optional coaching, move replay, and separate progress analytics. See [Chess mode](docs/chess-mode.md) for timing, recovery, analysis, and local engine details.
 
 - Easy, Medium, and Hard difficulty levels
 - Random customer totals and random cash combinations
@@ -290,4 +290,4 @@ The existing Node and browser suites remain the gameplay regression checks.
 Local testing does not publish these companion files to GitHub Pages.
 # Typing speed
 
-The browser game includes Easy, Medium, and Hard typing challenges with words, phrases, or random characters. Override character count, typing time, rounds, and optional hidden-prompt preview; save/reset presets locally. History / Progress records WPM, CPM, character accuracy, exact matches, and submitted text. See [Typing mode](docs/typing-mode.md) for scoring and timing details.
+The browser game includes Easy, Medium, and Hard typing challenges with words or random characters. Override character count, typing time, rounds, and optional hidden-prompt preview; save/reset presets locally. History / Progress records WPM, CPM, character accuracy, exact matches, and submitted text. See [Typing mode](docs/typing-mode.md) for scoring and timing details.

@@ -83,7 +83,7 @@ Rollback: revert the feature commits and redeploy through the existing Pages wor
 
 Check & ID Fraud Inspection includes a **Read documents · fit screen** reader. Check, Payer ID, and Payee ID buttons switch documents; a detail selector, Previous/Next buttons, and Left/Right keys move between fields. The reader fits the viewport without vertical or horizontal scrolling. Printed values reflow at 16px; handwriting, photo smears, ink, and erasures remain the original SVG evidence. Close or Escape returns to the review. The inspection timer continues while reading and timeout closes the reader. Feedback retains its field highlights. Four fictional portrait assets are available, with different payer and payee portraits in every case.
 
-Small screens cannot display all three complete documents simultaneously at a readable size. The overview cards remain available for comparison; the reader shows each detail separately without scrolling. Phone portrait and landscape, tablet, and desktop reader layouts are covered by the focused Fraud browser checks.
+The inspection overview uses two desktop panels: the full check (front and endorsement) on the left and one large ID on the right. Payee ID / Maker ID buttons switch the visible identity; Left/Right keys switch while a selector is focused. Written document details expand beneath each document. Narrow screens stack the two panels; the fit-screen reader remains available for individual fields. Phone portrait and landscape, tablet, and desktop reader layouts are covered by the focused Fraud browser checks.
 
 The workflow follows GitHub's documented Pages Actions sequence: check out the source, upload the static artifact, and deploy it with `actions/deploy-pages`.
 

@@ -28,6 +28,8 @@ export async function checkFraudInspection(browser, base) {
     await page.locator('#fraud-inspection-screen').waitFor({ state: 'visible' });
     assert.match(await page.locator('#fraud-inspection-progress').textContent(), /Case 1 of 1 · CUSTOM/);
     assert.equal(await page.locator('#fraud-document-grid .fraud-document-card').count(), 3);
+    assert.equal(await page.locator('#fraud-document-grid > *').count(), 2);
+    assert.equal(await page.locator('#fraud-document-grid .fraud-document-card:visible').count(), 2);
     assert.match(await page.locator('#fraud-document-grid').textContent(), /TRAINING SAMPLE/);
     assert.match(await page.locator('#fraud-document-grid').textContent(), /FICTIONAL TRAINING CARD/);
     assert.match(await page.locator('#fraud-document-grid').textContent(), /PAYEE SIGNATURE · ENDORSE HERE/);
@@ -47,6 +49,12 @@ export async function checkFraudInspection(browser, base) {
     await page.locator('#fraud-reader-next').click();
     assert.equal(await page.locator('#fraud-document-dialog-view h3').textContent(), 'Printed check number');
     await page.locator('#close-fraud-document-dialog').click();
+    await page.locator('#fraud-document-grid [data-fraud-id-switch="maker-id"]').click();
+    assert.equal(await page.locator('#fraud-document-grid [data-fraud-card="payee-id"]').isVisible(), false);
+    assert.equal(await page.locator('#fraud-document-grid [data-fraud-card="maker-id"]').isVisible(), true);
+    await page.locator('#fraud-document-grid [data-fraud-id-switch="maker-id"]').press('ArrowLeft');
+    assert.equal(await page.locator('#fraud-document-grid [data-fraud-card="payee-id"]').isVisible(), true);
+    await page.locator('#fraud-document-grid [data-fraud-id-switch="maker-id"]').click();
     await page.locator('[data-fraud-document-action="enlarge"][data-fraud-document="maker-id"]').click();
     assert.equal(await page.locator('#fraud-document-dialog-heading').textContent(), 'Payer / maker identification');
     assert.equal(await page.locator('#fraud-document-dialog-view [data-region="maker-id-signature"]').count(), 1);
@@ -69,12 +77,13 @@ export async function checkFraudInspection(browser, base) {
     for (const [width, height] of [[1920, 1080], [2560, 1440]]) {
       await page.setViewportSize({ width, height });
       const bottom = await page.locator('#fraud-document-grid').evaluate(grid => grid.getBoundingClientRect().bottom);
-      assert.ok(bottom <= height, `check and both identities fit together at ${width}×${height}: ${bottom}`);
+      assert.ok(bottom <= height, `full check and selected identity fit together at ${width}×${height}: ${bottom}`);
       assert.equal(await page.locator('.fraud-profile-icon').count(), 2);
       assert.ok(await page.locator('.fraud-readable-details dd').evaluateAll(fields => fields.every(field => parseFloat(getComputedStyle(field).fontSize) >= 16)));
       await page.screenshot({ path: (process.env.TEMP || '/tmp') + `/fraud-inspection-${width}.png`, fullPage: true });
     }
     await page.setViewportSize({ width: 1280, height: 1000 });
+    await page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; });
     assert.ok(await page.locator('#fraud-document-grid [data-fraud-card="check"] .fraud-doc-viewport').evaluate((viewport) => viewport.scrollHeight <= viewport.clientHeight + 1), 'full check and payee endorsement are visible without vertical scrolling inside the card');
     await page.screenshot({ path: (process.env.TEMP || '/tmp') + '/fraud-inspection-desktop.png', fullPage: true });
 

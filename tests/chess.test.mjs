@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ChessSession, normalizeSettings, gameEnding } from '../chess-core.mjs';
-import { summarizeChess, classifyLoss, filterChessGames, chessChartSpecs } from '../chess-analytics.mjs';
+import { summarizeChess, classifyLoss, filterChessGames, chessChartSpecs, chessCsv } from '../chess-analytics.mjs';
 import { CHESS_LESSONS } from '../chess-lessons.mjs';
 import { Chess } from '../assets/chess/chess.mjs';
 import { ChessStore } from '../chess-storage.mjs';
@@ -63,14 +63,27 @@ test('castling, en passant, promotion, mate, stalemate, draw and repetition work
   assert.equal(repetition.result.reason, 'Threefold repetition');
   assert.equal(gameEnding(new Chess('7k/8/8/8/8/8/8/R6K w - - 100 51')).reason, 'Fifty-move rule');
 });
-test('all 24 lessons contain legal guided exercises', () => {
-  assert.equal(CHESS_LESSONS.length, 24);
-  assert.equal(new Set(CHESS_LESSONS.map(l => l.id)).size, 24);
+test('all 44 lessons contain legal guided exercises', () => {
+  assert.equal(CHESS_LESSONS.length, 44);
+  assert.equal(new Set(CHESS_LESSONS.map(l => l.id)).size, 44);
   for (const lesson of CHESS_LESSONS) {
     const board = new Chess(lesson.fen);
     assert.ok(lesson.steps.length > 0, lesson.title);
     for (const step of lesson.steps) assert.ok(board.move(step.move), `${lesson.title}: ${step.move}`);
   }
+});
+test('custom skill levels persist and legacy presets still resolve correctly', () => {
+  assert.equal(normalizeSettings({ difficulty: 'Hard' }).skillLevel, 20);
+  assert.equal(normalizeSettings({ difficulty: 'Medium', skillLevel: '7' }).skillLevel, 7);
+  for (const skillLevel of [-1, 21, 1.5, 'invalid']) assert.throws(() => normalizeSettings({ skillLevel }));
+  const game = new ChessSession({ difficulty: 'Easy', skillLevel: 8 }, { now: 0 });
+  assert.equal(ChessSession.restore(game.snapshot(0)).settings.skillLevel, 8);
+  assert.match(game.pgn(), /\[BotSkillLevel "8"\]/);
+  const [header, row] = chessCsv([game.snapshot(0)]).split('\r\n');
+  assert.ok(header.endsWith('"skillLevel"')); assert.ok(row.endsWith('"8"'));
+  const legacy = game.snapshot(0); delete legacy.settings.skillLevel;
+  assert.equal(ChessSession.restore(legacy).settings.skillLevel, 3);
+  assert.ok(chessCsv([legacy]).split('\r\n')[1].endsWith('"3"'));
 });
 test('analytics keep unknown evaluations unknown and separate resumed/assisted games', () => {
   assert.equal(classifyLoss(50), 'Inaccuracy'); assert.equal(classifyLoss(100), 'Mistake');

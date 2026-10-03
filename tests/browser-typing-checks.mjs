@@ -10,6 +10,7 @@ export async function checkTyping(browser, base) {
   const setup = async (level = 'Easy', mode = 'words') => {
     await page.goto(base); await page.locator('input[name="game"][value="typing"]').check();
     await page.locator(`input[name="difficulty"][value="${level}"]`).check();
+    assert.equal(await page.locator('#typing-mode option[value=phrases]').count(), 0);
     await page.locator('#typing-mode').selectOption(mode); await page.locator('#typing-characters').fill('12');
     await page.locator('#typing-rounds').fill('1');
   };
@@ -18,18 +19,19 @@ export async function checkTyping(browser, base) {
     // Preserve another game's existing history while appending typing results.
     await page.goto(base);
     await page.evaluate(() => localStorage.setItem('cash-handling-terminal-quiz-history-v1', JSON.stringify([{ game: 'cash', gameType: 'Cash handling', timestamp: new Date().toISOString(), outcome: 'Correct', difficulty: 'Easy', timeUsedSeconds: 5, expectedAnswer: 'Exact amount', userAnswer: 'Exact', sessionId: 'existing-cash', questionNumber: 1 }])));
-    for (const [level, mode] of [['Easy', 'words'], ['Medium', 'phrases'], ['Hard', 'random']]) {
+    for (const [level, mode] of [['Easy', 'words'], ['Medium', 'words'], ['Hard', 'random']]) {
       await setup(level, mode); await start();
       assert.equal((await history()).at(-1).outcome, 'Not answered');
       assert.equal(await page.locator('#open-history').isDisabled(), true);
-      const prompt = await page.locator('#typing-prompt').textContent(); assert.equal(prompt.length, 12);
-      await page.locator('#typing-begin').click();
+      const prompt = await page.locator('#typing-prompt').textContent(); if (mode === 'random') assert.equal(prompt.length, 12); else assert.ok(prompt.length <= 12 && !prompt.endsWith(' '));
+      await page.keyboard.press('Enter');
+      assert.equal(await page.locator('#typing-answer').isDisabled(), false);
       await page.locator('#typing-answer').pressSequentially(prompt, { delay: 15 });
       await page.locator('#typing-answer').press('Enter');
       await page.locator('#feedback-screen').waitFor();
       assert.match(await page.locator('#feedback-lead').textContent(), /100%/);
       await page.locator('#next-question').click(); await page.locator('#summary-screen').waitFor();
-      const row = (await history()).at(-1); assert.equal(row.outcome, 'Correct'); assert.equal(row.typingMode, mode); assert.ok(row.wpm > 0);
+      const row = (await history()).at(-1); assert.equal(row.outcome, 'Correct'); assert.equal(row.typingMode, mode); assert.equal(row.typingCharacters, prompt.length); assert.ok(row.wpm > 0);
     }
     assert.equal((await history())[0].sessionId, 'existing-cash');
     // Incorrect, partial timeout, and hidden-prompt preview all persist actual text.

@@ -432,7 +432,7 @@ input:disabled { background: var(--disabled-surface); color: var(--muted); }
 .error-detection-detail[aria-pressed="true"] .puzzle-route-ring { stroke: rgb(255 255 255 / 42%); }
 .error-detection-detail[aria-pressed="true"] .puzzle-route-active { stroke: #fff; }
 
-.task-briefing-screen { max-width: 52rem; margin: 0 auto; }
+.task-briefing-screen { max-width: 70rem; margin: 0 auto; }
 .task-instruction-list { display: grid; gap: 0.75rem; margin: 1.5rem 0; padding-left: 1.5rem; }
 .task-instruction-list li { padding: 0.75rem; border-left: 0.25rem solid var(--accent); background: var(--surface-quiet); }
 .task-workspace-title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
@@ -748,7 +748,7 @@ body:has(#fraud-inspection-screen:not([hidden])) .app-shell { padding-top: 0.5re
 .fraud-transaction-strip > div { min-width: 0; display: grid; gap: 0.125rem; padding: 0.65rem 0.75rem; border: 0.0625rem solid var(--line); border-radius: 0.25rem; background: var(--surface-quiet); }
 .fraud-transaction-strip strong { color: var(--muted); font-size: 0.7rem; letter-spacing: 0.055em; text-transform: uppercase; }
 .fraud-transaction-strip span { overflow-wrap: anywhere; font-size: 0.875rem; font-weight: 700; font-variant-numeric: tabular-nums; }
-.fraud-document-grid, .fraud-feedback-documents { display: grid; grid-template-columns: minmax(0, 1.6fr) repeat(2, minmax(0, 1fr)); align-items: start; gap: 0.65rem; }
+.fraud-document-grid, .fraud-feedback-documents { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 0.85rem; }
 .fraud-document-card[data-fraud-card="check"] { min-width: 0; }
 .fraud-document-card[data-fraud-card="check"] .fraud-doc-viewport { max-height: none; }
 .fraud-document-card { min-width: 0; padding: 0.85rem; border: 0.0625rem solid var(--line); border-radius: var(--radius); background: var(--surface-quiet); }
@@ -759,7 +759,7 @@ body:has(#fraud-inspection-screen:not([hidden])) .app-shell { padding-top: 0.5re
 .fraud-doc-viewport { max-height: none; }
 .fraud-doc-stage { width: 100%; min-width: 0; }
 .fraud-document-svg { display: block; width: 100%; height: auto; }
-.fraud-doc-stage .fraud-document-svg { max-height: 40dvh; }
+.fraud-doc-stage .fraud-document-svg { max-height: none; }
 .fraud-field-bg { transition: fill 120ms ease; }
 .fraud-marked .fraud-field-bg { fill: #ffedbd; fill-opacity: 0.88; stroke: #a22c20; stroke-width: 3; stroke-dasharray: 7 4; }
 .fraud-signature { overflow: visible; }
@@ -856,10 +856,51 @@ html:has(#fraud-document-dialog[open]), body:has(#fraud-document-dialog[open]) {
   word-break: break-word;
   max-width: 100%;
 }
+
+/* Focused chess arena: the board stays in view while tools scroll beside it. */
+body.chess-arena { overflow: hidden; }
+body.chess-arena .app-shell > :not(#chess-screen) { visibility: hidden; }
+body.chess-arena #chess-screen {
+  position: fixed; inset: 0; z-index: 100; margin: 0; border: 0;
+  padding: 1rem 1.5rem; width: 100%; height: 100dvh; max-width: none;
+  overflow: auto; background: var(--canvas); color: var(--ink); border-radius: 0;
+}
+#chess-screen:fullscreen { background: var(--canvas); overflow: auto; }
+.chess-arena .screen-title-row { margin-bottom: 0.5rem; }
+.chess-arena #chess-heading { font-size: 1.5rem; margin: 0; }
+.chess-arena #chess-fullscreen-note { margin: 0.25rem 0; }
+.chess-arena #chess-status { padding: 0.5rem 0.75rem; background: var(--surface-quiet); border-left: 3px solid var(--brand); }
+.chess-arena .chess-layout { grid-template-columns: minmax(0, 1fr) minmax(12rem, 16rem); max-width: 100rem; margin-inline: auto; gap: 1.5rem; }
+.chess-arena .chess-board-column { display: flex; flex-direction: column; align-items: center; }
+.chess-arena .chess-board { width: min(100%, max(16rem, calc(100dvh - 16rem)) ); max-width: 70rem; box-shadow: var(--shadow); }
+.chess-arena .chess-clocks { width: min(100%, max(16rem, calc(100dvh - 16rem))); max-width: 70rem; }
+.chess-arena .chess-clocks > div { border-top: 3px solid var(--line); font-size: 1rem; }
+.chess-arena .chess-clocks > .active-clock { border-top-color: var(--brand); background: var(--surface); }
+.chess-clocks > .low-clock { color: var(--danger); border-color: var(--danger); font-weight: 700; }
+.chess-arena .chess-sidebar { max-height: calc(100dvh - 13rem); overflow-y: auto; padding-right: 0.25rem; }
+.chess-arena .chess-piece { font-size: clamp(1.5rem, min(6vw, 7dvh), 4.5rem); }
+#chess-level { width: 100%; accent-color: var(--brand); }
+#chess-demo-next, #chess-practice { white-space: normal; }
+@media (max-width: 760px) {
+  body.chess-arena #chess-screen { padding: 0.75rem; }
+  .chess-arena .chess-layout { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+  .chess-arena .chess-sidebar { max-height: none; overflow: visible; }
+  .chess-arena .chess-board, .chess-arena .chess-clocks { width: 100%; max-width: 34rem; }
+  .chess-arena .chess-clocks > div { font-size: 0.8rem; padding: 0.5rem; }
+  .chess-arena .chess-piece { font-size: clamp(1.5rem, 8vw, 3rem); }
+}
+
+.chess-arena .chess-toolbar { gap: 0.5rem; }
+@media (max-width: 36rem) {
+  .chess-arena .screen-title-row { flex-direction: row; align-items: center; gap: 0.25rem; }
+  .chess-arena .screen-title-row .eyebrow { display: none; }
+  .chess-arena #chess-back { font-size: 0.8rem; padding: 0.5rem; }
+  .chess-arena .chess-toolbar { gap: 0.25rem; }
+  .chess-arena .chess-toolbar button { padding: 0.5rem 0.625rem; font-size: 0.875rem; min-height: 44px; }
+}
 .typing-prompt { padding: 1rem; border: 1px solid var(--line); border-radius: .5rem; max-height: 18rem; overflow-y: auto; }
 .typing-answer { width: 100%; resize: vertical; min-height: 8rem; padding: .75rem; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: .5rem; }
 #typing-history-rows td:nth-last-child(-n+2) { font-family: var(--typing-font); white-space: pre-wrap; overflow-wrap: anywhere; min-width: 10rem; }
-
 /* Readable inspection facts complement the original document and handwriting. */
 .fraud-readable-details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem .8rem; margin: .75rem 0 0; }
 .fraud-readable-details > div { min-width: 0; }
@@ -881,5 +922,40 @@ html:has(#fraud-document-dialog[open]), body:has(#fraud-document-dialog[open]) {
   .fraud-inspection-screen .fraud-policy-note { margin: .5rem 0; padding: .5rem .75rem; }
   .fraud-inspection-screen .fraud-transaction-strip { margin: .5rem 0; }
   .fraud-document-card[data-fraud-card="check"] .fraud-readable-details { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .fraud-doc-stage .fraud-document-svg { max-height: 32dvh; }
+  .fraud-doc-stage .fraud-document-svg { max-height: none; }
+}
+
+/* Keep the full check beside one large identity document. */
+.fraud-id-viewer { min-width: 0; }
+.fraud-document-card[data-fraud-card="check"] .fraud-doc-stage { width: min(100%, max(20rem, calc((100dvh - 31rem) * 1.246))); margin-inline: auto; }
+.fraud-id-switches { display: flex; gap: .5rem; margin-bottom: .5rem; }
+.fraud-id-switches button { flex: 1; }
+.fraud-id-switches [aria-pressed="true"] { background: var(--brand-fill); color: #fff; }
+.fraud-document-grid > .fraud-document-card[data-fraud-card="check"] { grid-column: auto; grid-row: auto; }
+.fraud-secondary-details { margin-top: .75rem; }
+.fraud-secondary-details summary { cursor: pointer; color: var(--muted); }
+.chess-arena .chess-sidebar .visual-card { padding: .75rem; margin-bottom: .75rem; }
+.chess-arena .chess-sidebar h3 { font-size: 1rem; margin: 0 0 .5rem; }
+.chess-arena .chess-sidebar p { margin: .5rem 0; }
+.chess-arena .chess-board-column > .visual-card { width: 100%; margin-top: .5rem; padding: .5rem .75rem; }
+.chess-arena .chess-board-column > .visual-card h3 { font-size: 1rem; margin: 0 0 .5rem; }
+.chess-arena .chess-moves { max-height: 7rem; overflow-y: auto; }
+@media (min-width: 1100px) {
+  .chess-arena .chess-layout { margin-top: .5rem; gap: 1rem; }
+  .chess-arena .chess-toolbar { position: absolute; top: 1rem; right: 16rem; margin: 0; }
+  .chess-arena .chess-toolbar button { padding: .4rem .6rem; min-height: 2.5rem; }
+}
+@media (max-width: 760px) {
+  .fraud-document-grid, .fraud-feedback-documents { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (min-width: 1100px) {
+  .chess-arena .screen-title-row .eyebrow { display: none; }
+  .chess-arena .screen-title-row { min-height: 2.75rem; }
+  .chess-arena #chess-status { margin: .5rem 0; padding: .375rem .75rem; }
+  .chess-arena .chess-clocks > div { padding: .5rem .75rem; }
+  .chess-arena .chess-board, .chess-arena .chess-clocks { width: min(100%, max(16rem, calc(100dvh - 12rem))); }
+}
+@media (min-width: 761px) {
+  .chess-arena .chess-board, .chess-arena .chess-clocks { width: min(100%, var(--chess-board-size, calc(100dvh - 20rem))); }
 }

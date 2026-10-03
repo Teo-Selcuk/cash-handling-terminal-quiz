@@ -11,16 +11,27 @@ test('typing overrides validate limits and presets increase the challenge', () =
     assert.throws(() => resolveTypingSettings('Easy', overrides));
   }
 });
-test('prompts have exact character counts across difficulty and content modes', () => {
-  for (const difficulty of ['Easy', 'Medium', 'Hard']) for (const mode of ['words', 'phrases', 'random']) {
+test('word prompts finish whole words and random prompts have exact character counts', () => {
+  for (const difficulty of ['Easy', 'Medium', 'Hard']) for (const mode of ['words', 'random']) {
     for (const characters of [1, 7, 40, 500]) {
       const settings = resolveTypingSettings(difficulty, { mode, characters });
       const prompt = createTypingPrompt(settings, () => 0.95);
-      assert.equal(prompt.length, characters);
+      if (mode === 'random') assert.equal(prompt.length, characters);
+      else {
+        const word = { Easy: 'music', Medium: 'complete', Hard: 'juxtaposition' }[difficulty];
+        assert.ok(prompt.split(' ').every(token => token === word));
+        assert.ok(prompt.length <= characters || prompt === word);
+      }
       assert.ok(!prompt.endsWith(' '));
       if (mode === 'random' && difficulty === 'Hard') assert.match(prompt, /[^a-z]/);
     }
   }
+});
+
+test('legacy phrases presets migrate to words without losing their limits', () => {
+  const settings = resolveTypingSettings('Medium', { mode: 'phrases', characters: 31 });
+  assert.equal(settings.mode, 'words');
+  assert.equal(settings.characters, 31);
 });
 test('case, spaces, punctuation, omissions and extra characters count', () => {
   assert.equal(scoreTyping('Hi !', 'Hi !', 2).correct, true);

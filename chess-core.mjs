@@ -19,7 +19,8 @@ export function validateSavedGame(record) {
 export function normalizeSettings(input = {}) {
   const settings = { difficulty: 'Easy', color: 'w', timeControl: 'untimed', minutes: 5, increment: 0, secondsPerMove: 30, coaching: false, ...input };
   if (!Object.hasOwn(DIFFICULTIES, settings.difficulty) || !['w', 'b', 'random'].includes(settings.color) || !['untimed', 'clock', 'move'].includes(settings.timeControl)) throw new Error('Choose valid chess settings.');
-  for (const [key, min, max] of [['minutes', 1, 60], ['increment', 0, 30], ['secondsPerMove', 1, 300]]) {
+  settings.skillLevel ??= DIFFICULTIES[settings.difficulty];
+  for (const [key, min, max] of [['skillLevel', 0, 20], ['minutes', 1, 60], ['increment', 0, 30], ['secondsPerMove', 1, 300]]) {
     settings[key] = Number(settings[key]);
     if (!Number.isInteger(settings[key]) || settings[key] < min || settings[key] > max) throw new Error(`${key} must be a whole number from ${min} to ${max}.`);
   }
@@ -124,6 +125,7 @@ export class ChessSession {
   }
   pgn() {
     this.chess.setHeader('Event', 'Local chess practice', 'White', this.player === 'w' ? 'Player' : this.settings.difficulty + ' computer', 'Black', this.player === 'b' ? 'Player' : this.settings.difficulty + ' computer', 'Result', !this.result ? '*' : this.result.winner === 'w' ? '1-0' : this.result.winner === 'b' ? '0-1' : '1/2-1/2');
+    this.chess.setHeader('BotSkillLevel', String(this.settings.skillLevel));
     return this.chess.pgn();
   }
 }
