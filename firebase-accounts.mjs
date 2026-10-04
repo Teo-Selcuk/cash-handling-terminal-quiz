@@ -1,5 +1,6 @@
 import { AccountStorage, shouldReplace, SYNC_KEYS } from './account-data.mjs';
-import { firebaseConfig, authProviders } from './firebase-config.mjs';
+import { firebaseConfig } from './firebase-config.mjs';
+import { isApprovedUid } from './account-access.mjs';
 
 let sdk,auth,db,initialized=false,saving=false,retryTimer,loaded=false,unsubscribers=[];
 const $=id=>document.getElementById('account-'+id);
@@ -10,6 +11,9 @@ function status(text){$('status').textContent=text;}
 function humanError(error){
   const messages={
     'auth/invalid-credential':'Email or password is incorrect.', 'auth/invalid-email':'Enter a valid email address.',
+    'auth/account-not-approved':'This account does not have permission to sign in. Use the account approved by the site owner.',
+    'auth/admin-restricted-operation':'Public sign-up is closed. Accounts must be provided by the site owner.',
+    'auth/user-disabled':'This account does not have permission to sign in. Contact the site owner.',
     'auth/email-already-in-use':'An account already uses that email. Sign in instead.',
     'auth/weak-password':'Choose a stronger password with at least six characters.',
     'auth/too-many-requests':'Too many attempts. Wait a little before trying again.',
@@ -66,15 +70,17 @@ function subscribe(uid){
   }
 }
 async function action(operation){
-  $('error').textContent='';$('form').inert=true;status('Signing in…');
+  $('error').textContent='';$('form').inert=true;$('form').setAttribute('aria-busy','true');$('submit').textContent='Signing in…';status('Signing in…');
   try{await operation();}catch(error){$('error').textContent=humanError(error);status('Sign-in failed');}
-  finally{$('form').inert=false;$('password').value='';}
+  finally{$('form').inert=false;$('form').removeAttribute('aria-busy');$('submit').textContent='Sign in';$('password').value='';}
 }
 export async function initializeAccounts(){
-  $('form').addEventListener('submit',event=>{event.preventDefault();if(!auth)return;void action(()=>sdk.signInWithEmailAndPassword(auth,$('email').value.trim(),$('password').value));});
-  $('signup').addEventListener('click',()=>{if(!auth||!$('form').reportValidity())return;void action(()=>sdk.createUserWithEmailAndPassword(auth,$('email').value.trim(),$('password').value));});
-  $('google').hidden=!authProviders.google;
-  $('google').addEventListener('click',()=>void action(()=>sdk.signInWithPopup(auth,new sdk.GoogleAuthProvider())));
+  $('form').addEventListener('submit',event=>{event.preventDefault();if(!auth)return;void action(async()=>{
+    await sdk.setPersistence(auth,$('remember').checked?sdk.browserLocalPersistence:sdk.browserSessionPersistence);
+    const credential=await sdk.signInWithEmailAndPassword(auth,$('email').value.trim(),$('password').value);
+    if(!isApprovedUid(credential.user.uid)){await sdk.signOut(auth);throw {code:'auth/account-not-approved'};}
+  });});
+  $('show-password').addEventListener('click',()=>{const show=$('password').type==='password';$('password').type=show?'text':'password';$('show-password').textContent=show?'Hide':'Show';$('show-password').setAttribute('aria-pressed',String(show));$('show-password').setAttribute('aria-label',show?'Hide password':'Show password');});
   $('signout').addEventListener('click',()=>void action(()=>sdk.signOut(auth)));
   $('import').addEventListener('click',()=>{try{accountStorage.migrateGuest();$('import').hidden=true;status('Syncing imported device history…');}catch(error){$('error').textContent=error.message;}});
   $('retry').addEventListener('click',()=>{if(db){$('error').textContent='';void flush();}else location.reload();});
@@ -91,13 +97,17 @@ export async function initializeAccounts(){
     sdk=Object.assign({},...modules);const app=sdk.initializeApp(firebaseConfig);auth=sdk.getAuth(app);
     db=sdk.initializeFirestore(app,{localCache:sdk.persistentLocalCache({tabManager:sdk.persistentMultipleTabManager()})});
     await auth.authStateReady();
+    if(auth.currentUser&&!isApprovedUid(auth.currentUser.uid))await sdk.signOut(auth);
     accountStorage.activate(auth.currentUser?.uid??null);
     $('form').hidden=Boolean(auth.currentUser);$('signout').hidden=!auth.currentUser;
     $('user').textContent=auth.currentUser?.email??'Guest · saved on this device';
     $('form').inert=false;
     if(auth.currentUser){status('Loading account…');$('import').hidden=!accountStorage.guestDataAvailable();$('import').disabled=true;subscribe(auth.currentUser.uid);void flush();}
     else status('Sign in to sync across devices');
-    sdk.onAuthStateChanged(auth,user=>{if(initialized&&(user?.uid??null)!==accountStorage.uid){unsubscribers.forEach(stop=>stop());clearTimeout(retryTimer);location.reload();}});
+    sdk.onAuthStateChanged(auth,user=>{
+      if(user&&!isApprovedUid(user.uid)){void sdk.signOut(auth);return;}
+      if(initialized&&(user?.uid??null)!==accountStorage.uid){unsubscribers.forEach(stop=>stop());clearTimeout(retryTimer);location.reload();}
+    });
     initialized=true;
   }catch(error){status('Accounts unavailable · device saves active');$('error').textContent=humanError(error);$('form').inert=true;}
 }

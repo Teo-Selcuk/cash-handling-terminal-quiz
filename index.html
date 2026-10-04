@@ -7,7 +7,7 @@
     <meta name="theme-color" content="#12343b">
     <title>Cash, Memory &amp; Detail Trainer</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="style.css?v=20261003-accounts">
+    <link rel="stylesheet" href="style.css?v=20261004-private">
   </head>
   <body>
     <main class="app-shell">
@@ -26,15 +26,17 @@
       <p class="screen-reader-only" id="message" role="status" aria-live="polite"></p>
 
       <details id="account-area" class="preset-editor account-area">
-        <summary>Account · <span id="account-user">Guest</span> <span id="account-status" role="status" aria-live="polite">Loading accounts…</span></summary>
-        <p>Sign in to save real game history and settings across devices. Sample Data stays separate. Guest history remains on this device until you import it.</p>
+        <summary>Private account · <span id="account-user">Guest</span> <span id="account-status" role="status" aria-live="polite">Loading accounts…</span></summary>
+        <div class="account-intro"><div><p class="eyebrow">Access by permission</p><h2>Welcome back</h2><p>Sign in with your approved account to unlock Check &amp; ID Fraud Inspection and keep your progress across browsers.</p></div><span class="account-badge">One approved account</span></div>
         <form id="account-form" inert>
           <div class="form-grid">
-            <label>Email<input id="account-email" type="email" autocomplete="username" required></label>
-            <label>Password<input id="account-password" type="password" autocomplete="current-password" minlength="6" required></label>
+            <label>Email / username<input id="account-email" type="email" autocomplete="username" inputmode="email" placeholder="Your approved email" required></label>
+            <label>Password<span class="account-password-field"><input id="account-password" type="password" autocomplete="current-password" required><button id="account-show-password" type="button" class="text-button" aria-pressed="false" aria-label="Show password">Show</button></span></label>
           </div>
-          <div class="action-row"><button type="submit" class="primary-button">Sign in</button><button id="account-signup" type="button" class="secondary-button">Sign up</button><button id="account-google" type="button" class="secondary-button" hidden>Continue with Google</button></div>
+          <label class="account-remember"><input id="account-remember" type="checkbox" checked>Keep me signed in on this device</label>
+          <div class="action-row"><button id="account-submit" type="submit" class="primary-button">Sign in</button><span class="account-permission-note">Accounts are provided by the site owner. Public sign-up is closed.</span></div>
         </form>
+        <p class="account-guest-note">Here as a guest? Every other game is available. Guest history stays in this browser; signing in brings back the approved account’s synchronized history.</p>
         <div class="action-row"><button id="account-signout" type="button" class="secondary-button" hidden>Sign out</button><button id="account-import" type="button" class="secondary-button" hidden disabled>Import existing device history &amp; settings</button><button id="account-retry" type="button" class="text-button">Retry connection</button></div>
         <p id="account-error" role="alert"></p>
       </details>
@@ -68,6 +70,8 @@
               <label class="choice-card"><input type="radio" name="game" value="chess"><span><strong>Chess</strong><small>Play the computer, practice openings and tactics, and review your moves.</small></span></label>
             </div>
           </fieldset>
+
+          <p id="fraud-access-note" class="game-access-note" hidden><strong>Check &amp; ID Fraud Inspection is locked.</strong> Sign in with the approved account to play. <button id="fraud-signin" type="button" class="text-button">Open sign-in</button></p>
 
           <fieldset>
             <legend>Difficulty</legend>
@@ -890,6 +894,6 @@
     </dialog>
 
     <footer>Browser edition. The original PowerShell quiz remains in this repository.</footer>
-    <script type="module" src="app.js?v=20261003-accounts"></script>
+    <script type="module" src="app.js?v=20261004-private"></script>
   </body>
 </html>

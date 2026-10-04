@@ -1,8 +1,8 @@
 # Accounts and device synchronization
 
-This static GitHub Pages app uses the existing `cash-handling-quiz` Firebase web app and its Standard edition `(default)` Firestore database. Email/password is enabled and verified; Google is disabled and its button is hidden. Public web identifiers are in `firebase-config.mjs`. No administrator credentials belong in this repository.
+This static GitHub Pages app uses the existing `cash-handling-quiz` Firebase web app and its Standard edition `(default)` Firestore database. Email/password is enabled. Public signup is disabled at the backend through `client.permissions.disabledUserSignup`. Only the administrator-created UID in `account-access.mjs` may sign in to the site or use Firestore. Public web identifiers are in `firebase-config.mjs`; passwords and administrator credentials never belong in the repository.
 
-Open Account to sign up, sign in or sign out. Each account has its own device cache. Signing out restores the original guest data. On account changes the page reloads to clear in-memory gameplay and settings from the previous identity. The initial setup remains inactive until account initialization finishes; if the SDK cannot load, guest gameplay remains available with an account error and Retry connection.
+Open Private account to sign in or sign out. Password visibility and optional device persistence are available. The approved account has its own device cache. Signing out restores the original guest data. On account changes the page reloads to clear in-memory gameplay and settings from the previous identity. The initial setup remains inactive until account initialization finishes; if the SDK cannot load, guest gameplay remains available with an account error and Retry connection.
 
 An explicit Import existing device history & settings button appears after initial server loading when guest data has not yet been imported. It preserves original timestamps, raw answers and fields, retains the guest copy, filters Sample Data, and skips records/settings already present in the account. Stable IDs and a per-account import fingerprint prevent duplicate imports. If additional guest gameplay is created later, importing can be offered again.
 
@@ -12,7 +12,9 @@ Documents contain a versioned envelope with the source key, JSON payload, device
 
 Gameplay writes synchronously to an account-specific local cache, then queues background transactions. Pending writes survive reloads. Offline writes remain in the queue until reconnection; transient failures retry and remain visible as Sync error. Firestore also uses IndexedDB persistence with multiple-tab support where the browser supports it. This is temporary offline operation of an already loaded app; the site does not install an offline application service worker. Each payload is limited to 900 KB by the rules; oversized evidence remains locally preserved with a sync error rather than being silently truncated.
 
-Rules deny all paths except owner-only history/settings documents and validate their envelopes. Clients use tombstones and cannot physically delete documents. Change provider flags only after checking the backend; authorized Google OAuth domains must be configured before enabling that button.
+Rules deny all paths except the single approved UID's owner-only history/settings documents and validate their envelopes. Clients use tombstones and cannot physically delete documents. Adding another approved account requires an intentional policy and rules update.
+
+Check & ID Fraud Inspection is disabled for guests, with a sign-in link and guards for starting games, practice recommendations and subsequent cases. All other games remain available to guests, whose history stays browser-specific. GitHub Pages and the public repository expose game code: this is website access control, not secrecy or an unbypassable protection for client-side game logic. Saved account data is protected by server-enforced rules.
 
 Verification:
 
@@ -22,6 +24,6 @@ $env:QUIZ_FOCUSED = 'firebase'
 node tests/browser-smoke.mjs
 ```
 
-The Firebase browser suite deliberately uses the live project, creates temporary test accounts and real synthetic game attempts, and tests migration, two profiles, sign out/in, offline reconnection, concurrent attempts, Sample Data isolation, Hold responses, Multitasker, Chess and cross-account read/write denial. It writes only generated test UID/email metadata to ignored `.artifacts/firebase-test-users.json` for cleanup. It runs only when explicitly selected, never in ordinary CI. Supply Playwright through `NODE_PATH` when using the bundled runtime.
+The Firebase browser suite checks guest restrictions and live signup API denial. Set `QUIZ_EMULATORS=1` with local Auth (9309) and Firestore (9088) emulators for approved/unapproved login, Fraud gameplay, two profiles, offline recovery and rules checks. Approved gameplay tests use emulator credentials and data only; they never change the real owner's password or history. `QUIZ_FOCUSED=fraud` with those emulators runs detailed Fraud/Hold regressions. Supply Playwright through `NODE_PATH` when using the bundled runtime. Recheck live backend settings and the deployed guest interface after release.
 
 Deploy rules using `firebase deploy --only firestore:rules --project cash-handling-quiz`. Deploy website assets through the existing GitHub Pages workflow; it includes the new account modules. Check both local browser behavior and the deployed origin.

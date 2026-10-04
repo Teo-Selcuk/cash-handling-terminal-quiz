@@ -99,7 +99,7 @@ export async function checkFraudInspection(browser, base) {
     assert.equal(await page.locator('#feedback-heading').textContent(), 'Correct review');
     assert.match(await page.locator('#fraud-feedback-issues').textContent(), /Correct selection/);
     assert.ok(await page.locator('#fraud-feedback-documents .fraud-marked').count() >= 1, 'review feedback marks the actual issue after submission');
-    assert.ok(await page.evaluate(() => JSON.parse(localStorage.getItem('cash-handling-terminal-quiz-history-v1') || '[]')
+    assert.ok(await page.evaluate(async() => JSON.parse((await import('./firebase-accounts.mjs?v=20261004-private')).accountStorage.getItem('cash-handling-terminal-quiz-history-v1') || '[]')
       .some((record) => record.game === 'fraud-inspection' && record.fraudExpectedCategories?.includes('payee-mismatch'))));
 
     await page.locator('#next-question').click();

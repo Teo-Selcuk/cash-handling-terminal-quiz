@@ -1,86 +1,90 @@
 import assert from 'node:assert/strict';
-import { writeFile, readFile } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
+import { APPROVED_UID } from '../account-access.mjs';
+import { firebaseConfig } from '../firebase-config.mjs';
 import { answer } from './browser-history-checks.mjs';
-
-// Live only, explicitly selected with QUIZ_FOCUSED=firebase. Fresh test profiles.
-export async function checkFirebase(browser,base){
-  const contexts=[];const pages=[];const testUsers=[];const errors=[];
-  const password='T-'+crypto.randomUUID();
-  const historyKey='cash-handling-terminal-quiz-history-v1';
-  const rows=page=>page.evaluate(async key=>JSON.parse((await import('./firebase-accounts.mjs')).accountStorage.getItem(key)),historyKey);
-  const ready=page=>page.locator('#account-status').filter({hasText:/Sign in to sync|Saved/}).waitFor({timeout:60000});
-  const saved=page=>page.locator('#account-status').filter({hasText:/^Saved$/}).waitFor({timeout:60000});
-  async function profile(){const context=await browser.newContext();contexts.push(context);const page=await context.newPage();pages.push(page);page.on('pageerror',error=>errors.push(error.message));await page.goto(base);await ready(page);return page;}
-  async function login(page,email,signup=false){await page.locator('#account-area').evaluate(el=>el.open=true);await page.locator('#account-email').fill(email);await page.locator('#account-password').fill(password);await page.getByRole('button',{name:signup?'Sign up':'Sign in',exact:true}).click();await page.locator('#account-user').filter({hasText:email}).waitFor({timeout:60000});await saved(page);}
-  async function uid(page){return page.evaluate(async()=>(await import('./firebase-accounts.mjs')).accountStorage.uid);}
-  async function memory(page){if(await page.locator('#feedback-screen').isVisible())await page.locator('#next-question').click();if(await page.locator('#summary-screen').isVisible())await page.locator('#start-another').click();await page.locator('input[name="game"][value="memory"]').check();await page.locator('#memory-question-count').fill('1');await page.getByRole('button',{name:'Start quiz',exact:true}).click();await page.locator('#memory-read-screen').waitFor({state:'visible'});await answer(page,'memory');await page.locator('#feedback-screen').waitFor({state:'visible'});}
-  try{
-    const a=await profile();const emailA=`codex-sync-${crypto.randomUUID()}@example.com`;
-    const legacy={game:'memory',gameType:'Number memory',sessionId:'legacy-migration',questionNumber:1,timestamp:'2026-01-01T12:00:00Z',difficulty:'Easy',outcome:'Correct',timeUsedSeconds:2,expectedAnswer:'1234',userAnswer:'1234'};
-    await a.evaluate(({key,legacy})=>localStorage.setItem(key,JSON.stringify([legacy,{...legacy,isSample:true,sessionId:'sample-excluded'}])),{key:historyKey,legacy});
-    await login(a,emailA,true);testUsers.push({uid:await uid(a),email:emailA});
-    assert.deepEqual(await rows(a),[],'guest history is not silently assigned to an account');
-    await a.locator('#account-area').evaluate(el=>el.open=true);await a.locator('#account-import').click();await saved(a);
-    assert.deepEqual(await rows(a),[legacy]);
-    await memory(a);await saved(a);assert.equal((await rows(a)).length,2);
-    const b=await profile();await login(b,emailA);assert.equal((await rows(b)).length,2,'second device receives history');
-    await a.locator('#account-area').evaluate(el=>el.open=true);await a.locator('#account-signout').click();await ready(a);
-    assert.equal((await rows(a)).length,2,'guest original remains intact');await login(a,emailA);assert.equal((await rows(a)).length,2);
-    await b.locator('#open-history').click();const actual=await rows(b);
-    await b.locator('input[name="historyDataSource"][value="sample"]').check();assert.equal((await rows(b)).length,2);
-    await b.locator('input[name="historyDataSource"][value="real"]').check();assert.deepEqual(await rows(b),actual);
-    assert.ok(await b.locator('#history-rows tr').count()>=2);
-    // Begin while online, finish with networking disabled, then reconnect.
-    await a.context().setOffline(true);await memory(a);assert.equal((await rows(a)).length,3);assert.match(await a.locator('#account-status').textContent(),/Offline/);
-    await a.context().setOffline(false);await saved(a);await b.waitForFunction(async key=>JSON.parse((await import('./firebase-accounts.mjs')).accountStorage.getItem(key)).length===3,historyKey,{timeout:60000});
-    // Independent attempts made concurrently by two signed-in devices merge.
-    await b.goto(base);await saved(b);await Promise.all([memory(a),memory(b)]);await saved(a);await saved(b);
-    await a.waitForFunction(async key=>JSON.parse((await import('./firebase-accounts.mjs')).accountStorage.getItem(key)).length===5,historyKey,{timeout:60000});
-    await b.waitForFunction(async key=>JSON.parse((await import('./firebase-accounts.mjs')).accountStorage.getItem(key)).length===5,historyKey,{timeout:60000});
-    assert.equal(new Set((await rows(a)).map(r=>r.sessionId+':'+r.questionNumber)).size,5);
-    // Detailed Hold responses are real gameplay and retain every raw decision.
-    await a.goto(base);await saved(a);await a.locator('input[name="game"][value="fraud-inspection"]').check();await a.locator('#fraud-use-holds').check();await a.getByRole('button',{name:'Start quiz',exact:true}).click();await a.locator('#hold-decision-area').waitFor({state:'visible'});
-    const checkpoint=(await rows(a)).findLast(r=>r.game==='fraud-inspection'),expected=checkpoint.holdExpected;
-    for(const id of checkpoint.fraudExpectedCategories)await a.locator(`[data-issue-id="${id}"]`).click();if(!checkpoint.fraudExpectedCategories.length)await a.locator('[data-issue-id="no-issues"]').click();
-    for(const [key,value] of Object.entries({itemType:expected.itemType,classification:expected.classification,action:expected.action,holdType:expected.holdType,availability:expected.availability.length?expected.availability.map(t=>t.day).join('/'):'na',notice:expected.notice?'given':'not-required'}))await a.locator('#hold-'+key).selectOption(value);
-    await a.locator('.hold-step-details summary').click();for(const step of expected.workflow)await a.locator(`#hold-decision-area input[value="${step}"]`).check();if(expected.workflow.includes('verification-note'))await a.locator('#hold-note').fill('Customer verified + 2026-10-03 + 14:35');await a.locator('#submit-fraud-inspection').click();await saved(a);
-    await b.waitForFunction(async key=>JSON.parse((await import('./firebase-accounts.mjs')).accountStorage.getItem(key)).some(r=>r.game==='fraud-inspection'&&r.outcome==='Correct'),historyKey,{timeout:60000});
-    // Multitasker settings and results.
-    await a.goto(base);await saved(a);await a.locator('input[name="game"][value="overload"]').check();await a.locator('#overload-mode').selectOption('practice');await a.locator('#overload-startingTasks').fill('1');await a.locator('#overload-startingTasks').dispatchEvent('change');await a.getByRole('button',{name:'Start quiz',exact:true}).click();await a.locator('#overload-screen').waitFor({state:'visible'});await a.getByRole('button',{name:'End run',exact:true}).click();await saved(a);
-    await b.waitForFunction(async key=>JSON.parse((await import('./firebase-accounts.mjs')).accountStorage.getItem(key)).some(r=>r.game==='overload'&&r.outcome!=='Not answered'),historyKey,{timeout:60000});
-    // Chess settings and an actual game record use the same isolated cache.
-    await a.goto(base);await saved(a);await a.locator('input[name="game"][value="chess"]').check();await a.locator('#chess-setup-status').filter({hasText:'Computer ready'}).waitFor();await a.locator('#chess-difficulty').selectOption('Beginner');await a.getByRole('button',{name:'Start chess game',exact:true}).click();await a.locator('#chess-status').filter({hasText:'Your turn'}).waitFor();await a.locator('#chess-resign').click();await saved(a);
-    await b.waitForFunction(async()=>JSON.parse((await import('./firebase-accounts.mjs')).accountStorage.getItem('cash-handling-chess-games-v1')).value.length===1,null,{timeout:60000});
-    await b.goto(base);await saved(b);assert.equal(await b.locator('#chess-difficulty').inputValue(),'Beginner');
-    const c=await profile(),emailC=`codex-isolation-${crypto.randomUUID()}@example.com`;await login(c,emailC,true);testUsers.push({uid:await uid(c),email:emailC});assert.deepEqual(await rows(c),[]);
-    const denied=await c.evaluate(async target=>{const f=await import('https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js');const app=await import('https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js');const db=f.getFirestore(app.getApp());const ref=f.doc(db,'users',target,'settings','cross-account-probe');const result=[];for(const action of [()=>f.getDoc(ref),()=>f.setDoc(ref,{schema:1,key:'cash-handling-chess-settings-v1',payload:'null',deleted:false,modifiedAt:Date.now(),deviceId:'probe'})]){try{await action();result.push('allowed');}catch(error){result.push(error.code);}}return result;},testUsers[0].uid);
-    assert.deepEqual(denied,['permission-denied','permission-denied']);
-    const ownerRules=await c.evaluate(async()=>{
-      const f=await import('https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js');
-      const app=await import('https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js');
-      const auth=await import('https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js');
-      const db=f.getFirestore(app.getApp()),uid=auth.getAuth().currentUser.uid;
-      const ref=f.doc(db,'users',uid,'settings','owner-rules-probe');
-      const valid={schema:1,key:'cash-handling-chess-settings-v1',payload:'null',deleted:false,modifiedAt:Date.now(),deviceId:'probe'};
-      await f.setDoc(ref,valid);
-      const results=[];
-      for(const operation of [
-        ()=>f.setDoc(ref,{...valid,role:'admin'}),
-        ()=>f.setDoc(ref,{...valid,schema:2}),
-        ()=>f.setDoc(ref,{...valid,payload:[]}),
-        ()=>f.setDoc(ref,{...valid,payload:'x'.repeat(900001)}),
-        ()=>f.setDoc(ref,{...valid,key:'cash-handling-terminal-quiz-theme-v1'}),
-        ()=>f.setDoc(ref,{...valid,modifiedAt:valid.modifiedAt-1}),
-        ()=>f.setDoc(f.doc(db,'users',uid,'profile','unauthorized-path'),valid),
-        ()=>f.deleteDoc(ref),
-      ]){try{await operation();results.push('allowed');}catch(error){results.push(error.code);}}
-      return results;
+const email='approved@example.com';
+const password='Test-'+crypto.randomUUID();
+const historyKey='cash-handling-terminal-quiz-history-v1';
+const accountModule='./firebase-accounts.mjs?v=20261004-private';
+const sdkBase='https://www.gstatic.com/firebasejs/12.19.0/';
+const ready=page=>page.waitForFunction(()=>document.documentElement.dataset.appReady==='true');
+const saved=page=>page.locator('#account-status').filter({hasText:/^Saved$/}).waitFor({timeout:30000});
+async function seed(uid,userEmail){
+  const response=await fetch('http://127.0.0.1:9309/identitytoolkit.googleapis.com/v1/projects/cash-handling-quiz/accounts',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer owner'},body:JSON.stringify({localId:uid,email:userEmail,password})});
+  assert.ok(response.ok,'emulator account created');
+}
+export async function routeEmulators(context){
+  for(const kind of ['auth','firestore']){
+    await context.route(sdkBase+`firebase-${kind}.js`,route=>{
+      const original=sdkBase+`firebase-${kind}.js?original=1`;
+      const override=kind==='auth'
+        ? `export function getAuth(app){const value=real.getAuth(app);if(!connected.has(value)){real.connectAuthEmulator(value,'http://127.0.0.1:9309',{disableWarnings:true});connected.add(value);}return value;}`
+        : `export function initializeFirestore(app,options){const value=real.initializeFirestore(app,options);real.connectFirestoreEmulator(value,'127.0.0.1',9088);return value;}`;
+      return route.fulfill({contentType:'text/javascript',headers:{'Access-Control-Allow-Origin':'*'},body:`import * as real from '${original}';export * from '${original}';const connected=new WeakSet();${override}`});
     });
-    assert.deepEqual(ownerRules,Array(8).fill('permission-denied'),'owner writes obey schema, size, revision and path constraints');
-    await c.locator('#account-area').evaluate(el=>el.open=true);await c.locator('#account-signout').click();await ready(c);await c.locator('#account-area').evaluate(el=>el.open=true);await c.locator('#account-email').fill(emailC);await c.locator('#account-password').fill('incorrect-password');await c.getByRole('button',{name:'Sign in',exact:true}).click();await c.locator('#account-error').filter({hasText:'Email or password is incorrect'}).waitFor();
-    assert.deepEqual(errors,[]);console.log('LIVE Firebase passed: account creation, gameplay, migration, duplicate prevention, two devices, sign out/in, offline/reconnect, concurrent attempts, Sample isolation, Hold, Multitasker, Chess and owner-only rules.');
-  }finally{
-    let prior=[];try{prior=JSON.parse(await readFile('.artifacts/firebase-test-users.json','utf8'));}catch{}await writeFile('.artifacts/firebase-test-users.json',JSON.stringify([...prior,...testUsers]));
-    for(const context of contexts)await context.close();
   }
+}
+async function login(page,userEmail=email){
+  await page.locator('#account-area').evaluate(node=>node.open=true);
+  await page.locator('#account-email').fill(userEmail);
+  await page.locator('#account-password').fill(password);
+  await page.getByRole('button',{name:'Sign in',exact:true}).click();
+}
+export async function checkGuestAccess(browser,base){
+  const context=await browser.newContext();const page=await context.newPage();
+  try{
+    await page.goto(base);await ready(page);
+    assert.equal(await page.locator('#account-signup').count(),0);
+    const fraud=page.locator('input[name="game"][value="fraud-inspection"]');assert.equal(await fraud.isDisabled(),true);
+    for(const game of ['cash','memory','task','error-detection','typing','overload','chess'])assert.equal(await page.locator(`input[name="game"][value="${game}"]`).isEnabled(),true);
+    await page.locator('#fraud-signin').click();assert.equal(await page.locator('#account-area').evaluate(node=>node.open),true);
+    await page.locator('#account-password').fill('visibility-test');await page.locator('#account-show-password').click();assert.equal(await page.locator('#account-password').getAttribute('type'),'text');await page.locator('#account-show-password').click();assert.equal(await page.locator('#account-password').getAttribute('type'),'password');
+    for(const width of [320,768,1440]){await page.setViewportSize({width,height:900});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));}
+    await mkdir('.artifacts/invite-only',{recursive:true});await page.screenshot({path:'.artifacts/invite-only/signin-desktop.png',fullPage:true});
+    // A manipulated selection still cannot start the restricted game through the app.
+    await fraud.evaluate(node=>{node.disabled=false;node.checked=true;});await page.getByRole('button',{name:'Start quiz',exact:true}).click();assert.equal(await page.locator('#fraud-inspection-screen').isVisible(),false);assert.equal(await page.locator('#setup-screen').isVisible(),true);
+    await page.locator('input[name="game"][value="memory"]').check();await page.locator('#memory-question-count').fill('1');await page.getByRole('button',{name:'Start quiz',exact:true}).click();await answer(page,'memory');await page.locator('#feedback-screen').waitFor();
+    console.log('Guest checks passed: no signup, seven available games, Fraud lock and start guard, sign-in controls and responsive layout.');
+  }finally{await context.close();}
+}
+export async function withApprovedProfiles(browser,base,run){
+  assert.equal(process.env.QUIZ_EMULATORS,'1');
+  await fetch('http://127.0.0.1:9309/emulator/v1/projects/cash-handling-quiz/accounts',{method:'DELETE'});
+  await seed(APPROVED_UID,email);
+  const original=browser.newContext.bind(browser),initial=await original();await routeEmulators(initial);const page=await initial.newPage();await page.goto(base);await ready(page);await login(page);await saved(page);const storageState=await initial.storageState({indexedDB:true});await initial.close();
+  browser.newContext=async options=>{const context=await original({...options,storageState});await routeEmulators(context);return context;};
+  try{await run();}finally{browser.newContext=original;}
+}
+async function rulesChecks(){
+  const tokenFor=async userEmail=>{const response=await fetch('http://127.0.0.1:9309/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:userEmail,password,returnSecureToken:true})});return (await response.json()).idToken;};
+  const owner=await tokenFor(email),other=await tokenFor('unapproved@example.com');assert.ok(owner&&other);
+  const endpoint=uid=>`http://127.0.0.1:9088/v1/projects/cash-handling-quiz/databases/(default)/documents/users/${uid}/settings/rules-probe`;
+  const data={fields:{schema:{integerValue:'1'},key:{stringValue:'cash-handling-chess-settings-v1'},payload:{stringValue:'null'},deleted:{booleanValue:false},modifiedAt:{integerValue:'1'},deviceId:{stringValue:'probe'}}};
+  const write=await fetch(endpoint(APPROVED_UID),{method:'PATCH',headers:{Authorization:'Bearer '+owner,'Content-Type':'application/json'},body:JSON.stringify(data)});assert.equal(write.status,200,'approved owner write allowed');
+  for(const [uid,token] of [[APPROVED_UID,other],['unapproved-test',other],[APPROVED_UID,null]]){const read=await fetch(endpoint(uid),{headers:token?{Authorization:'Bearer '+token}:{}});assert.ok([401,403].includes(read.status),'non-approved/guest reads denied');}
+  const invalid={fields:{...data.fields,role:{stringValue:'admin'}}};const bad=await fetch(endpoint(APPROVED_UID),{method:'PATCH',headers:{Authorization:'Bearer '+owner,'Content-Type':'application/json'},body:JSON.stringify(invalid)});assert.equal(bad.status,403);
+}
+export async function checkFirebase(browser,base){
+  await checkGuestAccess(browser,base);
+  if(process.env.QUIZ_EMULATORS!=='1'){
+    const response=await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${firebaseConfig.apiKey}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:`codex-denied-${crypto.randomUUID()}@example.com`,password,returnSecureToken:true})});
+    const result=await response.json();
+    if(response.ok){await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:delete?key=${firebaseConfig.apiKey}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({idToken:result.idToken})});}
+    assert.equal(response.ok,false,'backend public signup denied');assert.match(result.error?.message??'',/ADMIN_ONLY_OPERATION|OPERATION_NOT_ALLOWED/);
+    console.log('LIVE Firebase signup API rejects account creation; guest site restrictions passed.');return;
+  }
+  await fetch('http://127.0.0.1:9309/emulator/v1/projects/cash-handling-quiz/accounts',{method:'DELETE'});
+  await seed(APPROVED_UID,email);await seed('unapproved-test','unapproved@example.com');await rulesChecks();
+  const contexts=[];const newProfile=async()=>{const context=await browser.newContext();contexts.push(context);await routeEmulators(context);const page=await context.newPage();await page.goto(base);await ready(page);return page;};
+  const rows=page=>page.evaluate(async({module,key})=>JSON.parse((await import(module)).accountStorage.getItem(key)),{module:accountModule,key:historyKey});
+  try{
+    const a=await newProfile();await login(a);await saved(a);assert.equal(await a.locator('input[name="game"][value="fraud-inspection"]').isEnabled(),true);
+    await a.locator('input[name="game"][value="fraud-inspection"]').check();await a.getByRole('button',{name:'Start quiz',exact:true}).click();await a.locator('#fraud-inspection-screen').waitFor();await a.locator('[data-issue-id="no-issues"]').click();await a.locator('#submit-fraud-inspection').click();await saved(a);
+    const b=await newProfile();await login(b);await saved(b);assert.deepEqual(await rows(b),await rows(a));
+    await a.goto(base);await ready(a);await saved(a);await a.context().setOffline(true);await a.locator('input[name="game"][value="memory"]').check();await a.locator('#memory-question-count').fill('1');await a.getByRole('button',{name:'Start quiz',exact:true}).click();await answer(a,'memory');await a.locator('#feedback-screen').waitFor();assert.match(await a.locator('#account-status').textContent(),/Offline/);await a.context().setOffline(false);await saved(a);await b.waitForFunction(async({module,key})=>JSON.parse((await import(module)).accountStorage.getItem(key)).length===2,{module:accountModule,key:historyKey});
+    await a.locator('#account-area').evaluate(node=>node.open=true);await a.locator('#account-signout').click();await ready(a);assert.equal(await a.locator('input[name="game"][value="fraud-inspection"]').isDisabled(),true);await login(a);await saved(a);assert.equal((await rows(a)).length,2);
+    const c=await newProfile();await login(c,'unapproved@example.com');await c.locator('#account-error').filter({hasText:'does not have permission'}).waitFor();assert.equal(await c.locator('input[name="game"][value="fraud-inspection"]').isDisabled(),true);assert.equal(await c.locator('#account-user').textContent(),'Guest · saved on this device');
+    console.log('Emulator Firebase passed: approved login, Fraud gameplay, two profiles, offline sync, sign out/in, rejected unapproved account and strict UID rules. No real owner data was changed.');
+  }finally{for(const context of contexts)await context.close();}
 }

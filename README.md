@@ -4,7 +4,7 @@ A Windows 11 PowerShell practice quiz for teller-style cash handling. It generat
 
 ## Main features
 
-The browser edition supports email/password accounts and secure cross-device history/settings sync through the existing Firebase project. Guest history can be imported without losing the original device copy. Sample Data remains isolated. See [account setup and sync](docs/firebase-accounts.md).
+The browser edition supports one administrator-approved email/password account and cross-device history/settings sync through the existing Firebase project. Public signup is closed. Guests can play every game except Check & ID Fraud Inspection. Guest history can be imported without losing the original device copy. Sample Data remains isolated. See [account setup and sync](docs/firebase-accounts.md).
 
 Cash handling offers **Guided practice** (customer dialogue, calculations, what to
 say, and cash guidance) and **Test my knowledge** (timed answers with feedback).

@@ -16,3 +16,8 @@ __pycache__/
 test-results/
 playwright-report/
 .artifacts/
+
+# Firebase emulator and CLI diagnostics
+firebase-debug.log
+firestore-debug.log
+ui-debug.log

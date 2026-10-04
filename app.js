@@ -1,4 +1,5 @@
-import { accountStorage as localStorage, initializeAccounts } from './firebase-accounts.mjs';
+import { accountStorage as localStorage, initializeAccounts } from './firebase-accounts.mjs?v=20261004-private';
+import { canPlayGame } from './account-access.mjs';
 import { enhanceHistoryTables } from './history-tables.mjs';
 import { createOverloadUI } from './overload-ui.mjs?v=20261003-accounts';
 import { summarizeOverload, overloadRecommendation } from './overload-analytics.mjs?v=20261003-accounts';
@@ -975,6 +976,7 @@ function renderActivePractice() {
 }
 
 function applyPracticePlan(plan) {
+  if (!requireGameAccess(plan.game)) return;
   resetDistractionAudioSetup();
   if (plan.game === 'overload') {
     document.querySelector('input[name="game"][value="overload"]').checked = true;
@@ -2564,6 +2566,7 @@ function submitFraudInspectionAttempt(timedOut = false) {
 }
 
 function showNextFraudInspectionCase() {
+  if (!requireGameAccess('fraud-inspection')) return;
   if (refs['fraud-document-dialog'].open) refs['fraud-document-dialog'].close();
   window.clearTimeout(state.fraudRoundAdvanceTimer);
   state.fraudRoundAdvanceTimer = null;
@@ -2591,6 +2594,7 @@ function showNextFraudInspectionCase() {
 }
 
 function startFraudInspection() {
+  if (!requireGameAccess('fraud-inspection')) return;
   state.fraudSettings = resolveFraudInspectionSettings(state.difficulty, state.fraudSettings, state.fraudSettings.runMode);
   state.questionCount = state.fraudSettings.questionCount;
   state.timeLimitSeconds = state.fraudSettings.timeLimitSeconds;
@@ -5445,6 +5449,7 @@ document.getElementById('overload-setup-options').addEventListener('change',()=>
 
 refs['setup-form'].addEventListener('submit', (event) => {
   event.preventDefault();
+  if (!requireGameAccess(selectedGame())) return;
   if (selectedGame() === 'overload') { stopTimer(); resetDistractionAudioSetup(); overloadUI.start(); return; }
   if (selectedGame() === 'chess') {
     state.game = 'chess';
@@ -5954,6 +5959,20 @@ function setupQRAlarmConnection() {
   window.addEventListener('pagehide', () => { window.clearTimeout(pollTimer); connection = null; });
 }
 setupQRAlarmConnection();
+function requireGameAccess(game) {
+  if (canPlayGame(game,localStorage.uid)) return true;
+  showScreen('setup');
+  document.getElementById('fraud-access-note').hidden=false;
+  const account=document.getElementById('account-area');account.open=true;
+  setMessage('Check & ID Fraud Inspection requires the approved account. Sign in to continue.');
+  document.getElementById('account-email').focus();
+  return false;
+}
+const fraudChoice=document.querySelector('input[name="game"][value="fraud-inspection"]');
+fraudChoice.disabled=!canPlayGame('fraud-inspection',localStorage.uid);
+fraudChoice.closest('label').classList.toggle('game-locked',fraudChoice.disabled);
+document.getElementById('fraud-access-note').hidden=!fraudChoice.disabled;
+document.getElementById('fraud-signin').addEventListener('click',()=>requireGameAccess('fraud-inspection'));
 refs['setup-form'].inert=false;
 document.querySelector('.header-actions').inert=false;
 document.getElementById('qralarm-connection').inert=false;

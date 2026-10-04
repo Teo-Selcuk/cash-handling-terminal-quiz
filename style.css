@@ -1083,3 +1083,19 @@ body.chess-arena #chess-screen {
 .account-area .action-row { margin-top: .75rem; }
 #account-error { color: var(--danger); overflow-wrap: anywhere; }
 .account-area form[inert] { opacity: .65; }
+.account-intro { display:flex; align-items:flex-start; gap:1rem; justify-content:space-between; margin-top:1.25rem; }
+.account-intro h2 { margin:.25rem 0 .5rem; font-size:1.6rem; }
+.account-intro p { max-width:42rem; }
+.account-badge { border:1px solid var(--brand); border-radius:2rem; padding:.35rem .7rem; font-size:.8rem; white-space:nowrap; }
+.account-password-field { display:flex; gap:.5rem; align-items:center; }
+.account-password-field input { min-width:0; flex:1; }
+.account-remember { display:flex; align-items:center; gap:.6rem; margin-top:1rem; }
+.account-area .account-remember input { width:auto; margin:0; }
+.account-permission-note, .account-guest-note { color:var(--muted); font-size:.9rem; }
+.account-guest-note { border-top:1px solid var(--line); padding-top:1rem; }
+.account-area form { padding:1rem; border:1px solid var(--line); border-radius:var(--radius); background:var(--surface); }
+.account-area input[type="email"], .account-area input[type="password"], .account-area input[type="text"] { min-height:3rem; padding:.75rem .9rem; border:1px solid var(--line); border-radius:.4rem; font:inherit; color:var(--ink); background:var(--surface); }
+.game-locked { opacity:.65; }
+.game-access-note { padding:.8rem 1rem; border-left:3px solid var(--brand); background:var(--transaction-surface); color:var(--transaction-text); border-radius:var(--radius); }
+.game-access-note button { color:inherit; }
+@media(max-width:550px) { .account-intro { flex-direction:column-reverse; gap:.5rem; } .account-badge { white-space:normal; } }

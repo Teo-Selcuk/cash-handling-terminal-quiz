@@ -20,7 +20,7 @@ export async function checkHoldTraining(browser,base) {
     await page.getByRole('button',{name:'Start quiz',exact:true}).click();
     for(let i=0;i<10;i++) {
       await page.locator('#hold-decision-area').waitFor({state:'visible'});
-      const record=await page.evaluate(()=>JSON.parse(localStorage.getItem('cash-handling-terminal-quiz-history-v1')).at(-1));
+      const record=await page.evaluate(async()=>JSON.parse((await import('./firebase-accounts.mjs?v=20261004-private')).accountStorage.getItem('cash-handling-terminal-quiz-history-v1')).at(-1));
       assert.ok(record.holdScenario);const expected=record.holdExpected;
       for(const id of record.fraudExpectedCategories) await page.locator(`[data-issue-id="${id}"]`).click();
       if(!record.fraudExpectedCategories.length) await page.locator('[data-issue-id="no-issues"]').click();
@@ -47,7 +47,7 @@ export async function checkHoldTraining(browser,base) {
       await page.locator('#submit-fraud-inspection').click();
       await page.locator('#feedback-screen').waitFor({state:'visible'});
       assert.equal(await page.locator('#feedback-heading').textContent(),'Correct review');
-      const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('cash-handling-terminal-quiz-history-v1')).at(-1));
+      const saved=await page.evaluate(async()=>JSON.parse((await import('./firebase-accounts.mjs?v=20261004-private')).accountStorage.getItem('cash-handling-terminal-quiz-history-v1')).at(-1));
       assert.equal(saved.outcome,'Correct');assert.deepEqual(saved.holdDecisionErrors,[]);assert.ok(saved.holdAnswer);
       await page.locator('#next-question').click();
     }

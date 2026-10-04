@@ -4,7 +4,10 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function isOwner(uid) { return request.auth != null && request.auth.uid == uid; }
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid
+        && request.auth.uid == 'OnQ06ebZW9QIV0BKhfeXgBvfheO2';
+    }
     function validEntry(kind) {
       let entry = request.resource.data;
       return entry.keys().hasAll(['schema','key','payload','deleted','modifiedAt','deviceId'])
