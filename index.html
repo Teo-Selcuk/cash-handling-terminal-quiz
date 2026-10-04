@@ -7,7 +7,7 @@
     <meta name="theme-color" content="#12343b">
     <title>Cash, Memory &amp; Detail Trainer</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="style.css?v=20261003-ui-polish">
+    <link rel="stylesheet" href="style.css?v=20261003-accounts">
   </head>
   <body>
     <main class="app-shell">
@@ -15,9 +15,9 @@
         <div>
           <p class="eyebrow">Cash, memory, workflow, and puzzle practice</p>
           <h1>Cash, Memory &amp; Detail Trainer</h1>
-          <p class="subtitle">Practice cash transactions, number memory, office-style workflows, visual puzzles, typing speed, or chess against the computer. Your history stays on this device.</p>
+          <p class="subtitle">Practice cash transactions, number memory, office-style workflows, visual puzzles, typing speed, or chess against the computer. Sign in to keep your progress across devices.</p>
         </div>
-        <div class="header-actions">
+        <div class="header-actions" inert>
           <button class="secondary-button theme-toggle" id="theme-toggle" type="button" aria-pressed="false">Dark mode</button>
           <button class="secondary-button" id="open-history" type="button">History | Progress</button>
         </div>
@@ -25,7 +25,21 @@
 
       <p class="screen-reader-only" id="message" role="status" aria-live="polite"></p>
 
-      <details id="qralarm-connection" class="preset-editor qralarm-compact">
+      <details id="account-area" class="preset-editor account-area">
+        <summary>Account · <span id="account-user">Guest</span> <span id="account-status" role="status" aria-live="polite">Loading accounts…</span></summary>
+        <p>Sign in to save real game history and settings across devices. Sample Data stays separate. Guest history remains on this device until you import it.</p>
+        <form id="account-form" inert>
+          <div class="form-grid">
+            <label>Email<input id="account-email" type="email" autocomplete="username" required></label>
+            <label>Password<input id="account-password" type="password" autocomplete="current-password" minlength="6" required></label>
+          </div>
+          <div class="action-row"><button type="submit" class="primary-button">Sign in</button><button id="account-signup" type="button" class="secondary-button">Sign up</button><button id="account-google" type="button" class="secondary-button" hidden>Continue with Google</button></div>
+        </form>
+        <div class="action-row"><button id="account-signout" type="button" class="secondary-button" hidden>Sign out</button><button id="account-import" type="button" class="secondary-button" hidden disabled>Import existing device history &amp; settings</button><button id="account-retry" type="button" class="text-button">Retry connection</button></div>
+        <p id="account-error" role="alert"></p>
+      </details>
+
+      <details id="qralarm-connection" class="preset-editor qralarm-compact" inert>
         <summary>QR Alarm <span aria-hidden="true">▸</span></summary>
         <p id="qralarm-status" role="status">Reconnect required — use info &lt;QR ID&gt; --connect in QRAlarm.</p>
         <label for="qralarm-link">Pairing link from QRAlarm</label>
@@ -40,7 +54,7 @@
           <h2 id="setup-heading" tabindex="-1">Set up your quiz</h2>
         </div>
 
-        <form id="setup-form" class="setup-form">
+        <form id="setup-form" class="setup-form" inert>
           <fieldset>
             <legend>Game</legend>
             <div class="choice-grid game-choice-grid">
@@ -876,6 +890,6 @@
     </dialog>
 
     <footer>Browser edition. The original PowerShell quiz remains in this repository.</footer>
-    <script type="module" src="app.js?v=20261003-ui-polish"></script>
+    <script type="module" src="app.js?v=20261003-accounts"></script>
   </body>
 </html>

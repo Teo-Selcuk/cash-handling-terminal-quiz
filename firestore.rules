@@ -1,0 +1,29 @@
+// users/{uid}/gameHistory/{id} and users/{uid}/settings/{id}:
+// schema (int=1), key (known storage key), payload (JSON string <= 900KB),
+// deleted (bool tombstone), modifiedAt (positive integer ms), deviceId (string).
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isOwner(uid) { return request.auth != null && request.auth.uid == uid; }
+    function validEntry(kind) {
+      let entry = request.resource.data;
+      return entry.keys().hasAll(['schema','key','payload','deleted','modifiedAt','deviceId'])
+        && entry.keys().hasOnly(['schema','key','payload','deleted','modifiedAt','deviceId'])
+        && entry.schema == 1 && entry.deleted is bool
+        && entry.payload is string && entry.payload.size() <= 900000
+        && entry.modifiedAt is int && entry.modifiedAt > 0
+        && entry.deviceId is string && entry.deviceId.size() > 0 && entry.deviceId.size() <= 128
+        && ((kind == 'gameHistory' && entry.key in ['cash-handling-terminal-quiz-history-v1','cash-handling-chess-games-v1','cash-handling-chess-lessons-v1'])
+        || (kind == 'settings' && entry.key in ['cash-handling-terminal-quiz-presets-v1','cash-handling-terminal-quiz-theme-v1','cash-handling-terminal-quiz-current-challenge-v1','cash-handling-terminal-quiz-chart-appearance-v1','cash-handling-terminal-quiz-typing-presets-v1','cash-handling-chess-current-v1','cash-handling-chess-settings-v1','cash-handling-multitasker-settings-v1']));
+    }
+    match /users/{uid}/{kind}/{entryId} {
+      allow read: if isOwner(uid) && kind in ['gameHistory','settings'];
+      allow create: if isOwner(uid) && validEntry(kind);
+      allow update: if isOwner(uid) && validEntry(kind)
+        && request.resource.data.key == resource.data.key
+        && request.resource.data.modifiedAt >= resource.data.modifiedAt;
+      // Deletions use versioned tombstones so an old offline copy cannot resurrect data.
+      allow delete: if false;
+    }
+  }
+}

@@ -1,4 +1,4 @@
-import { createHoldScenario, ITEM_TYPES } from './check-holds.mjs?v=20261003-ui-polish';
+import { createHoldScenario, ITEM_TYPES } from './check-holds.mjs?v=20261003-accounts';
 
 export const FRAUD_INSPECTION_CATEGORIES = Object.freeze([
   { id: 'payee-mismatch', label: 'Payee name does not match ID', group: 'Name and payee' },

@@ -76,6 +76,7 @@ async function assertSavedGameMechanics(page, game) {
 
 export async function start(page, base, game, auto) {
   await page.goto(base);
+  await page.waitForFunction(() => document.documentElement.dataset.appReady === 'true');
   await page.locator(`input[name="game"][value="${game}"]`).check();
   await page.locator(game === 'cash' ? '#question-count' : `#${game}-question-count`).fill('3');
   if (auto) await page.locator('#auto-continue-toggle').check();

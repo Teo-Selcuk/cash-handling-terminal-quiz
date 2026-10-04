@@ -1,4 +1,4 @@
-import { TASKS, OverloadRun, resolveOverloadSettings } from './overload-core.mjs?v=20261003-ui-polish';
+import { TASKS, OverloadRun, resolveOverloadSettings } from './overload-core.mjs?v=20261003-accounts';
 const names=Object.fromEntries(TASKS.map(t=>[t.id,t.name]));
 const fmt=v=>v===null?'—':String(Number(Number(v).toFixed(2)));
 const el=(tag,text,cls)=> {const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
@@ -39,6 +39,14 @@ export function createOverloadUI({onSave,onHistory,showScreen}) {
     check.addEventListener('change',()=>{row.classList.toggle('is-disabled',!check.checked);state.textContent=check.checked?'Enabled':'Disabled';});row.append(label,unlockLabel,hint);selection.append(row);
   }
   fields.mode.addEventListener('change',()=> {fields.unlockAll.checked=['practice','custom'].includes(fields.mode.value);fields.durationSeconds.value=fields.mode.value==='practice'?'120':'0';});
+  const summary=el('p','','multitasker-setup-summary');choices.prepend(summary);
+  function describeSetup(){
+    const count=TASKS.filter(task=>included[task.id].checked).length;
+    const mistakes=fields.mode.value==='practice'?'Unlimited mistakes':fields.mode.value==='standard'?'Ends on the first mistake':`${fields.allowedMistakes.value} mistakes allowed`;
+    fields.allowedMistakes.disabled=['practice','standard'].includes(fields.mode.value);
+    summary.textContent=`${count} mini-games enabled · ${mistakes} · ${Number(fields.durationSeconds.value)?fields.durationSeconds.value+' second session':'No session time limit'}`;
+  }
+  setup.addEventListener('input',describeSetup);setup.addEventListener('change',describeSetup);describeSetup();
   const scoreboard=el('div',undefined,'overload-scoreboard'),status=el('p','Ready','overload-status'),controls=el('div',undefined,'overload-controls'),grid=el('div',undefined,'overload-grid'),result=el('section',undefined,'overload-result');result.hidden=true;
   status.setAttribute('role','status');const pause=button('Pause',()=>togglePause()),stop=button('End run',()=>end('stopped')),again=button('Another run',()=>start()),history=button('History / Progress',()=>{end('stopped');onHistory();});
   controls.append(pause,stop,again,history);again.hidden=true;
@@ -58,6 +66,7 @@ export function createOverloadUI({onSave,onHistory,showScreen}) {
       if(settings.unlocks?.[task.id]!==undefined)unlocks[task.id].value=settings.unlocks[task.id];
       included[task.id].dispatchEvent(new Event('change'));unlocks[task.id].dispatchEvent(new Event('input'));
     }
+    describeSetup();
   }
   function save() {if(run){onSave(run.record(clock()));lastSaved=clock();}}
   function beep(error=false) {if(!run?.settings.sound)return;try{audio??=new (window.AudioContext||window.webkitAudioContext)();void audio.resume();const o=audio.createOscillator(),g=audio.createGain();o.frequency.value=error?180:560;g.gain.setValueAtTime(.035,audio.currentTime);g.gain.exponentialRampToValueAtTime(.001,audio.currentTime+.12);o.connect(g);g.connect(audio.destination);o.start();o.stop(audio.currentTime+.13);}catch{}}

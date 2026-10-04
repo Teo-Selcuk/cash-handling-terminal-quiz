@@ -1,20 +1,42 @@
-// Training specification: user-supplied Burke & Herbert rules. Amounts stay in cents.
+// User-supplied fictional training rules. Amounts stay in cents.
 export const ITEM_TYPES = {
   'on-us':'On-Us check', cashier:"Cashier’s / Official check",
   treasury:'United States Treasury', fhlb:'Federal Home Loan Bank', postal:'U.S. Postal Service money order',
   reserve:'Federal Reserve Bank', government:'State / local government', personal:'Personal check',
   business:'Business check', foreign:'Foreign check · collection', cash:'Cash deposit', ach:'ACH credit', wire:'Wire transfer',
 };
+export const ITEM_REASONS = {
+  'on-us':'The check is drawn on the institution processing it; this makes it an On-Us check.',
+  cashier:'The issuing institution identifies this as its official or cashier’s check, rather than a personal draft.',
+  treasury:'The issuer shown is the U.S. Treasury.', fhlb:'The issuer shown is a Federal Home Loan Bank.',
+  postal:'The document is a USPS-issued money order.', reserve:'The issuer shown is a Federal Reserve Bank.',
+  government:'The issuer is a state or local government, rather than the U.S. Treasury.',
+  personal:'The draft is drawn on an individual’s account at another institution.',
+  business:'The draft is drawn on a business account at another institution.',
+  foreign:'The item is a foreign draft requiring a separate collection workflow.',
+  cash:'The transaction advice identifies currency, rather than a deposited check.',
+  ach:'The transaction advice identifies an electronic ACH credit, rather than a check.',
+  wire:'The transaction advice identifies a wire transfer, rather than a check.',
+};
 export const HOLD_TYPES = { none:'No Hold', large:'Large Deposit', new:'New Account', reasonable:'Reasonable Cause', redeposited:'Redeposited Item', overdraft:'Repeated / Currently Overdrawn', emergency:'Emergency Situation' };
-export const ACTIONS = { accept:'Accept', hold:'Place Hold', correction:'Return for Correction', 'deposit-only':'Restrict to Deposit', manager:'Escalate to Manager', reject:'Reject / Do Not Process' };
+export const ACTIONS = { accept:'Accept normally', hold:'Accept with hold', correction:'Return for Correction', 'deposit-only':'Restrict to Deposit', manager:'Manager review', reject:'Return / reject' };
 const electronic = new Set(['cash','ach','wire']);
 const nextDay = new Set(['on-us','cashier','treasury','fhlb','postal','reserve','government','cash','ach','wire']);
-export const classifyItem = type => type === 'foreign' ? 'foreign' : nextDay.has(type) ? 'next-day' : 'non-next-day';
+export const classifyItem = type => type === 'foreign' || electronic.has(type) ? 'special' : nextDay.has(type) ? 'next-day' : 'non-next-day';
 export function qualifyingPriorAccount(customers) {
-  return Array.isArray(customers) && customers.length > 0 && customers.every(c => c.transactional === true && c.atBurkeHerbert === true && c.ageDays >= 30 && c.daysBeforeOpening >= 0 && c.daysBeforeOpening <= 30);
+  return Array.isArray(customers) && customers.length > 0 && customers.every(c => c.transactional === true && (c.atBank ?? c['atBurkeHerbert']) === true && c.ageDays >= 30 && c.daysBeforeOpening >= 0 && c.daysBeforeOpening <= 30);
 }
 export function availabilityKey(tiers) { return tiers.map(t => t.day).join('/'); }
 export function availabilityText(tiers) { return tiers.map(t => `$${(t.amountCents/100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}: ${t.day === 0 ? 'same day' : 'business day '+t.day}`).join(' · '); }
+export function availabilityChoices() {
+  const days=[0,1,2,7,9], choices={na:'No deposit availability schedule'};
+  for(let mask=1;mask<32;mask++) {
+    const selected=days.filter((_,i)=>mask&(1<<i));
+    if(selected.length>3)continue;
+    choices[selected.join('/')]=selected.map(day=>day===0?'Same day':`Business day ${day}`).join(' → ');
+  }
+  return choices;
+}
 
 export function decideCheck(c) {
   const classification=classifyItem(c.itemType), isCheck=!electronic.has(c.itemType) && c.itemType !== 'foreign';
@@ -78,6 +100,9 @@ export function decideCheck(c) {
     none:priorQualified?'The qualifying prior account prevents new-account treatment; no other hold exception applies.':'No supplied hold exception applies. TrueChecks review by itself does not impose a hold.',
   };
   result.explanation.push(triggers[reason]);
+  if(reason==='large')result.explanation.push(`Earlier checks today total $${(Math.max(0,c.dailyCheckDepositsCents-amount)/100).toFixed(2)}. Subtract them from the $300 same-day allowance and $6,800 daily tier. The remaining first tier is same day; the middle tier is business day ${classification==='next-day'?1:2}; excess is business day ${onUs?2:7}${onUs?' because this item is On-Us':''}.`);
+  else if(reason==='new')result.explanation.push(onUs||classification!=='next-day'?'For this new account, the entire amount is available on business day 9.':'For this next-day new-account item, $300 is same day, the remainder through $6,800 is business day 1, and excess is business day 9.');
+  else if(reason==='none')result.explanation.push(`The first $300 is available same day; the remainder is business day ${classification==='next-day'?1:2}.`);
   result.explanation.push(`${ITEM_TYPES[c.itemType]} is ${classification}. ${HOLD_TYPES[reason]}. ${availabilityText(tiers)}. ${result.notice?'Give a Hold Notice.':'No Hold Notice required.'}`);
   return result;
 }
@@ -93,7 +118,7 @@ export function createHoldScenario(random=Math.random,index=null) {
   if(!['large','new'].includes(variant)) c.amountCents=Math.min(c.amountCents,650000);
   c.dailyCheckDepositsCents=c.amountCents;
   if(variant==='large') {c.amountCents=900000;c.dailyCheckDepositsCents=900000+pick([0,10000,70000]);}
-  if(variant==='new') {c.accountAgeDays=pick([1,15,29]);c.priorAccounts=[{transactional:true,atBurkeHerbert:true,ageDays:pick([20,30,90]),daysBeforeOpening:pick([0,15,30,45])}];c.qualifyingPriorAccount=qualifyingPriorAccount(c.priorAccounts);}
+  if(variant==='new') {c.accountAgeDays=pick([1,15,29]);c.priorAccounts=[{transactional:true,atBank:true,ageDays:pick([20,30,90]),daysBeforeOpening:pick([0,15,30,45])}];c.qualifyingPriorAccount=qualifyingPriorAccount(c.priorAccounts);}
   if(variant==='reasonable') {c.reasonableCause=true;c.trueChecks='confidential-risk';c.amountCents=Math.max(50100,c.amountCents);}
   if(variant==='redeposited') c.returnedUnpaid=true;
   if(variant==='overdraft') {c.repeatedOverdraft=true;c.overdraftHistory='Bank review confirms repeated overdrafts under the supplied six-month rule.';}
@@ -123,10 +148,9 @@ export function scoreHoldDecision(c,a={}) {
   check('itemType',a.itemType===c.itemType,'Wrong Check Classification');
   check('classification',a.classification===expected.classification,'Wrong Availability Classification');
   check('action',a.action===expected.action,expected.action==='manager'?'Missed Manager Escalation':'Incorrect Acceptance');
-  const process=['accept','hold'].includes(expected.action);
-  if(process) {
+  {
     check('holdType',a.holdType===expected.holdType,expected.holdType==='none'?'Unnecessary Hold':a.holdType==='none'?'Missed Hold':'Hold Selection Error');
-    if(expected.availability.length) check('availability',a.availability===availabilityKey(expected.availability),'Wrong Availability Period');
+    check('availability',a.availability===(expected.availability.length?availabilityKey(expected.availability):'na'),'Wrong Availability Period');
     check('notice',a.notice===(expected.notice?'given':'not-required'),expected.notice?'Missing Hold Notice':'Unnecessary Hold Notice');
   }
   for(const step of expected.workflow) check(step,a.workflow?.includes(step),`Missed ${WORKFLOW_LABELS[step]}`);

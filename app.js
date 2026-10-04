@@ -1,11 +1,12 @@
+import { accountStorage as localStorage, initializeAccounts } from './firebase-accounts.mjs';
 import { enhanceHistoryTables } from './history-tables.mjs';
-import { createOverloadUI } from './overload-ui.mjs?v=20261003-ui-polish';
-import { summarizeOverload, overloadRecommendation } from './overload-analytics.mjs?v=20261003-ui-polish';
-import { decideCheck, scoreHoldDecision, ITEM_TYPES, ACTIONS } from './check-holds.mjs?v=20261003-ui-polish';
-import { renderHoldTraining, readHoldAnswer } from './hold-training-ui.mjs?v=20261003-ui-polish';
+import { createOverloadUI } from './overload-ui.mjs?v=20261003-accounts';
+import { summarizeOverload, overloadRecommendation } from './overload-analytics.mjs?v=20261003-accounts';
+import { decideCheck, scoreHoldDecision, ITEM_TYPES, ITEM_REASONS, ACTIONS, HOLD_TYPES, availabilityText } from './check-holds.mjs?v=20261003-accounts';
+import { renderHoldTraining, readHoldAnswer } from './hold-training-ui.mjs?v=20261003-accounts';
 import { TYPING_PRESETS, resolveTypingSettings, createTypingPrompt, scoreTyping, summarizeTyping } from './typing-core.mjs?v=20261002-typing';
 import { PATTERN_GAME_NAMES } from './pattern-games.mjs';
-import { createChessUI } from './chess-ui.mjs?v=20261003-ui-polish';
+import { createChessUI } from './chess-ui.mjs?v=20261003-accounts';
 import { createDistractionSamples } from './distraction-sounds.mjs';
 import {
   FRAUD_INSPECTION_CATEGORIES,
@@ -13,13 +14,13 @@ import {
   resolveFraudInspectionSettings,
   scoreFraudInspectionAttempt,
   summarizeFraudHistory,
-} from './fraud-inspection.mjs?v=20261003-ui-polish';
-import { PRACTICE_GAMES, rankPracticeCandidates, recommendPractice, practiceSettings } from './adaptive-practice.mjs?v=20261003-ui-polish';
+} from './fraud-inspection.mjs?v=20261003-accounts';
+import { PRACTICE_GAMES, rankPracticeCandidates, recommendPractice, practiceSettings } from './adaptive-practice.mjs?v=20261003-accounts';
 import {
   buildChartSpecs, buildConditionalReport, buildErrorAnalytics, buildGameFilters, buildProgressModel, comparePeriods,
   filterHistory, recommendNextChallenge, progressionSegments,
-} from './progress-analytics.mjs?v=20261003-ui-polish';
-import { generateSampleHistory, generateSampleChessHistory } from './sample-history.mjs?v=20261003-ui-polish';
+} from './progress-analytics.mjs?v=20261003-accounts';
+import { generateSampleHistory, generateSampleChessHistory } from './sample-history.mjs?v=20261003-accounts';
 import {
   DENOMINATIONS,
   DIFFICULTY_CONFIG,
@@ -51,6 +52,7 @@ import {
   toCsv,
 } from './quiz-core.mjs?v=20260908-practice';
 
+await initializeAccounts();
 const HISTORY_KEY = 'cash-handling-terminal-quiz-history-v1';
 const THEME_KEY = 'cash-handling-terminal-quiz-theme-v1';
 const PRESET_KEY = 'cash-handling-terminal-quiz-presets-v1';
@@ -2458,10 +2460,18 @@ function populateFraudInspectionFeedback(record, score) {
   renderFraudDocuments(refs['fraud-feedback-documents'], state.fraudChallenge, true);
   refs['fraud-feedback-issues'].replaceChildren();
   if (score.holdScore) {
-    const item = document.createElement('li');
     const expected=score.holdScore.expected;
-    item.textContent = ITEM_TYPES[expected.itemType] + ' · ' + expected.classification + ' · ' + ACTIONS[expected.action] + '. ' + expected.explanation.join(' ') + (expected.workflow.length ? ' Required handling: ' + expected.workflow.join(', ') + '. ' : ' ') + (score.holdScore.errors.length ? score.holdScore.errors.join(' · ') : 'All hold and acceptance decisions correct.');
-    refs['fraud-feedback-issues'].append(item);
+    const classificationLabels={'next-day':'Next-Day Item','non-next-day':'Non-Next-Day Item',special:'Special / outside normal check classification'};
+    const details=[
+      ['itemType','Item Type',ITEM_TYPES[expected.itemType],ITEM_REASONS[expected.itemType]],
+      ['classification','Classification',classificationLabels[expected.classification],expected.classification==='special'?'This item uses a separate workflow; normal check-hold classification does not apply.':`${ITEM_TYPES[expected.itemType]} belongs to the ${classificationLabels[expected.classification]} group in these training rules.`],
+      ['action','Processing Decision',ACTIONS[expected.action],expected.explanation[0]],
+      ['holdType','Hold Type',HOLD_TYPES[expected.holdType],expected.explanation.join(' ')],
+      ['availability','Availability',expected.availability.length?availabilityText(expected.availability):'No deposit availability schedule',expected.availability.length?`For $${(state.fraudChallenge.holdScenario.amountCents/100).toFixed(2)}, apply ${HOLD_TYPES[expected.holdType]} to this ${ITEM_TYPES[expected.itemType]}. Earlier daily deposits, account age and On-Us status determine the tiers above. ${expected.explanation.join(' ')}`:'The item must be corrected, rejected, restricted or reviewed before a deposit schedule can apply.'],
+      ['notice','Hold Notice',expected.notice?'Required':'Not Required',expected.notice?'A hold is being placed, so give the customer the required Hold Notice.':'No check hold is placed by this processing decision.'],
+    ];
+    for(const [key,label,value,reason] of details){const item=document.createElement('li');const correct=score.holdScore.checks[key]?.correct;item.className=correct?'fraud-feedback-found':'fraud-feedback-missed';item.textContent=`${label}: ${correct?'Correct':'Incorrect'} — ${value}. ${reason}`;refs['fraud-feedback-issues'].append(item);}
+    if(expected.workflow.length){const item=document.createElement('li');item.textContent='Required handling: '+expected.workflow.join(', ')+'. '+score.holdScore.errors.filter(error=>error.startsWith('Missed')||error.includes('Verification')).join(' · ');refs['fraud-feedback-issues'].append(item);}
   }
   const actualById = new Map(state.fraudChallenge.expectedIssues.map((issue) => [issue.id, issue]));
   const selected = new Set(state.fraudChallenge.enabledCategories
@@ -5423,11 +5433,15 @@ typingElement('reset').addEventListener('click', () => {
   catch (error) { typingElement('setup-status').textContent = error.message; }
 });
 
-const chessUI = createChessUI({ showScreen, renderChart: renderChartCard, showChartData: spec => openChartData(spec.title, chartSpecDataTable(spec)) });
+const chessUI = createChessUI({ storage: localStorage, showScreen, renderChart: renderChartCard, showChartData: spec => openChartData(spec.title, chartSpecDataTable(spec)) });
 const overloadUI = createOverloadUI({ showScreen, onSave(record) {
   state.game = 'overload'; state.sessionId = record.sessionId; state.difficulty = record.difficulty; state.questionCount = 1;
   state.results = record.outcome === 'Not answered' ? [] : [record]; persistRecord(record);
 }, onHistory() { historyView.filters = { game: 'overload' }; renderHistory(); showScreen('history'); } });
+const MULTITASKER_SETTINGS_KEY='cash-handling-multitasker-settings-v1';
+function restoreMultitaskerSettings(){try{const saved=JSON.parse(localStorage.getItem(MULTITASKER_SETTINGS_KEY)??'null');if(saved)overloadUI.applySettings(saved);}catch{}}
+restoreMultitaskerSettings();
+document.getElementById('overload-setup-options').addEventListener('change',()=>{try{localStorage.setItem(MULTITASKER_SETTINGS_KEY,JSON.stringify(overloadUI.readSettings()));}catch{}});
 
 refs['setup-form'].addEventListener('submit', (event) => {
   event.preventDefault();
@@ -5814,7 +5828,7 @@ refs['attempt-detail-dialog'].addEventListener('click', (event) => {
 });
 refs['clear-history'].addEventListener('click', () => {
   if (historyView.dataSource === 'sample') return;
-  if (window.confirm('Clear all saved quiz history from this browser? This cannot be undone.')) {
+  if (window.confirm(localStorage.uid?'Clear this account’s quiz history across synchronized devices? This cannot be undone.':'Clear all saved quiz history from this browser? This cannot be undone.')) {
     localStorage.removeItem(HISTORY_KEY);
     clearPracticePlan();
     // A current challenge is derived from the saved attempts, so it must not
@@ -5840,6 +5854,16 @@ refs['setup-form'].addEventListener('input', (event) => {
   }
 });
 window.addEventListener('storage', (event) => {
+  if(event.key===THEME_KEY)applyTheme(initialTheme());
+  if(event.key===CHART_APPEARANCE_KEY)chartAppearance=loadChartAppearance();
+  if(event.key===PRESET_KEY){const saved=loadPresetState();state.cashPresets=saved.cash;state.memoryPresets=saved.memory;state.taskPresets=saved.task;state.errorDetectionPresets=saved.errorDetection;}
+  if(state.activeScreen==='setup'){
+    if(event.key===MULTITASKER_SETTINGS_KEY)restoreMultitaskerSettings();
+    if(event.key===TYPING_SETTINGS_KEY)loadTypingSetup();
+    if(event.key===PRESET_KEY)updateGameSetup();
+    if(event.key==='cash-handling-chess-current-v1')chessUI.setupChanged(selectedGame());
+  }
+  if(state.activeScreen==='history'&&event.key!==HISTORY_KEY&&[CHART_APPEARANCE_KEY,CURRENT_CHALLENGE_KEY].includes(event.key))renderHistory();
   if (event.key !== HISTORY_KEY && event.key !== null) return;
   if (state.activeScreen === 'history') renderHistory();
   if (state.activeScreen === 'setup') {
@@ -5930,3 +5954,7 @@ function setupQRAlarmConnection() {
   window.addEventListener('pagehide', () => { window.clearTimeout(pollTimer); connection = null; });
 }
 setupQRAlarmConnection();
+refs['setup-form'].inert=false;
+document.querySelector('.header-actions').inert=false;
+document.getElementById('qralarm-connection').inert=false;
+document.documentElement.dataset.appReady='true';

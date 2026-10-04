@@ -26,13 +26,13 @@ export async function checkHoldTraining(browser,base) {
       if(!record.fraudExpectedCategories.length) await page.locator('[data-issue-id="no-issues"]').click();
       await page.locator('#hold-itemType').selectOption(expected.itemType);
       await page.locator('#hold-action').selectOption(expected.action);
-      assert.equal(await page.locator('#hold-classification').inputValue(),expected.classification);
+      await page.locator('#hold-classification').selectOption(expected.classification);
       if(expected.action==='hold') {
         assert.equal(await page.locator('#hold-holdType').isVisible(),true);
         await page.locator('#hold-holdType').selectOption(expected.holdType);
-        await page.locator('#hold-notice-confirm').check();
-      } else assert.equal(await page.locator('#hold-holdType').isVisible(),false);
-      if(['hold','accept'].includes(expected.action)) assert.equal(await page.locator('#hold-availability').inputValue(),expected.availability.map(t=>t.day).join('/'));
+        await page.locator('#hold-notice').selectOption('given');
+      } else { await page.locator('#hold-holdType').selectOption('none'); await page.locator('#hold-notice').selectOption('not-required'); }
+      await page.locator('#hold-availability').selectOption(expected.availability.length ? expected.availability.map(t=>t.day).join('/') : 'na');
       assert.doesNotMatch(await page.locator('#hold-decision-area').textContent(),/Burke\s*&\s*Herbert|B&H|BNH/i);
       await page.locator('#hold-decision-area .hold-step-details > summary').click();
       await page.getByText('Teller file / prior checks / Alert Center Details',{exact:true}).click();

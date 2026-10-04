@@ -4,6 +4,8 @@ A Windows 11 PowerShell practice quiz for teller-style cash handling. It generat
 
 ## Main features
 
+The browser edition supports email/password accounts and secure cross-device history/settings sync through the existing Firebase project. Guest history can be imported without losing the original device copy. Sample Data remains isolated. See [account setup and sync](docs/firebase-accounts.md).
+
 Cash handling offers **Guided practice** (customer dialogue, calculations, what to
 say, and cash guidance) and **Test my knowledge** (timed answers with feedback).
 Select the mode in browser setup, or choose G/T in PowerShell cash setup. Browser
@@ -12,7 +14,7 @@ configured answer timer. History labels the mode. See [mode details](docs/cash-s
 
 The [browser edition](https://teo-selcuk.github.io/cash-handling-terminal-quiz/) also includes Number Memory, Task Simulation, 15 rotating Error Detection games, and Check & ID Fraud Inspection. Fraud Inspection generates fictional check and ID documents with selectable Easy, Medium, Hard, and Custom settings, zoomable SVG previews, exact-set scoring, clean cases, speed modes, local category history, and issue-by-issue feedback. During inspection, document fields have no answer-revealing highlights; learners inspect the details and select one or more issue labels or No Issues Found. After submission, feedback marks the actual issue fields. Its documents use invented training values and do not make authenticity decisions.
 
-The website also includes **Chess**: a fullscreen chess arena, four difficulty presets with adjustable 0–20 bot levels, quick blitz clocks, untimed and timed games, 44 demonstrate-then-practice lessons, optional coaching, move replay, and separate progress analytics. See [Chess mode](docs/chess-mode.md) for timing, recovery, analysis, and local engine details.
+The website also includes **Chess**: a large, centered chessboard with optional fullscreen, four difficulty presets with adjustable 0–20 bot levels, quick blitz clocks, untimed and timed games, 44 demonstrate-then-practice lessons, optional coaching, move replay, and separate progress analytics. See [Chess mode](docs/chess-mode.md) for timing, recovery, analysis, and local engine details.
 
 **Multitasker** runs one to nine simultaneous tasks with independent deadlines and a shared score: math, duplicate shapes, falling balls, Stroop colors, opposite arrows, wires, patterns, memory cards, and moles. Standard ends on the first mistake; Practice permits unlimited mistakes; Endurance and Custom use adjustable mistake budgets. Configure task selection, unlock points, timers, speed, scaling, distractions, and duration. History includes run and action evidence, connected progression charts, filters, combination errors, and one evidence-based practice recommendation. See [Multitasker mode](docs/multitasker-mode.md).
 

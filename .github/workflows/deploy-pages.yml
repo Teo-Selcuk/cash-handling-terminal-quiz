@@ -43,6 +43,7 @@ jobs:
         run: |
           mkdir -p _site
           cp index.html style.css app.js history-tables.mjs typing-core.mjs quiz-core.mjs pattern-games.mjs distraction-sounds.mjs adaptive-practice.mjs progress-analytics.mjs fraud-inspection.mjs check-holds.mjs hold-training-ui.mjs sample-history.mjs _site/
+          cp firebase-*.mjs account-data.mjs _site/
           cp chess-*.mjs _site/
           cp overload-*.mjs _site/
           mkdir -p _site/assets/chess

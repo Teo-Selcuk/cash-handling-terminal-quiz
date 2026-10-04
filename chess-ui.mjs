@@ -14,8 +14,8 @@ const make = (tag, text, className = '') => { const node = document.createElemen
 const download = (text, name, type) => { const url = URL.createObjectURL(new Blob([text], { type })); const link = document.createElement('a'); link.href = url; link.download = name; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); };
 const resultLabel = game => !game.result ? 'In progress' : game.result.winner === null ? 'Draw' : game.result.winner === game.player ? 'Win' : 'Loss';
 
-export function createChessUI({ showScreen, renderChart, showChartData }) {
-  const store = new ChessStore();
+export function createChessUI({ showScreen, renderChart, showChartData, storage = globalThis.localStorage }) {
+  const store = new ChessStore(storage);
   let session = null, lesson = null, review = null, selected = null, hint = null, promotion = null;
   let busy = false, ready = false, engineError = false, active = false, savedAt = 0;
   let disabledSetup = new Map();
@@ -27,6 +27,8 @@ export function createChessUI({ showScreen, renderChart, showChartData }) {
     try { return action(); } catch (error) { const message = `Could not save or read chess progress: ${error.message} Export PGN to keep a copy.`; for (const id of ['storage-status', 'setup-storage-status']) { el(id).hidden = false; el(id).textContent = message; } el('history-status').textContent = error.message; return null; }
   }
   function settings() { return normalizeSettings({ difficulty: el('difficulty').value, skillLevel: el('level').value, color: el('color').value, timeControl: el('time-control').value, minutes: el('minutes').value, increment: el('increment').value, secondsPerMove: el('seconds').value, coaching: el('coaching').checked }); }
+  function restoreSettings(){try{const saved=JSON.parse(storage.getItem('cash-handling-chess-settings-v1')??'null');if(saved)setSettings(normalizeSettings(saved));}catch{}}
+  for(const id of ['difficulty','level','color','time-control','minutes','increment','seconds','coaching'])el(id).addEventListener('change',()=>queueMicrotask(()=>storageAction(()=>storage.setItem('cash-handling-chess-settings-v1',JSON.stringify(settings())))));
   function setSettings(value) {
     el('difficulty').value = value.difficulty; el('color').value = value.color; el('time-control').value = value.timeControl;
     el('minutes').value = value.minutes; el('increment').value = value.increment; el('seconds').value = value.secondsPerMove; el('coaching').checked = value.coaching;
@@ -65,7 +67,7 @@ export function createChessUI({ showScreen, renderChart, showChartData }) {
   function fitBoard() {
     const screen = el('screen');
     if (screen.hidden) return;
-    if (window.innerWidth <= 760) { screen.style.removeProperty('--chess-board-size'); return; }
+    if (document.fullscreenElement !== screen) { screen.style.removeProperty('--chess-board-size'); return; }
     // Re-measure after sizing the clocks, whose labels can wrap at narrow widths.
     for (let pass = 0; pass < 2; pass++) {
       const top = el('board').getBoundingClientRect().top - screen.getBoundingClientRect().top + screen.scrollTop;
@@ -85,11 +87,12 @@ export function createChessUI({ showScreen, renderChart, showChartData }) {
       if (active) el('fullscreen-note').textContent = 'Browser fullscreen was unavailable. Chess remains playable here; you can retry with Enter fullscreen.';
     });
   }
-  function open() { active = true; showScreen('chess'); fullscreenLabel(); }
+  function open() { active = true; showScreen('chess'); fullscreenLabel();el('screen').scrollIntoView({block:'start'}); }
   async function start({ fen = DEFAULT_POSITION, lessonId = null, restored = null } = {}) {
     engine.cancel(); busy = false; lesson = null; review = null; selected = null; hint = null; promotion = null;
     session = restored ? ChessSession.restore(restored) : new ChessSession(settings(), { fen, lessonId });
     setSettings(session.settings); board.flipped = session.player === 'b';
+    storageAction(()=>storage.setItem('cash-handling-chess-settings-v1',JSON.stringify(session.settings)));
     session.pause(Date.now(), false); open(); render();
     el('lessons').hidden = true; status('Loading the computer. Clocks start when it is ready.');
     const identity = session.id;
@@ -407,6 +410,7 @@ export function createChessUI({ showScreen, renderChart, showChartData }) {
   for (const id of ['filter-difficulty', 'filter-time', 'filter-practice', 'filter-from', 'filter-to']) el(id).addEventListener('change', () => renderHistory());
   el('download-csv').addEventListener('click', () => download(chessCsv(filterChessGames(sampleHistory?.games ?? storageAction(() => store.games()) ?? [], historyFilters())), sampleHistory ? 'sample-chess-analytics.csv' : 'chess-analytics.csv', 'text/csv;charset=utf-8'));
   window.addEventListener('storage', event => { if (Object.values(CHESS_KEYS).includes(event.key) && !el('history').hidden) renderHistory(); });
-  timeControls(); render();
+  window.addEventListener('storage',event=>{if(event.key==='cash-handling-chess-settings-v1'&&!active)restoreSettings();});
+  restoreSettings();timeControls(); render();
   return { start, setupChanged, renderHistory, leave, onHistoryOpen() { active = false; engine.cancel(); busy = false; } };
 }

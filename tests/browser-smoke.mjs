@@ -17,12 +17,13 @@ import { checkHoldTraining } from './browser-hold-training-checks.mjs';
 import { checkChartFormatting } from './browser-chart-format-checks.mjs';
 import { checkChess } from './browser-chess-checks.mjs';
 import { checkOverload } from './browser-overload-checks.mjs';
+import { checkFirebase } from './browser-firebase-checks.mjs';
 const { chromium } = createRequire(import.meta.url)('playwright');
 const root = process.env.QUIZ_STATIC_ROOT || fileURLToPath(new URL('../', import.meta.url));
 const server = createServer(async (request, response) => {
   const path = new URL(request.url, 'http://localhost').pathname;
   const file = path === '/' ? 'index.html' : path.slice(1);
-  if (!['overload-core.mjs', 'overload-ui.mjs', 'overload-analytics.mjs', 'check-holds.mjs', 'hold-training-ui.mjs', 'history-tables.mjs', 'typing-core.mjs', 'index.html', 'app.js', 'style.css', 'quiz-core.mjs', 'pattern-games.mjs', 'distraction-sounds.mjs', 'adaptive-practice.mjs', 'progress-analytics.mjs', 'fraud-inspection.mjs', 'sample-history.mjs', 'chess-ui.mjs', 'chess-core.mjs', 'chess-board.mjs', 'chess-engine.mjs', 'chess-lessons.mjs', 'chess-storage.mjs', 'chess-analytics.mjs', 'assets/chess/chess.mjs', 'assets/chess/chess.js.map', 'assets/chess/stockfish-19-lite-single.js', 'assets/chess/stockfish-19-lite-single.wasm', 'assets/chess/chess-LICENSE', 'assets/chess/stockfish-COPYING.txt', 'assets/fraud/id-portrait-female-20260922.jpg', 'assets/fraud/id-portrait-male-20260922.jpg', 'assets/fraud/id-portrait-female-2-20260929.jpg', 'assets/fraud/id-portrait-male-2-20260929.jpg'].includes(file)) {
+  if (!['firebase-accounts.mjs', 'firebase-config.mjs', 'account-data.mjs', 'overload-core.mjs', 'overload-ui.mjs', 'overload-analytics.mjs', 'check-holds.mjs', 'hold-training-ui.mjs', 'history-tables.mjs', 'typing-core.mjs', 'index.html', 'app.js', 'style.css', 'quiz-core.mjs', 'pattern-games.mjs', 'distraction-sounds.mjs', 'adaptive-practice.mjs', 'progress-analytics.mjs', 'fraud-inspection.mjs', 'sample-history.mjs', 'chess-ui.mjs', 'chess-core.mjs', 'chess-board.mjs', 'chess-engine.mjs', 'chess-lessons.mjs', 'chess-storage.mjs', 'chess-analytics.mjs', 'assets/chess/chess.mjs', 'assets/chess/chess.js.map', 'assets/chess/stockfish-19-lite-single.js', 'assets/chess/stockfish-19-lite-single.wasm', 'assets/chess/chess-LICENSE', 'assets/chess/stockfish-COPYING.txt', 'assets/fraud/id-portrait-female-20260922.jpg', 'assets/fraud/id-portrait-male-20260922.jpg', 'assets/fraud/id-portrait-female-2-20260929.jpg', 'assets/fraud/id-portrait-male-2-20260929.jpg'].includes(file)) {
     response.writeHead(404).end(); return;
   }
   response.setHeader('Content-Type', file.endsWith('.jpg') ? 'image/jpeg' : ({ '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.mjs': 'text/javascript', '.wasm': 'application/wasm' })[extname(file)] ?? 'text/plain');
@@ -59,7 +60,9 @@ try {
     };
   });
   const base = process.env.QUIZ_LIVE_URL || `http://127.0.0.1:${server.address().port}/`;
-  if (process.env.QUIZ_FOCUSED === 'overload') {
+  if (process.env.QUIZ_FOCUSED === 'firebase') {
+    await checkFirebase(browser, base);
+  } else if (process.env.QUIZ_FOCUSED === 'overload') {
     await checkOverload(browser, base);
   } else if (process.env.QUIZ_FOCUSED === 'history-layout') {
     await checkHistoryLayout(browser, base);
@@ -77,6 +80,8 @@ try {
     await checkHoldTraining(browser, base);
     console.log('Focused Fraud Inspection browser checks passed.');
   } else {
+  // Resume after the setup/history stages when retrying a later browser check.
+  if (!['remaining', 'playback'].includes(process.env.QUIZ_FOCUSED)) {
   await checkOverload(browser, base);
   await checkTyping(browser, base);
   await checkResponsive(browser, base);
@@ -84,11 +89,14 @@ try {
   await checkHistory(browser, base);
   await checkProgress(browser, base);
   await checkSampleHistory(browser, base);
+  }
+  if (process.env.QUIZ_FOCUSED !== 'playback') {
   await checkHistoryLayout(browser, base);
   await checkFraudInspection(browser, base);
   await checkHoldTraining(browser, base);
   await checkChartFormatting(browser, base);
   await checkChess(browser, base);
+  }
   await checkAutoContinue(browser, base);
   await checkTimeouts(browser, base);
   const audioState = () => page.evaluate(() => ({
@@ -97,6 +105,7 @@ try {
     running: audioProbe.contexts.some((context) => context.state === 'running'),
   }));
   await page.goto(base);
+    await page.waitForFunction(() => document.documentElement.dataset.appReady === 'true');
   assert.equal(await page.locator('#distraction-noise-toggle').isChecked(), false);
   await page.locator('#question-count').fill('1');
   await page.getByRole('button', { name: 'Start quiz', exact: true }).click();
@@ -106,6 +115,7 @@ try {
   for (const level of ['Easy', 'Medium', 'Hard']) {
     await page.setViewportSize({ width: level === 'Hard' ? 320 : 1280, height: 900 });
     await page.goto(base);
+    await page.waitForFunction(() => document.documentElement.dataset.appReady === 'true');
     await page.locator('input[name="game"][value="error-detection"]').check();
     await page.locator(`input[name="difficulty"][value="${level}"]`).check();
     await page.locator('#error-detection-question-count').fill('15');
@@ -143,6 +153,7 @@ try {
     console.log(`${level}: 15 families, 15 completed rounds, continuous audio and final cleanup passed`);
   }
   await page.goto(base);
+    await page.waitForFunction(() => document.documentElement.dataset.appReady === 'true');
   await page.locator('#question-count').fill('2');
   await page.locator('#time-limit').fill('3');
   await page.locator('#auto-continue-toggle').check();
@@ -156,6 +167,7 @@ try {
 
   for (const game of ['memory', 'task']) {
     await page.goto(base);
+    await page.waitForFunction(() => document.documentElement.dataset.appReady === 'true');
     await page.locator(`input[name="game"][value="${game}"]`).check();
     await page.locator(`#${game}-question-count`).fill('2');
     await page.locator('#distraction-noise-toggle').check();
@@ -180,6 +192,7 @@ try {
   for (const width of [320, 768, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto(base);
+    await page.waitForFunction(() => document.documentElement.dataset.appReady === 'true');
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `setup fits ${width}px`);
     await page.locator('input[name="game"][value="error-detection"]').check();
     await page.getByRole('button', { name: 'Start quiz', exact: true }).click();

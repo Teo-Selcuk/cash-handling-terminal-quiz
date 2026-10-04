@@ -6,7 +6,7 @@ The computer uses pinned Stockfish 19 lite single-threaded, with default skill l
 
 ## Website layout and optional fullscreen
 
-Starting or resuming a game, opening lessons, and opening replay keep Chess inside the normal website layout. The board is slightly larger on desktop. **Enter fullscreen** is optional; Escape returns to the website layout. **Save & return to setup** saves and pauses the game and exits fullscreen if it is active. Progress and history remain available after a result, during lesson practice, and in replay. Narrow screens stack the tools below the board. Low game clocks show a distinct warning style below 20 seconds.
+Starting or resuming a game, opening lessons, and opening replay keep Chess inside the normal website layout. The square board is centered and uses the available viewport height beside compact tools. **Enter fullscreen** is optional; Escape returns to the website layout. **Save & return to setup** saves and pauses the game and exits fullscreen if it is active. Progress and history remain available after a result, during lesson practice, and in replay. Narrow screens stack the tools below the board. Low game clocks show a distinct warning style below 20 seconds.
 
 ## Timing and recovery
 
@@ -38,3 +38,6 @@ Average centipawn loss and mistake totals use only the player’s evaluated move
 - Rules and engine assets are vendored under `assets/chess/`; licenses and corresponding source links are included. Serve `.wasm` as `application/wasm`. The Pages workflow copies the chess modules and assets explicitly. No accounts, backend, paid services, or runtime third-party requests are needed. The PowerShell quiz is unchanged.
 
 Run `node --test tests/*.test.mjs`. With Playwright on `NODE_PATH`, run `node tests/browser-smoke.mjs`, or set `QUIZ_FOCUSED=chess` for focused checks. `QUIZ_STATIC_ROOT` can point to an assembled Pages directory. Browser checks exercise the actual worker, four difficulties, coaching/review, lessons, exports, keyboard/touch input, reload, hidden-page clocks, failure recovery, and 320–1440px layouts.
+
+
+Signed-in users synchronize games, lesson attempts, current-game checkpoints and settings through their isolated Firebase account. Guest games remain on the device and can be explicitly imported. The normal Chess page centers a responsive square board beside compact tools; fullscreen is optional and never starts automatically.

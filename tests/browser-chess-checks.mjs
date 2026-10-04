@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 const move = async (page, from, to) => { await page.locator(`[data-square="${from}"]`).click(); await page.locator(`[data-square="${to}"]`).click(); };
-const setup = async (page, base) => { await page.goto(base); await page.locator('input[name="game"][value="chess"]').check(); await page.locator('#chess-setup-status').filter({ hasText: 'Computer ready' }).waitFor(); };
+const setup = async (page, base) => { await page.goto(base); await page.locator('input[name="game"][value="chess"]').check(); await page.locator('#chess-setup-status').filter({ hasText: 'Computer ready' }).waitFor(); await page.locator('#chess-color').selectOption('w'); await page.locator('#chess-time-control').selectOption('untimed'); };
 const practice = async page => { while (!(await page.locator('#chess-demo-next').isDisabled())) await page.locator('#chess-demo-next').click(); await page.locator('#chess-practice').click(); };
 const start = async page => { await page.getByRole('button', { name: 'Start chess game', exact: true }).click(); await page.locator('#chess-status').filter({ hasText: 'Your turn' }).waitFor(); };
 const games = page => page.evaluate(() => JSON.parse(localStorage.getItem('cash-handling-chess-games-v1') ?? '{"value":[]}').value);
@@ -99,6 +99,8 @@ export async function checkChess(browser, base) {
           assert.ok(bounds && bounds.x >= 0 && bounds.x + bounds.width <= width && bounds.y >= 0 && bounds.y + bounds.height <= 900, `${id} stays on screen at ${width}px`);
         }
         assert.ok(boardBounds.width >= 250, `Board remains playable at ${width}px`);
+        assert.ok(Math.abs(boardBounds.width-boardBounds.height)<2, `Board stays square at ${width}px`);
+        if(width>=1024)assert.ok(boardBounds.width>=600&&boardBounds.width<=750, `Desktop board uses the available viewport height at ${width}px`);
         if ([320, 1440].includes(width)) await page.screenshot({ path: `.artifacts/chess/board-${width}-${theme}.png`, fullPage: true });
       }
     }

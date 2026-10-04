@@ -1,7 +1,7 @@
 // Pure local-history analytics. Unknown fields stay unknown so older attempts are
 // never represented as easier, faster, or more complete than they were recorded.
-import { TASKS as OVERLOAD_TASKS } from './overload-core.mjs?v=20261003-ui-polish';
-import { overloadChartSpecs, overloadRecommendation } from './overload-analytics.mjs?v=20261003-ui-polish';
+import { TASKS as OVERLOAD_TASKS } from './overload-core.mjs?v=20261003-accounts';
+import { overloadChartSpecs, overloadRecommendation } from './overload-analytics.mjs?v=20261003-accounts';
 
 const ANSWERED_OUTCOMES = new Set(['Correct', 'Incorrect', 'Timed Out']);
 const OUTCOMES = new Set([...ANSWERED_OUTCOMES, 'Not answered']);

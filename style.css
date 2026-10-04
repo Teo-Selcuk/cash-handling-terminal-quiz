@@ -1009,6 +1009,10 @@ body.chess-arena #chess-screen {
 .hold-workflow input { width: auto; }
 #hold-decision-area { min-width: 0; }
 .hold-decision-grid { margin-block: 1rem; }
+.hold-decision-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.hold-decision-grid > label { padding: .85rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-quiet); }
+.hold-decision-grid select { margin-top: .5rem; }
+@media (max-width: 650px) { .hold-decision-grid { grid-template-columns: minmax(0,1fr); } }
 .hold-decision-grid label { min-width: 0; }
 .hold-decision-grid select { width: 100%; }
 .hold-availability { margin: .5rem 0 1rem; padding: 1rem; border-left: 4px solid var(--brand); border-radius: .25rem var(--radius) var(--radius) .25rem; background: var(--surface-quiet); }
@@ -1049,3 +1053,33 @@ body.chess-arena #chess-screen {
 @media (min-width: 761px) {
   .chess-arena .chess-board, .chess-arena .chess-clocks { width: min(100%, var(--chess-board-size, calc(100dvh - 20rem))); }
 }
+/* Normal-page chess gives the board the available width and keeps tools compact. */
+#chess-screen .chess-layout { grid-template-columns: minmax(0,1fr) minmax(12rem,15rem); gap: 1rem; max-width: 95rem; margin-inline: auto; }
+#chess-screen .chess-board-column { display: flex; flex-direction: column; align-items: center; }
+#chess-screen .chess-board, #chess-screen .chess-clocks { width: 100%; max-width: min(64rem, max(18rem, calc(100dvh - 10rem))); margin-inline: auto; }
+#chess-screen .chess-sidebar .visual-card { padding: .75rem; }
+#chess-screen .chess-sidebar h3 { margin: 0 0 .5rem; font-size: 1rem; }
+#chess-screen .chess-board-column > .visual-card { width: 100%; padding: .75rem; margin-top: .5rem; }
+#chess-screen .chess-moves { max-height: 8rem; overflow-y: auto; }
+#chess-screen .chess-toolbar { gap: .5rem; }
+#chess-screen .chess-toolbar button { padding: .5rem .75rem; }
+#chess-screen:fullscreen .chess-board, #chess-screen:fullscreen .chess-clocks { width: min(100%,var(--chess-board-size,75dvh)); }
+@media (max-width: 850px) { #chess-screen .chess-layout { grid-template-columns: minmax(0,1fr); } #chess-screen .chess-sidebar { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: .5rem; } }
+@media (max-width: 550px) { #chess-screen .chess-sidebar { grid-template-columns: minmax(0,1fr); } }
+.multitasker-setup-summary { margin: 0 0 1rem; padding: .8rem 1rem; background: var(--transaction-surface); color: var(--transaction-text); border-radius: var(--radius); font-weight: 650; }
+.multitasker-task-card { transition: border-color .15s, opacity .15s; }
+.multitasker-task-card:has(input:checked) { border-color: var(--brand); }
+.multitasker-task-toggle { cursor: pointer; }
+.multitasker-task-state { padding: .2rem .4rem; border-radius: .3rem; background: var(--surface); font-size: .8rem; }
+.multitasker-task-card.is-disabled .multitasker-task-state { color: var(--muted); }
+.overload-scoreboard { padding: 1rem; background: var(--transaction-surface); color: var(--transaction-text); border-radius: var(--radius); font-variant-numeric: tabular-nums; }
+.overload-panel-header { gap: .75rem; }
+.overload-remaining { white-space: nowrap; font-variant-numeric: tabular-nums; font-size: .85rem; }
+.overload-panel.overload-urgent { border-color: var(--danger); box-shadow: inset 0 .25rem var(--danger); }
+.overload-panel.overload-urgent .overload-remaining { font-weight: 750; color: var(--danger); }
+.account-area summary { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; }
+#account-status { margin-left: auto; font-size: .85rem; font-weight: 500; }
+.account-area input { width: 100%; margin-top: .35rem; }
+.account-area .action-row { margin-top: .75rem; }
+#account-error { color: var(--danger); overflow-wrap: anywhere; }
+.account-area form[inert] { opacity: .65; }

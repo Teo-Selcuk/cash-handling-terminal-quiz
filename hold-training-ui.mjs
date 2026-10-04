@@ -1,4 +1,4 @@
-import { ITEM_TYPES, HOLD_TYPES, ACTIONS, WORKFLOW_LABELS, classifyItem, decideCheck, availabilityKey, availabilityText } from './check-holds.mjs?v=20261003-ui-polish';
+import { ITEM_TYPES, HOLD_TYPES, ACTIONS, WORKFLOW_LABELS, availabilityChoices } from './check-holds.mjs?v=20261003-accounts';
 
 export function renderHoldTraining(container, c, referenceSignature = '') {
   container.replaceChildren();container.hidden=!c;
@@ -24,7 +24,7 @@ export function renderHoldTraining(container, c, referenceSignature = '') {
     if(referenceSignature) {const view=document.createElement('div');view.className='hold-reference-signature';view.innerHTML=referenceSignature;records.append(view);}
     container.append(records);
   }
-  const allowanceNote=document.createElement('p');allowanceNote.className='setup-note';allowanceNote.textContent='Identify the item, then choose how to process it. Availability is calculated from this case, including earlier checks that used today’s allowance.';container.append(allowanceNote);
+  const allowanceNote=document.createElement('p');allowanceNote.className='setup-note';allowanceNote.textContent='Identify the item, classification, processing decision, hold, release days and notice. Use this case’s conditions, including earlier checks that used today’s allowance.';container.append(allowanceNote);
   const grid=document.createElement('div');grid.className='form-grid hold-decision-grid';container.append(grid);
   const select=(name,label,values)=> {
     const wrapper=document.createElement('label');wrapper.textContent=label;
@@ -36,30 +36,12 @@ export function renderHoldTraining(container, c, referenceSignature = '') {
   const item=select('itemType','1 · Item type',{}),itemSelect=item.querySelector('select');
   const groups={'Checks':['on-us','cashier','treasury','fhlb','postal','reserve','government','personal','business'],'Other items':['foreign','cash','ach','wire']};
   for(const [name,ids] of Object.entries(groups)){const group=document.createElement('optgroup');group.label=name;for(const id of ids)group.append(new Option(ITEM_TYPES[id],id));itemSelect.append(group);}
-  const action=select('action','2 · Processing decision',ACTIONS),actionSelect=action.querySelector('select');
-  const reason=select('holdType','3 · Hold Type',Object.fromEntries(Object.entries(HOLD_TYPES).filter(([key])=>key!=='none'))),reasonSelect=reason.querySelector('select');
-  const classification=document.createElement('input');classification.type='hidden';classification.name='classification';classification.id='hold-classification';container.append(classification);
-  const timing=document.createElement('input');timing.type='hidden';timing.name='availability';timing.id='hold-availability';container.append(timing);
-  const notice=document.createElement('input');notice.type='hidden';notice.name='notice';notice.id='hold-notice';container.append(notice);
-  const availability=document.createElement('div');availability.className='hold-availability';availability.hidden=true;availability.append(document.createElement('strong'),document.createElement('p'));availability.querySelector('strong').textContent='Availability';container.append(availability);
-  const noticeLabel=document.createElement('label');noticeLabel.className='hold-notice-confirm';noticeLabel.hidden=true;const noticeCheck=document.createElement('input');noticeCheck.type='checkbox';noticeCheck.id='hold-notice-confirm';noticeLabel.append(noticeCheck,document.createTextNode('Hold Notice given to the customer'));container.append(noticeLabel);
-  const expected=decideCheck(c);
-  function update(){
-    classification.value=itemSelect.value?classifyItem(itemSelect.value):'';
-    const processing=['accept','hold'].includes(actionSelect.value),placingHold=actionSelect.value==='hold';
-    reason.hidden=!placingHold;reasonSelect.disabled=!placingHold;
-    if(!placingHold)reasonSelect.value='';
-    const ready=processing&&(!placingHold||Boolean(reasonSelect.value));
-    availability.hidden=!ready;
-    timing.value=ready?availabilityKey(expected.availability):'';
-    if(ready)availability.querySelector('p').textContent=expected.availability.length?availabilityText(expected.availability):'No deposit availability schedule applies to this decision.';
-    noticeLabel.hidden=!placingHold;noticeCheck.disabled=!placingHold;
-    if(!placingHold)noticeCheck.checked=false;
-    notice.value=placingHold?(noticeCheck.checked?'given':'not-required'):'not-required';
-    const electronic=['cash','ach','wire'].includes(itemSelect.value);
-    if(electronic&&placingHold)availability.querySelector('p').textContent='Cash, ACH, and wire items cannot receive Reg CC holds. Reconsider the processing decision.';
-  }
-  itemSelect.addEventListener('change',update);actionSelect.addEventListener('change',update);reasonSelect.addEventListener('change',update);noticeCheck.addEventListener('change',update);update();
+  select('classification','2 · Availability classification',{'next-day':'Next-Day Item','non-next-day':'Non-Next-Day Item',special:'Special / outside normal check classification'});
+  select('action','3 · Processing decision',ACTIONS);
+  select('holdType','4 · Hold Type',HOLD_TYPES);
+  select('availability','5 · Availability / business days',availabilityChoices());
+  select('notice','6 · Hold Notice',{given:'Required · give notice','not-required':'Not Required'});
+  const timingHelp=document.createElement('p');timingHelp.className='setup-note';timingHelp.textContent='Select the release days in order, from the first available portion to the final portion. Day 0 means same day. Use no schedule when processing is stopped or routed for review. Cash, ACH and wire use their separate training availability, never a Reg CC check hold.';container.append(timingHelp);
   const workflow=document.createElement('details');workflow.className='hold-step-details';const summary=document.createElement('summary');summary.textContent='Required handling / verification steps';workflow.append(summary);
   const choices=document.createElement('div');choices.className='hold-workflow';
   for(const [value,label] of Object.entries(WORKFLOW_LABELS)) {
@@ -72,6 +54,5 @@ export function renderHoldTraining(container, c, referenceSignature = '') {
 export function readHoldAnswer(container) {
   const answer={workflow:[]};
   container.querySelectorAll('select,input').forEach(el=> {if(el.type==='checkbox') {if(el.name==='workflow'&&el.checked) answer.workflow.push(el.value);}else if(el.name) answer[el.name]=el.value;});
-  if(answer.action==='accept') answer.holdType='none';
   return answer;
 }

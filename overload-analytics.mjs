@@ -1,4 +1,4 @@
-import { TASKS, createTrial, resolveOverloadSettings } from './overload-core.mjs?v=20261003-ui-polish';
+import { TASKS, createTrial, resolveOverloadSettings } from './overload-core.mjs?v=20261003-accounts';
 const names=Object.fromEntries(TASKS.map(t=>[t.id,t.name]));
 const avg=values=>values.length?values.reduce((a,b)=>a+b,0)/values.length:null;
 const group=(events,label,extra={})=>({label,actions:events.length,errors:events.filter(e=>!e.correct).length,accuracy:events.length?events.filter(e=>e.correct).length/events.length*100:null,response:avg(events.filter(e=>!e.expired).map(e=>e.responseTimeSeconds)),...extra});
