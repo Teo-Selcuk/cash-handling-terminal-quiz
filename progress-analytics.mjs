@@ -1,14 +1,14 @@
 // Pure local-history analytics. Unknown fields stay unknown so older attempts are
 // never represented as easier, faster, or more complete than they were recorded.
-import { TASKS as OVERLOAD_TASKS } from './overload-core.mjs';
-import { overloadChartSpecs, overloadRecommendation } from './overload-analytics.mjs';
+import { TASKS as OVERLOAD_TASKS } from './overload-core.mjs?v=20261003-ui-polish';
+import { overloadChartSpecs, overloadRecommendation } from './overload-analytics.mjs?v=20261003-ui-polish';
 
 const ANSWERED_OUTCOMES = new Set(['Correct', 'Incorrect', 'Timed Out']);
 const OUTCOMES = new Set([...ANSWERED_OUTCOMES, 'Not answered']);
 const GAME_NAMES = Object.freeze({
   typing: 'Typing speed', cash: 'Cash handling', memory: 'Number memory', task: 'Task simulation', 'error-detection': 'Error detection',
   'fraud-inspection': 'Check & ID Fraud Inspection',
-  overload: 'Multitasker / OVERLOAD',
+  overload: 'Multitasker',
 });
 const GAME_BY_NAME = new Map(Object.entries(GAME_NAMES).map(([key, value]) => [value.toLowerCase(), key]));
 const known = (value) => value !== null && value !== undefined && value !== '';

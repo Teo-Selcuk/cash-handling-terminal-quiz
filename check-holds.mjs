@@ -1,6 +1,6 @@
 // Training specification: user-supplied Burke & Herbert rules. Amounts stay in cents.
 export const ITEM_TYPES = {
-  'on-us':'Burke & Herbert Bank · On-Us check', cashier:"Cashier’s / Official check",
+  'on-us':'On-Us check', cashier:"Cashier’s / Official check",
   treasury:'United States Treasury', fhlb:'Federal Home Loan Bank', postal:'U.S. Postal Service money order',
   reserve:'Federal Reserve Bank', government:'State / local government', personal:'Personal check',
   business:'Business check', foreign:'Foreign check · collection', cash:'Cash deposit', ach:'ACH credit', wire:'Wire transfer',
@@ -45,7 +45,7 @@ export function decideCheck(c) {
   if(c.endorsement==='missing') return action('correction','Obtain the required payee endorsement. Correcting it alone is not a redeposited item.');
   if(['conditional','third-party','mark'].includes(c.endorsement)) return action('manager','This endorsement or signature requires manager review; no automatic acceptance or witness procedure is supplied.');
   if(c.frontSignatureMark) return action('manager','A drawer signature by mark requires manager review; no witness procedure is supplied.');
-  if(c.unusedCashier && c.endorsement!=='NOT USED FOR INTENDED PURPOSE') return action('correction','Before depositing an unused Burke & Herbert cashier’s check back to the customer, obtain NOT USED FOR INTENDED PURPOSE.');
+  if(c.unusedCashier && c.endorsement!=='NOT USED FOR INTENDED PURPOSE') return action('correction','Before redepositing an unused cashier’s check, obtain NOT USED FOR INTENDED PURPOSE.');
   if(c.governmentJoin==='AND' && !c.allPayeesPresent) return action('manager','Government AND payees require all applicable parties or manager handling. OR permits either applicable named party.');
   if((c.llc||c.endorsement==='deposit-only') && c.transaction!=='deposit') return action('deposit-only',c.llc?'Deposit to the LLC account; do not cash it.':'Follow For Deposit Only; restrict this item to deposit.');
   if(c.llc && !c.llcAccount) return action('deposit-only','Use the LLC account for this LLC payee.');

@@ -1,6 +1,6 @@
 # Check acceptance and hold training
 
-Turn on **Use Hold Types** in Check & ID Inspection setup. The existing issue-selection review remains part of each case. The additional decision area grades item classification, acceptance, hold reason, availability business days, notice, and required handling steps. Nonprocessing decisions hide the availability controls. Every placed hold requires a notice.
+Turn on **Use Hold Types** in Check & ID Inspection setup. The existing issue-selection review remains part of each case. The decision area asks for a grouped item type and processing decision. Hold Type appears only after **Place Hold**. The app derives classification from the selected item and the business-day availability schedule from the case, then shows the calculated schedule. Placing a hold requires the trainee to confirm delivery of a Hold Notice. The saved answer retains the original scoring fields and required handling steps.
 
 The fictional document identifies its issuer and item type. Cash, ACH and wire cases show transaction advices and cannot receive Reg CC holds. Foreign checks use a separate collection workflow without a receipt. Endorsements, LLC/joint payees, unpaid returns, TrueChecks recommendations, account history and emergency information can change the correct decision. A TrueChecks review recommendation alone does not impose a hold.
 

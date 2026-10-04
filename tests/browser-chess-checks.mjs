@@ -14,9 +14,8 @@ export async function checkChess(browser, base) {
   try {
     for (const difficulty of ['Beginner', 'Easy', 'Medium', 'Hard']) {
       await setup(page, base); await page.locator('#chess-difficulty').selectOption(difficulty); await start(page);
-      await page.waitForFunction(() => document.fullscreenElement?.id === 'chess-screen');
-      assert.equal(await page.evaluate(() => document.fullscreenElement?.id), 'chess-screen');
-      assert.equal(await page.locator('.site-header').evaluate(node => node.inert), true);
+      assert.equal(await page.evaluate(() => document.fullscreenElement), null);
+      assert.equal(await page.locator('.site-header').evaluate(node => node.inert), false);
       assert.equal(await page.locator('#chess-progress').isVisible(), false);
       await move(page, 'e2', 'e4'); await page.locator('#chess-moves li').nth(1).waitFor();
       assert.match(await page.locator('#chess-status').textContent(), /Your turn/);
@@ -88,7 +87,7 @@ export async function checkChess(browser, base) {
     // Responsive board and history, both themes, including narrow touch layout.
     await page.evaluate(async () => { if (document.fullscreenElement) await document.exitFullscreen(); });
     assert.equal(await page.locator('#chess-screen').isVisible(), true);
-    assert.equal(await page.locator('.site-header').evaluate(node => node.inert), true);
+    assert.equal(await page.locator('.site-header').evaluate(node => node.inert), false);
     for (const width of [320, 768, 1024, 1440]) {
       await page.setViewportSize({ width, height: 900 });
       for (const theme of ['light', 'dark']) {
@@ -99,7 +98,7 @@ export async function checkChess(browser, base) {
           const bounds = await page.locator('#' + id).boundingBox();
           assert.ok(bounds && bounds.x >= 0 && bounds.x + bounds.width <= width && bounds.y >= 0 && bounds.y + bounds.height <= 900, `${id} stays on screen at ${width}px`);
         }
-        if (width >= 768) assert.ok(boardBounds.y + boardBounds.height <= 900, `Full board stays visible at ${width}px`);
+        assert.ok(boardBounds.width >= 250, `Board remains playable at ${width}px`);
         if ([320, 1440].includes(width)) await page.screenshot({ path: `.artifacts/chess/board-${width}-${theme}.png`, fullPage: true });
       }
     }
@@ -129,11 +128,10 @@ export async function checkChess(browser, base) {
     await arena.getByRole('button', { name: 'Blitz 3+2', exact: true }).click();
     assert.equal(await arena.locator('#chess-time-control').inputValue(), 'clock');
     assert.equal(await arena.locator('#chess-increment').inputValue(), '2');
-    await start(arena); await arena.waitForFunction(() => document.fullscreenElement?.id === 'chess-screen');
+    await start(arena); assert.equal(await arena.evaluate(() => document.fullscreenElement),null);
     await move(arena, 'e2', 'e4'); await arena.locator('#chess-moves li').nth(1).waitFor();
     assert.match(await arena.locator('#chess-game-label').textContent(), /level 7\/20/);
-    await arena.evaluate(() => document.exitFullscreen());
-    assert.equal(await arena.locator('.site-header').evaluate(node => node.inert), true);
+    assert.equal(await arena.locator('.site-header').evaluate(node => node.inert), false);
     await arena.locator('#chess-fullscreen').click(); await arena.waitForFunction(() => document.fullscreenElement?.id === 'chess-screen');
     await arena.locator('#chess-back').click();
     await arena.waitForFunction(() => !document.fullscreenElement);
@@ -161,6 +159,7 @@ export async function checkChess(browser, base) {
     await arena.locator('#chess-back').click(); await arena.waitForFunction(() => !document.fullscreenElement);
     await arena.evaluate(() => { Element.prototype.requestFullscreen = () => Promise.reject(new Error('Fullscreen unavailable')); });
     await start(arena);
+    await arena.locator('#chess-fullscreen').click();
     await arena.locator('#chess-fullscreen-note').filter({ hasText: 'unavailable' }).waitFor();
     assert.equal(await arena.locator('#chess-screen').isVisible(), true);
     await move(arena, 'e2', 'e4'); await arena.locator('#chess-moves li').nth(1).waitFor();

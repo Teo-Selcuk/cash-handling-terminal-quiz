@@ -74,18 +74,18 @@ export function createChessUI({ showScreen, renderChart, showChartData }) {
   }
   function fullscreenLabel() {
     el('fullscreen').hidden = document.fullscreenElement === el('screen');
-    el('fullscreen-note').textContent = document.fullscreenElement === el('screen') ? 'Fullscreen arena · Escape leaves browser fullscreen. Save & return pauses and saves your game.' : 'Focused arena · other app navigation is hidden. Enter fullscreen to hide browser controls.';
+    el('fullscreen-note').textContent = document.fullscreenElement === el('screen') ? 'Fullscreen · Escape returns to the website layout.' : 'Chess stays in the website layout. Fullscreen is optional.';
     fitBoard();
   }
   function requestFullscreen() {
     const screen = el('screen');
     if (document.fullscreenElement === screen) return;
-    if (!screen.requestFullscreen) { el('fullscreen-note').textContent = 'Browser fullscreen is unavailable. The focused arena still fills this window.'; return; }
+    if (!screen.requestFullscreen) { el('fullscreen-note').textContent = 'Browser fullscreen is unavailable. Chess remains playable in the website layout.'; return; }
     screen.requestFullscreen({ navigationUI: 'hide' }).catch(() => {
-      if (active) el('fullscreen-note').textContent = 'Browser fullscreen was unavailable. The focused arena still fills this window; you can retry with Enter fullscreen.';
+      if (active) el('fullscreen-note').textContent = 'Browser fullscreen was unavailable. Chess remains playable here; you can retry with Enter fullscreen.';
     });
   }
-  function open() { active = true; showScreen('chess'); fullscreenLabel(); requestFullscreen(); }
+  function open() { active = true; showScreen('chess'); fullscreenLabel(); }
   async function start({ fen = DEFAULT_POSITION, lessonId = null, restored = null } = {}) {
     engine.cancel(); busy = false; lesson = null; review = null; selected = null; hint = null; promotion = null;
     session = restored ? ChessSession.restore(restored) : new ChessSession(settings(), { fen, lessonId });

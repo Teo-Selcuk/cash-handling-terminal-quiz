@@ -1,4 +1,4 @@
-# Multitasker / OVERLOAD
+# Multitasker
 
 Select Multitasker in browser setup. The PowerShell cash trainer is unchanged. Select 1–9 starting tasks, maximum tasks, mode, deadline, speed, initial difficulty, points per increase, auto-add, optional sound and warning animation, and duration (zero means untimed). Included tasks and their unlock thresholds are editable. Excluding every task displays a setup error.
 

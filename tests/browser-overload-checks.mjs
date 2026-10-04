@@ -6,6 +6,7 @@ export async function checkOverload(browser, site) {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const errors = []; page.on('pageerror', error => errors.push(error.stack));
   const key = 'cash-handling-terminal-quiz-history-v1';
+  let setupCaptured = false;
   async function setup(count, included = TASKS.map(t => t.id), mode = 'practice', seconds = 60) {
     await page.goto(site);
     await page.locator('[name="game"][value="overload"]').check();
@@ -15,7 +16,8 @@ export async function checkOverload(browser, site) {
     await page.locator('#overload-unlockAll').check();
     await page.locator('#overload-autoAdd').uncheck();
     await page.locator('#overload-timerSeconds').fill(String(seconds));
-    await page.locator('#overload-setup-options details').evaluate(node => node.open = true);
+    assert.equal(await page.locator('.multitasker-task-card').count(),9);
+    if (!setupCaptured) { await page.locator('#overload-setup-options').screenshot({ path: resolve(process.env.TEMP || '/tmp', 'quiz-multitasker-setup.png') }); setupCaptured = true; }
     for (const task of TASKS) await page.locator(`#overload-include-${task.id}`).setChecked(included.includes(task.id));
     await page.getByRole('button', { name: 'Start quiz', exact: true }).click();
     await page.locator('#overload-screen').waitFor({ state: 'visible' });
@@ -114,7 +116,7 @@ export async function checkOverload(browser, site) {
     },key);
     await page.reload();
     await page.locator('[name="game"][value="overload"]').check();
-    await page.locator('#overload-setup-options details').evaluate(node => node.open = true);
+    assert.equal(await page.locator('.multitasker-task-card').count(),9);
     await page.locator('#overload-unlock-arrows').fill('777');
     await page.locator('#open-history').click(); await page.locator('[data-history-game="overload"]').click();
     await page.locator('#history-recommendations').getByRole('button',{name:'Use practice plan',exact:true}).click();
@@ -125,6 +127,6 @@ export async function checkOverload(browser, site) {
     await page.getByRole('button',{name:'Start quiz',exact:true}).click(); await page.locator('#overload-screen').waitFor({state:'visible'});
     await page.getByRole('button',{name:'End run',exact:true}).click();
     assert.deepEqual(errors, []);
-    console.log('OVERLOAD: all nine controls, 1–9 concurrent panels, pause, modes, responsive layout, persistence and analytics passed.');
+    console.log('Multitasker: all nine controls, 1–9 concurrent panels, pause, modes, responsive layout, persistence and analytics passed.');
   } finally { await page.close(); }
 }

@@ -4,9 +4,9 @@ Choose **Chess** in setup, select the computer difficulty, color, and time contr
 
 The computer uses pinned Stockfish 19 lite single-threaded, with default skill levels 0/3/10/20 for Beginner/Easy/Medium/Hard. The numeric slider fine-tunes any preset from 0 through 20, and the chosen level is retained in saved games, replay, PGN, CSV, and difficulty charts. Searches use that chosen level and a bounded search (normally 400 ms). These are practice levels, not measured Elo ratings. The worker loads only when Chess is opened. Engine failures pause the game and clocks and expose a retry control.
 
-## Focused arena
+## Website layout and optional fullscreen
 
-Starting or resuming a game, opening lessons, or opening replay fills the window with the chess arena and requests browser fullscreen from the user action. Other app navigation is hidden and inert, including for keyboard users. Escape can leave browser fullscreen; the focused arena remains open and clocks continue. **Enter fullscreen** retries the request. Unsupported or denied fullscreen leaves a usable window-filling arena with an explanatory message. **Save & return to setup** deliberately saves and pauses, restores navigation, and exits fullscreen. Progress and history are available in the arena after a result, during lesson practice, and in replay. The centered board scales to the desktop height, compact tools scroll beside it, and move history sits below the board. Wide screens keep the toolbar at the top; narrow screens stack the tools below the board. Low game clocks show a distinct warning style below 20 seconds.
+Starting or resuming a game, opening lessons, and opening replay keep Chess inside the normal website layout. The board is slightly larger on desktop. **Enter fullscreen** is optional; Escape returns to the website layout. **Save & return to setup** saves and pauses the game and exits fullscreen if it is active. Progress and history remain available after a result, during lesson practice, and in replay. Narrow screens stack the tools below the board. Low game clocks show a distinct warning style below 20 seconds.
 
 ## Timing and recovery
 

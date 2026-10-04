@@ -1,15 +1,15 @@
-import { ITEM_TYPES, HOLD_TYPES, ACTIONS, WORKFLOW_LABELS } from './check-holds.mjs';
+import { ITEM_TYPES, HOLD_TYPES, ACTIONS, WORKFLOW_LABELS, classifyItem, decideCheck, availabilityKey, availabilityText } from './check-holds.mjs?v=20261003-ui-polish';
 
 export function renderHoldTraining(container, c, referenceSignature = '') {
   container.replaceChildren();container.hidden=!c;
   if(!c) return;
-  const legend=document.createElement('legend');legend.textContent='Acceptance & funds availability';container.append(legend);
+  const legend=document.createElement('legend');legend.textContent='Hold & processing';container.append(legend);
   const facts=document.createElement('p');facts.className='setup-note';
-  const prior=c.priorAccounts?.map(a=>`${a.transactional?'Transactional':'Other'} B&H account held ${a.ageDays} calendar days, existed ${a.daysBeforeOpening} calendar days before opening`).join('; ');
+  const prior=c.priorAccounts?.map(a=>`${a.transactional?'Transactional':'Other'} prior account held ${a.ageDays} calendar days, existed ${a.daysBeforeOpening} calendar days before opening`).join('; ');
   facts.textContent=[`Requested transaction: ${c.transaction}`,`Account age: ${c.accountAgeDays} days`,`Aggregate checks today: $${(c.dailyCheckDepositsCents/100).toFixed(2)}`,
     prior, c.returnedUnpaid?'Previously returned unpaid':c.correctedEndorsement?'Previously returned for missing endorsement; now corrected':c.correctedPostdate?'Previously postdated; now within date':'No previous unpaid return',
     c.overdraftHistory??'No repeated overdrafts or current overdraft',c.reasonableCause?'Confidential information indicates possible nonpayment':null,
-    c.emergencyDetails??'No emergency',`TrueChecks / Alert Center Details: ${c.trueChecks}`,c.unusedCashier?'Unused B&H cashier’s check; customer requests redeposit':null,
+    c.emergencyDetails??'No emergency',`TrueChecks / Alert Center Details: ${c.trueChecks}`,c.unusedCashier?'Unused cashier’s check; customer requests redeposit':null,
     c.governmentJoin?c.allPayeesPresent?'All named payees are present':'Only one named payee is present':null,c.llc?`Destination: ${c.llcAccount?'LLC account':'cash requested'}`:null,
     c.physicalSplit?'Customer asks to divide the physical check into two checks':null,
     c.nonCustomer?`Non-customer; bank classifies this check as large. ${c.twoValidIds?'Two valid IDs available':'Only one valid ID available'}. Payer account and prior signature file available. ${c.payerApproved?'Payer approved after contact':'Payer has not approved'}.`:null,
@@ -24,8 +24,8 @@ export function renderHoldTraining(container, c, referenceSignature = '') {
     if(referenceSignature) {const view=document.createElement('div');view.className='hold-reference-signature';view.innerHTML=referenceSignature;records.append(view);}
     container.append(records);
   }
-  const allowanceNote=document.createElement('p');allowanceNote.className='setup-note';allowanceNote.textContent='Availability is measured in business days. For aggregate large deposits, earlier checks today consume the first $300 / $6,800 allowances; use the remaining daily allowance for this item.';container.append(allowanceNote);
-  const grid=document.createElement('div');grid.className='form-grid';container.append(grid);
+  const allowanceNote=document.createElement('p');allowanceNote.className='setup-note';allowanceNote.textContent='Identify the item, then choose how to process it. Availability is calculated from this case, including earlier checks that used today’s allowance.';container.append(allowanceNote);
+  const grid=document.createElement('div');grid.className='form-grid hold-decision-grid';container.append(grid);
   const select=(name,label,values)=> {
     const wrapper=document.createElement('label');wrapper.textContent=label;
     const input=document.createElement('select');input.name=name;input.id='hold-'+name;
@@ -33,16 +33,33 @@ export function renderHoldTraining(container, c, referenceSignature = '') {
     Object.entries(values).forEach(([value,title])=>input.append(new Option(title,value)));
     wrapper.append(input);grid.append(wrapper);return wrapper;
   };
-  select('itemType','Item type',ITEM_TYPES);
-  select('classification','Availability classification',{'next-day':'Next-Day','non-next-day':'Non-Next-Day',foreign:'Foreign / separate workflow'});
-  const action=select('action','Processing decision',ACTIONS);
-  const reason=select('holdType','Hold type',HOLD_TYPES);
-  const timing=select('availability','Availability business days',{'0':'All same day','1':'All next business day','2':'All 2nd business day','7':'All 7th business day','9':'All 9th business day','0/1':'First $300 same day; rest next day','0/2':'First $300 same day; rest day 2','0/1/2':'First $300 same day; next $6,500 day 1; rest day 2','0/1/7':'First $300 same day; next $6,500 day 1; rest day 7','0/2/7':'First $300 same day; next $6,500 day 2; rest day 7','0/1/9':'First $300 same day; next $6,500 day 1; rest day 9','1/2':'Remaining daily next-day allowance day 1; rest day 2','1/7':'Remaining daily next-day allowance day 1; rest day 7','2/7':'Remaining daily non-next-day allowance day 2; rest day 7'});
-  const notice=select('notice','Hold Notice',{given:'Given','not-required':'Not Required'});
-  action.querySelector('select').addEventListener('change',e=> {
-    const process=['accept','hold'].includes(e.target.value);
-    for(const el of [reason,timing,notice]) {el.hidden=!process;el.querySelector('select').disabled=!process;}
-  });
+  const item=select('itemType','1 · Item type',{}),itemSelect=item.querySelector('select');
+  const groups={'Checks':['on-us','cashier','treasury','fhlb','postal','reserve','government','personal','business'],'Other items':['foreign','cash','ach','wire']};
+  for(const [name,ids] of Object.entries(groups)){const group=document.createElement('optgroup');group.label=name;for(const id of ids)group.append(new Option(ITEM_TYPES[id],id));itemSelect.append(group);}
+  const action=select('action','2 · Processing decision',ACTIONS),actionSelect=action.querySelector('select');
+  const reason=select('holdType','3 · Hold Type',Object.fromEntries(Object.entries(HOLD_TYPES).filter(([key])=>key!=='none'))),reasonSelect=reason.querySelector('select');
+  const classification=document.createElement('input');classification.type='hidden';classification.name='classification';classification.id='hold-classification';container.append(classification);
+  const timing=document.createElement('input');timing.type='hidden';timing.name='availability';timing.id='hold-availability';container.append(timing);
+  const notice=document.createElement('input');notice.type='hidden';notice.name='notice';notice.id='hold-notice';container.append(notice);
+  const availability=document.createElement('div');availability.className='hold-availability';availability.hidden=true;availability.append(document.createElement('strong'),document.createElement('p'));availability.querySelector('strong').textContent='Availability';container.append(availability);
+  const noticeLabel=document.createElement('label');noticeLabel.className='hold-notice-confirm';noticeLabel.hidden=true;const noticeCheck=document.createElement('input');noticeCheck.type='checkbox';noticeCheck.id='hold-notice-confirm';noticeLabel.append(noticeCheck,document.createTextNode('Hold Notice given to the customer'));container.append(noticeLabel);
+  const expected=decideCheck(c);
+  function update(){
+    classification.value=itemSelect.value?classifyItem(itemSelect.value):'';
+    const processing=['accept','hold'].includes(actionSelect.value),placingHold=actionSelect.value==='hold';
+    reason.hidden=!placingHold;reasonSelect.disabled=!placingHold;
+    if(!placingHold)reasonSelect.value='';
+    const ready=processing&&(!placingHold||Boolean(reasonSelect.value));
+    availability.hidden=!ready;
+    timing.value=ready?availabilityKey(expected.availability):'';
+    if(ready)availability.querySelector('p').textContent=expected.availability.length?availabilityText(expected.availability):'No deposit availability schedule applies to this decision.';
+    noticeLabel.hidden=!placingHold;noticeCheck.disabled=!placingHold;
+    if(!placingHold)noticeCheck.checked=false;
+    notice.value=placingHold?(noticeCheck.checked?'given':'not-required'):'not-required';
+    const electronic=['cash','ach','wire'].includes(itemSelect.value);
+    if(electronic&&placingHold)availability.querySelector('p').textContent='Cash, ACH, and wire items cannot receive Reg CC holds. Reconsider the processing decision.';
+  }
+  itemSelect.addEventListener('change',update);actionSelect.addEventListener('change',update);reasonSelect.addEventListener('change',update);noticeCheck.addEventListener('change',update);update();
   const workflow=document.createElement('details');workflow.className='hold-step-details';const summary=document.createElement('summary');summary.textContent='Required handling / verification steps';workflow.append(summary);
   const choices=document.createElement('div');choices.className='hold-workflow';
   for(const [value,label] of Object.entries(WORKFLOW_LABELS)) {
@@ -54,6 +71,7 @@ export function renderHoldTraining(container, c, referenceSignature = '') {
 }
 export function readHoldAnswer(container) {
   const answer={workflow:[]};
-  container.querySelectorAll('select,input').forEach(el=> {if(el.type==='checkbox') {if(el.checked) answer.workflow.push(el.value);}else answer[el.name]=el.value;});
+  container.querySelectorAll('select,input').forEach(el=> {if(el.type==='checkbox') {if(el.name==='workflow'&&el.checked) answer.workflow.push(el.value);}else if(el.name) answer[el.name]=el.value;});
+  if(answer.action==='accept') answer.holdType='none';
   return answer;
 }

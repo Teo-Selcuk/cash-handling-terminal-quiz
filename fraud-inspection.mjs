@@ -1,4 +1,4 @@
-import { createHoldScenario, ITEM_TYPES } from './check-holds.mjs';
+import { createHoldScenario, ITEM_TYPES } from './check-holds.mjs?v=20261003-ui-polish';
 
 export const FRAUD_INSPECTION_CATEGORIES = Object.freeze([
   { id: 'payee-mismatch', label: 'Payee name does not match ID', group: 'Name and payee' },
@@ -457,13 +457,13 @@ export function createFraudInspectionCase(difficulty = 'Easy', overrides = {}, r
     challenge.check.numericAmountCents = c.amountCents;
     challenge.check.numericAmount = dollars(c.amountCents / 100);
     challenge.check.writtenAmount = amountInWords(c.amountCents);
-    challenge.document.bankTitle = ({'on-us':'Burke & Herbert Bank',personal:'Meadow Community Bank',business:'Northfield Commercial Bank',cashier:'Meadow Bank · Official check',foreign:'Banque du Nord · CAD draft'})[c.itemType] ?? ITEM_TYPES[c.itemType];
+    challenge.document.bankTitle = ({'on-us':'On-Us Bank',personal:'Meadow Community Bank',business:'Northfield Commercial Bank',cashier:'Meadow Bank · Official check',foreign:'Banque du Nord · CAD draft'})[c.itemType] ?? ITEM_TYPES[c.itemType];
     if(c.frontSignatureMark) challenge.check.makerSignature='X';
     if (c.endorsement !== 'normal') challenge.check.endorsementSignature = c.endorsement === 'missing' ? '' : c.endorsement === 'mark' ? 'X' : c.endorsement === 'deposit-only' ? 'For Deposit Only' : c.endorsement === 'conditional' ? 'Pay only if work completed' : c.endorsement === 'third-party' ? 'Pay to the order of Avery Morgan' : c.endorsement;
     if (c.llc) challenge.check.payeeName += ' LLC';
     else if (c.businessNameReview) challenge.check.payeeName = 'Cedarline Services Inc.';
     if (c.governmentJoin) challenge.check.payeeName += ' ' + c.governmentJoin + ' Avery Morgan';
-    if (c.itemType === 'cashier' && c.unusedCashier) challenge.document.bankTitle = 'Burke & Herbert · Cashier’s check';
+    if (c.itemType === 'cashier' && c.unusedCashier) challenge.document.bankTitle = 'On-Us Bank · Cashier’s check';
     c.tellerReference = {
       payerName: challenge.makerId.legalName,
       routingNumber: challenge.tellerFile.routingNumber,

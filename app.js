@@ -1,11 +1,11 @@
 import { enhanceHistoryTables } from './history-tables.mjs';
-import { createOverloadUI } from './overload-ui.mjs';
-import { summarizeOverload, overloadRecommendation } from './overload-analytics.mjs';
-import { decideCheck, scoreHoldDecision, ITEM_TYPES, ACTIONS } from './check-holds.mjs';
-import { renderHoldTraining, readHoldAnswer } from './hold-training-ui.mjs';
+import { createOverloadUI } from './overload-ui.mjs?v=20261003-ui-polish';
+import { summarizeOverload, overloadRecommendation } from './overload-analytics.mjs?v=20261003-ui-polish';
+import { decideCheck, scoreHoldDecision, ITEM_TYPES, ACTIONS } from './check-holds.mjs?v=20261003-ui-polish';
+import { renderHoldTraining, readHoldAnswer } from './hold-training-ui.mjs?v=20261003-ui-polish';
 import { TYPING_PRESETS, resolveTypingSettings, createTypingPrompt, scoreTyping, summarizeTyping } from './typing-core.mjs?v=20261002-typing';
 import { PATTERN_GAME_NAMES } from './pattern-games.mjs';
-import { createChessUI } from './chess-ui.mjs?v=20261003-history-layout';
+import { createChessUI } from './chess-ui.mjs?v=20261003-ui-polish';
 import { createDistractionSamples } from './distraction-sounds.mjs';
 import {
   FRAUD_INSPECTION_CATEGORIES,
@@ -13,13 +13,13 @@ import {
   resolveFraudInspectionSettings,
   scoreFraudInspectionAttempt,
   summarizeFraudHistory,
-} from './fraud-inspection.mjs?v=20261003-overload';
-import { PRACTICE_GAMES, rankPracticeCandidates, recommendPractice, practiceSettings } from './adaptive-practice.mjs?v=20261003-overload';
+} from './fraud-inspection.mjs?v=20261003-ui-polish';
+import { PRACTICE_GAMES, rankPracticeCandidates, recommendPractice, practiceSettings } from './adaptive-practice.mjs?v=20261003-ui-polish';
 import {
   buildChartSpecs, buildConditionalReport, buildErrorAnalytics, buildGameFilters, buildProgressModel, comparePeriods,
   filterHistory, recommendNextChallenge, progressionSegments,
-} from './progress-analytics.mjs?v=20261003-overload';
-import { generateSampleHistory, generateSampleChessHistory } from './sample-history.mjs?v=20261003-overload';
+} from './progress-analytics.mjs?v=20261003-ui-polish';
+import { generateSampleHistory, generateSampleChessHistory } from './sample-history.mjs?v=20261003-ui-polish';
 import {
   DENOMINATIONS,
   DIFFICULTY_CONFIG,
@@ -489,10 +489,9 @@ function isCompactViewport() {
 }
 
 function showScreen(name) {
-  const chessArena = name === 'chess';
-  document.body.classList.toggle('chess-arena', chessArena);
-  for (const node of document.querySelectorAll('.app-shell > :not(#chess-screen)')) node.inert = chessArena;
-  if (!chessArena && document.fullscreenElement?.id === 'chess-screen') void document.exitFullscreen().catch(() => {});
+  document.body.classList.remove('chess-arena');
+  for (const node of document.querySelectorAll('.app-shell > :not(#chess-screen)')) node.inert = false;
+  if (name !== 'chess' && document.fullscreenElement?.id === 'chess-screen') void document.exitFullscreen().catch(() => {});
   refs['fraud-feedback'].hidden = name !== 'feedback' || state.game !== 'fraud-inspection';
   for (const screen of screens) refs[`${screen}-screen`].hidden = screen !== name;
   state.activeScreen = name;
@@ -4109,7 +4108,7 @@ function renderOverloadHistory(records) {
   for (const record of [...runs].reverse()) {
     const row = document.createElement('tr');
     for (const value of [new Date(record.timestamp).toLocaleString(), record.sessionMode, record.overloadScore, `${fmt(record.overloadDuration)}s`, record.overloadDifficulty, record.overloadPeakTasks, `${fmt(record.overloadAccuracy)}%`, `${fmt(record.overloadAverageResponse)}s`, `${record.overloadErrors} / ${record.overloadExpired}`, `${record.overloadEndingTask ?? '—'} / ${record.overloadEndingReason ?? 'In progress'}`]) { const cell = document.createElement('td'); cell.textContent = value; row.append(cell); }
-    const cell = document.createElement('td'), button = document.createElement('button'); button.type = 'button'; button.textContent = 'Evidence'; button.onclick = () => openAttemptDetails(records, [record.attemptId], 'OVERLOAD raw activity'); cell.append(button); row.append(cell); body.append(row);
+    const cell = document.createElement('td'), button = document.createElement('button'); button.type = 'button'; button.textContent = 'Evidence'; button.onclick = () => openAttemptDetails(records, [record.attemptId], 'Multitasker raw activity'); cell.append(button); row.append(cell); body.append(row);
   }
   const tasks = document.getElementById('overload-task-rows'); tasks.replaceChildren();
   for (const task of stats.tasks) { const row = document.createElement('tr'); for (const value of [task.label, `${task.actions} / ${task.runs}`, task.errors, `${fmt(task.accuracy)}%`, `${fmt(task.response)}s`]) { const cell = document.createElement('td'); cell.textContent = value; row.append(cell); } tasks.append(row); }
@@ -5023,7 +5022,7 @@ function renderRecommendedChallenge(records) {
     const card = document.createElement('article');
     card.className = 'practice-recommendation';
     const title = document.createElement('h4');
-    title.textContent = `${plan.game === 'overload' ? 'Multitasker / OVERLOAD' : PRACTICE_GAMES[plan.game]} — ${plan.target}`;
+    title.textContent = `${plan.game === 'overload' ? 'Multitasker' : PRACTICE_GAMES[plan.game]} — ${plan.target}`;
     const why = document.createElement('p');
     const matchingWeakness = detailedWeakness?.game === plan.game ? ` Game-specific Error Analysis: ${formatSkillEvidence(detailedWeakness)}.` : '';
     why.textContent = `Why recommended: ${recommendation.reason}${matchingWeakness}`;

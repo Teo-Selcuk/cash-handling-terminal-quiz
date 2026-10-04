@@ -1,8 +1,9 @@
-import { TASKS, OverloadRun, resolveOverloadSettings } from './overload-core.mjs';
+import { TASKS, OverloadRun, resolveOverloadSettings } from './overload-core.mjs?v=20261003-ui-polish';
 const names=Object.fromEntries(TASKS.map(t=>[t.id,t.name]));
 const fmt=v=>v===null?'—':String(Number(Number(v).toFixed(2)));
 const el=(tag,text,cls)=> {const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
 const button=(text,action)=> {const b=el('button',text);b.type='button';b.addEventListener('click',action);return b;};
+const taskHints={math:['＋','Solve quick calculations'],shapes:['◆','Find the matching shapes'],ball:['●','Catch the falling ball'],color:['◉','Name the ink color'],arrows:['↔','Choose the opposite direction'],wires:['⌁','Connect matching wires'],pattern:['▦','Repeat the sequence'],cards:['▣','Remember matching cards'],mole:['◎','Find the mole']};
 
 export function createOverloadUI({onSave,onHistory,showScreen}) {
   const setup=document.getElementById('overload-setup-options'),screen=document.getElementById('overload-screen');
@@ -14,26 +15,34 @@ export function createOverloadUI({onSave,onHistory,showScreen}) {
     else {input.type=kind;if(min!==undefined)input.min=min;if(max!==undefined)input.max=max;if(kind==='checkbox')input.checked=value;}
     if(kind!=='checkbox')input.value=value;wrap.append(input);fields[id]=input;return wrap;
   }
-  setup.append(el('p','Keep each task accurate while other deadlines continue. Alt+1–9 focuses a panel; its controls accept keyboard and pointer input. Standard ends on the first mistake. Practice permits mistakes.','setup-note'));
-  const form=el('div',undefined,'form-grid');setup.append(form);
-  form.append(setting('mode','Mode','select',{standard:'Standard · one mistake',practice:'Practice · unlimited mistakes',endurance:'Endurance · survival',custom:'Custom'},'standard'),
-    setting('startingTasks','Starting tasks','number',null,2,1,9),setting('maxTasks','Maximum tasks','number',null,9,1,9),
-    setting('startingDifficulty','Starting difficulty level','number',null,1,1,12),setting('timerSeconds','Base deadline (seconds)','number',null,12,3,60),
-    setting('speed','Movement / timer speed','number',null,1,.5,3),setting('increaseEvery','Difficulty increase every N points','number',null,5,1,100),
-    setting('allowedMistakes','Mistakes allowed before run ends (Custom / Endurance)','number',null,2,0,100),setting('durationSeconds','Session duration (0 = no limit)','number',null,0,0,3600));fields.speed.step='.1';
-  const toggles=el('div',undefined,'overload-toggles');setup.append(toggles);
-  toggles.append(setting('autoAdd','Auto-add tasks as difficulty increases','checkbox',null,true),setting('unlockAll','Start with all selected tasks unlocked','checkbox',null,false),setting('visualDistractions','Visual distractions / warning animations','checkbox',null,false),setting('sound','Sound cues / distractions','checkbox',null,false));
-  const choices=el('details'),summary=el('summary','Included tasks and configurable unlock points');choices.append(summary);setup.append(choices);
+  setup.append(el('p','Keep each task accurate while other deadlines continue. Alt+1–9 focuses a panel.','setup-note'));
+  const modeSection=el('section',undefined,'multitasker-setup-section');modeSection.append(el('h3','1 · Choose a mode'),el('p','Standard ends after one mistake. Practice has unlimited mistakes. Endurance and Custom use the mistake limit below.','setup-note'));
+  const modeRow=el('div',undefined,'multitasker-mode-row');modeRow.append(setting('mode','Mode','select',{standard:'Standard · one mistake',practice:'Practice · unlimited mistakes',endurance:'Endurance · survival',custom:'Custom'},'standard'));modeSection.append(modeRow);setup.append(modeSection);
+  const paceSection=el('section',undefined,'multitasker-setup-section');paceSection.append(el('h3','2 · Set the pace'));
+  const form=el('div',undefined,'form-grid');paceSection.append(form);setup.append(paceSection);
+  form.append(setting('startingTasks','Tasks at start','number',null,2,1,9),setting('maxTasks','Maximum active tasks','number',null,9,1,9),
+    setting('startingDifficulty','Starting difficulty','number',null,1,1,12),setting('timerSeconds','Base deadline · seconds','number',null,12,3,60),
+    setting('speed','Movement / timer speed','number',null,1,.5,3),setting('increaseEvery','Raise difficulty every N points','number',null,5,1,100),
+    setting('allowedMistakes','Mistakes allowed · Endurance / Custom','number',null,2,0,100),setting('durationSeconds','Session duration · seconds (0 = no limit)','number',null,0,0,3600));fields.speed.step='.1';
+  const optionsSection=el('section',undefined,'multitasker-setup-section');optionsSection.append(el('h3','3 · Choose game effects'));
+  const toggles=el('div',undefined,'overload-toggles');optionsSection.append(toggles);setup.append(optionsSection);
+  toggles.append(setting('autoAdd','Add tasks as difficulty rises','checkbox',null,true),setting('unlockAll','Unlock selected games immediately','checkbox',null,false),setting('visualDistractions','Visual warnings and distractions','checkbox',null,false),setting('sound','Sound cues and distractions','checkbox',null,false));
+  optionsSection.append(el('p','When immediate unlock is on, the scores below are saved but do not delay games in this run.','setup-note'));
+  const choices=el('section',undefined,'multitasker-setup-section');choices.append(el('h3','4 · Select mini-games'),el('p','Turn games on or off. Unlock score is the score needed before a game can appear.','setup-note'));setup.append(choices);
   const selection=el('div',undefined,'overload-task-selection'),included={},unlocks={};choices.append(selection);
   for(const task of TASKS) {
-    const row=el('div'),label=el('label'),check=el('input');check.type='checkbox';check.checked=true;check.value=task.id;check.id=`overload-include-${task.id}`;included[task.id]=check;label.append(check,document.createTextNode(task.name));
-    const limit=el('input');limit.type='number';limit.min=0;limit.max=1000;limit.value=task.unlock;limit.id=`overload-unlock-${task.id}`;limit.setAttribute('aria-label',`${task.name} unlock points`);unlocks[task.id]=limit;row.append(label,limit);selection.append(row);
+    const row=el('article',undefined,'multitasker-task-card'),label=el('label',undefined,'multitasker-task-toggle'),check=el('input');check.type='checkbox';check.checked=true;check.value=task.id;check.id=`overload-include-${task.id}`;included[task.id]=check;
+    const icon=el('span',taskHints[task.id][0],'multitasker-task-icon'),copy=el('span',undefined,'multitasker-task-copy');copy.append(el('strong',task.name),el('small',taskHints[task.id][1]));const state=el('span','Enabled','multitasker-task-state');label.append(check,icon,copy,state);
+    const unlockLabel=el('label',undefined,'multitasker-unlock');unlockLabel.append(document.createTextNode('Unlock score'));
+    const limit=el('input');limit.type='number';limit.min=0;limit.max=1000;limit.value=task.unlock;limit.id=`overload-unlock-${task.id}`;unlocks[task.id]=limit;unlockLabel.append(limit);
+    const hint=el('span',task.unlock===0?'Starts immediately':`Unlock at ${task.unlock}`,'multitasker-unlock-hint');limit.addEventListener('input',()=>{hint.textContent=Number(limit.value)===0?'Starts immediately':`Unlock at ${limit.value||'—'}`;});
+    check.addEventListener('change',()=>{row.classList.toggle('is-disabled',!check.checked);state.textContent=check.checked?'Enabled':'Disabled';});row.append(label,unlockLabel,hint);selection.append(row);
   }
   fields.mode.addEventListener('change',()=> {fields.unlockAll.checked=['practice','custom'].includes(fields.mode.value);fields.durationSeconds.value=fields.mode.value==='practice'?'120':'0';});
   const scoreboard=el('div',undefined,'overload-scoreboard'),status=el('p','Ready','overload-status'),controls=el('div',undefined,'overload-controls'),grid=el('div',undefined,'overload-grid'),result=el('section',undefined,'overload-result');result.hidden=true;
   status.setAttribute('role','status');const pause=button('Pause',()=>togglePause()),stop=button('End run',()=>end('stopped')),again=button('Another run',()=>start()),history=button('History / Progress',()=>{end('stopped');onHistory();});
   controls.append(pause,stop,again,history);again.hidden=true;
-  screen.append(el('h2','Multitasker / OVERLOAD'),scoreboard,status,controls,grid,result);
+  screen.append(el('h2','Multitasker'),scoreboard,status,controls,grid,result);
   const cards=new Map();
   function readSettings() {
     const values=Object.fromEntries(Object.entries(fields).map(([k,n])=>[k,n.type==='checkbox'?n.checked:n.tagName==='SELECT'?n.value:Number(n.value)]));
@@ -47,6 +56,7 @@ export function createOverloadUI({onSave,onHistory,showScreen}) {
     for(const task of TASKS) {
       if(settings.included)included[task.id].checked=settings.included.includes(task.id);
       if(settings.unlocks?.[task.id]!==undefined)unlocks[task.id].value=settings.unlocks[task.id];
+      included[task.id].dispatchEvent(new Event('change'));unlocks[task.id].dispatchEvent(new Event('input'));
     }
   }
   function save() {if(run){onSave(run.record(clock()));lastSaved=clock();}}
@@ -58,8 +68,10 @@ export function createOverloadUI({onSave,onHistory,showScreen}) {
     const t=p.trial,study=now<t.answerAt;
     if(card.dataset.trialId===t.id&&card.dataset.study===String(study))return;
     const wasFocused=card.contains(document.activeElement);card.replaceChildren();card.dataset.trialId=t.id;card.dataset.study=String(study);card.selection=[];card.connections=[];
-    const heading=el('h3',`${run.panels.indexOf(p)+1}. ${names[p.task]}`),remaining=el('span','', 'overload-remaining'),bar=el('progress');bar.max=1;bar.value=1;bar.setAttribute('aria-label',`${names[p.task]} remaining time`);
-    card.append(heading,remaining,bar);const prompt=el('p',t.prompt,'overload-prompt');card.append(prompt);
+    const header=el('div',undefined,'overload-panel-header'),identity=el('div',undefined,'overload-panel-identity');
+    identity.append(el('span',taskHints[p.task][0],'overload-panel-icon'),el('h3',`${run.panels.indexOf(p)+1}. ${names[p.task]}`));
+    const remaining=el('span','', 'overload-remaining'),bar=el('progress');bar.max=1;bar.value=1;bar.setAttribute('aria-label',`${names[p.task]} remaining time`);
+    header.append(identity,remaining);card.append(header,bar);const prompt=el('p',t.prompt,'overload-prompt');card.append(prompt);
     const content=el('div',undefined,'overload-task-content');card.append(content);
     if(p.task==='math') {
       const form=el('form'),input=el('input'),submit=el('button','Answer');input.type='text';input.inputMode='numeric';input.setAttribute('aria-label','Math answer');submit.type='submit';form.append(input,submit);form.addEventListener('submit',e=>{e.preventDefault();respond(p,input.value,t.id);});content.append(form);

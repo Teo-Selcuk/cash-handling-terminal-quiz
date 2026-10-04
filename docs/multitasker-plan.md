@@ -1,4 +1,4 @@
-# Multitasker / OVERLOAD implementation
+# Multitasker implementation
 
 1. Build a deterministic shared run engine with independent task clocks, all nine task contracts, configurable unlocks/scaling, modes, pressure evidence and run serialization. Verify task rules, deadlines, simultaneous events and mode endings with unit tests.
 2. Add setup, responsive panels and keyboard/pointer controls. Verify 1–9 panels and real concurrent timers in Chromium. Persist completed and interrupted runs through the existing history store.

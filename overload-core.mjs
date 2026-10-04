@@ -147,7 +147,7 @@ export class OverloadRun {
   finish(reason='stopped',task=null,now=this.lastAt) {if(this.ended)return;if(now<this.lastAt)this.taskTimeArea=Math.max(0,this.taskTimeArea-(this.lastAt-now)*this.panels.length);this.lastAt=now;this.ended=true;this.endedAt=now;this.endingReason=reason;this.endingTask=task;}
   record(now=this.lastAt) {
     const duration=Math.max(0,((this.endedAt??now)-this.startedAt)/1000),responses=this.events.filter(e=>!e.expired).map(e=>e.responseTimeSeconds),correct=this.events.filter(e=>e.correct).length;
-    return {timestamp:this.timestamp,sessionId:this.sessionId,attemptId:this.sessionId+':1',questionNumber:1,game:'overload',gameType:'Multitasker / OVERLOAD',difficulty:this.difficulty<=3?'Easy':this.difficulty<=6?'Medium':'Hard',sessionMode:this.settings.mode,
+    return {timestamp:this.timestamp,sessionId:this.sessionId,attemptId:this.sessionId+':1',questionNumber:1,game:'overload',gameType:'Multitasker',difficulty:this.difficulty<=3?'Easy':this.difficulty<=6?'Medium':'Hard',sessionMode:this.settings.mode,
       outcome:!this.ended?'Not answered':this.endingReason==='mistake'?'Incorrect':'Correct',timeUsedSeconds:duration,timeLimitSeconds:this.settings.durationSeconds||null,
       expectedAnswer:'Stay accurate across simultaneous tasks',userAnswer:`${this.score} correct actions; ${this.errors} errors; ${this.endingReason??'in progress'}`,
       overloadSettings:this.settings,overloadScore:this.score,overloadDuration:duration,overloadDifficulty:this.difficulty,overloadPeakTasks:this.peakTasks,

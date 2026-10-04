@@ -25,13 +25,15 @@ export async function checkHoldTraining(browser,base) {
       for(const id of record.fraudExpectedCategories) await page.locator(`[data-issue-id="${id}"]`).click();
       if(!record.fraudExpectedCategories.length) await page.locator('[data-issue-id="no-issues"]').click();
       await page.locator('#hold-itemType').selectOption(expected.itemType);
-      await page.locator('#hold-classification').selectOption(expected.classification);
       await page.locator('#hold-action').selectOption(expected.action);
-      if(['hold','accept'].includes(expected.action)) {
+      assert.equal(await page.locator('#hold-classification').inputValue(),expected.classification);
+      if(expected.action==='hold') {
+        assert.equal(await page.locator('#hold-holdType').isVisible(),true);
         await page.locator('#hold-holdType').selectOption(expected.holdType);
-        if(expected.availability.length) await page.locator('#hold-availability').selectOption(expected.availability.map(t=>t.day).join('/'));
-        await page.locator('#hold-notice').selectOption(expected.notice?'given':'not-required');
+        await page.locator('#hold-notice-confirm').check();
       } else assert.equal(await page.locator('#hold-holdType').isVisible(),false);
+      if(['hold','accept'].includes(expected.action)) assert.equal(await page.locator('#hold-availability').inputValue(),expected.availability.map(t=>t.day).join('/'));
+      assert.doesNotMatch(await page.locator('#hold-decision-area').textContent(),/Burke\s*&\s*Herbert|B&H|BNH/i);
       await page.locator('#hold-decision-area .hold-step-details > summary').click();
       await page.getByText('Teller file / prior checks / Alert Center Details',{exact:true}).click();
       assert.match(await page.locator('#hold-decision-area').textContent(),/Recorded payer signature/);

@@ -1,4 +1,4 @@
-import { TASKS, createTrial, resolveOverloadSettings } from './overload-core.mjs';
+import { TASKS, createTrial, resolveOverloadSettings } from './overload-core.mjs?v=20261003-ui-polish';
 const names=Object.fromEntries(TASKS.map(t=>[t.id,t.name]));
 const avg=values=>values.length?values.reduce((a,b)=>a+b,0)/values.length:null;
 const group=(events,label,extra={})=>({label,actions:events.length,errors:events.filter(e=>!e.correct).length,accuracy:events.length?events.filter(e=>e.correct).length/events.length*100:null,response:avg(events.filter(e=>!e.expired).map(e=>e.responseTimeSeconds)),...extra});
@@ -61,7 +61,7 @@ export function sampleOverloadRecord(record,random,index=0) {
   }
   const errors=activity.filter(e=>!e.correct).length;
   const failed=settings.allowedMistakes!==null&&errors>settings.allowedMistakes;
-  return {...record,game:'overload',gameType:'Multitasker / OVERLOAD',sessionMode:mode,outcome:failed?'Incorrect':'Correct',sessionId:`${record.sessionId}-run-${index}`,questionNumber:1,
+  return {...record,game:'overload',gameType:'Multitasker',sessionMode:mode,outcome:failed?'Incorrect':'Correct',sessionId:`${record.sessionId}-run-${index}`,questionNumber:1,
     timeUsedSeconds:at,timeLimitSeconds:180,overloadSettings:settings,overloadScore:score,overloadDuration:at,overloadDifficulty:difficulty,overloadPeakTasks:count,overloadAverageTasks:count,
     overloadTasks:included,overloadCorrectActions:score,overloadErrors:errors,overloadAccuracy:score/activity.length*100,overloadAverageResponse:avg(activity.filter(e=>!e.expired).map(e=>e.responseTimeSeconds)),
     overloadExpired:activity.filter(e=>e.expired).length,overloadFastestResponse:Math.min(...activity.map(e=>e.responseTimeSeconds)),overloadSlowestResponse:Math.max(...activity.map(e=>e.responseTimeSeconds)),
