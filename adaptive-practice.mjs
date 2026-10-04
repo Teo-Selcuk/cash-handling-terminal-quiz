@@ -3,6 +3,7 @@ import {
   resolveMemoryDifficultyPreset, resolveTaskDifficultyPreset, resolveErrorDetectionDifficultyPreset,
 } from './quiz-core.mjs?v=20260908-practice';
 import { PATTERN_GAME_NAMES } from './pattern-games.mjs';
+import { overloadRecommendation, summarizeOverload } from './overload-analytics.mjs';
 
 export const PRACTICE_GAMES = Object.freeze({ cash: 'Cash handling', memory: 'Number memory', task: 'Task simulation', 'error-detection': 'Error detection' });
 const resolvers = { cash: resolveCashDifficultyPreset, memory: resolveMemoryDifficultyPreset, task: resolveTaskDifficultyPreset, 'error-detection': resolveErrorDetectionDifficultyPreset };
@@ -263,6 +264,11 @@ export function recommendPractice(history, game, difficulty, currentPreset) {
  */
 export function rankPracticeCandidates(history, presets = {}) {
   const candidates = [];
+  const overload = overloadRecommendation(history);
+  if (overload.challenge) {
+    const weak = summarizeOverload(history).leastReliable;
+    candidates.push({ ...overload, rank: { accuracyGap: 90 - weak.accuracy, speedSlowdownPercent: 0, latest: Math.max(...history.filter(row => row.game === 'overload').map(row => Date.parse(row.timestamp) || 0)), attempts: weak.runs } });
+  }
   for (const game of Object.keys(PRACTICE_GAMES)) {
     for (const difficulty of ['Easy', 'Medium', 'Hard']) {
       const currentPreset = presets?.[game]?.[difficulty] ?? presets?.[game] ?? undefined;
@@ -278,6 +284,7 @@ export function rankPracticeCandidates(history, presets = {}) {
 }
 
 export function practiceSettings(plan) {
+  if (plan.game === 'overload') return [['Mode', plan.preset.mode], ['Tasks', plan.preset.included.join(', ')], ['Simultaneous tasks', String(plan.preset.startingTasks)], ['Deadline', `${plan.preset.timerSeconds}s`], ['Duration', `${plan.preset.durationSeconds}s`], ['Auto-add tasks', plan.preset.autoAdd ? 'On' : 'Off']];
   const p = plan.preset;
   const seconds = (value) => value === 0 ? 'Untimed' : `${value}s`;
   const rows = [['Difficulty', plan.difficulty], ['Rounds', String(plan.questionCount)]];

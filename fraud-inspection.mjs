@@ -1,3 +1,5 @@
+import { createHoldScenario, ITEM_TYPES } from './check-holds.mjs';
+
 export const FRAUD_INSPECTION_CATEGORIES = Object.freeze([
   { id: 'payee-mismatch', label: 'Payee name does not match ID', group: 'Name and payee' },
   { id: 'amount-mismatch', label: 'Numeric and written amounts do not match', group: 'Amount' },
@@ -449,14 +451,51 @@ export function createFraudInspectionCase(difficulty = 'Easy', overrides = {}, r
     idDifficulty: useMixedAxes ? mixedPreset.idDifficulty : settings.idDifficulty,
   };
   const challenge = baseCase(difficulty, settings, random, exerciseDate);
+  if (settings.useHoldTypes) {
+    const c = createHoldScenario(random);
+    challenge.holdScenario = c;
+    challenge.check.numericAmountCents = c.amountCents;
+    challenge.check.numericAmount = dollars(c.amountCents / 100);
+    challenge.check.writtenAmount = amountInWords(c.amountCents);
+    challenge.document.bankTitle = ({'on-us':'Burke & Herbert Bank',personal:'Meadow Community Bank',business:'Northfield Commercial Bank',cashier:'Meadow Bank · Official check',foreign:'Banque du Nord · CAD draft'})[c.itemType] ?? ITEM_TYPES[c.itemType];
+    if(c.frontSignatureMark) challenge.check.makerSignature='X';
+    if (c.endorsement !== 'normal') challenge.check.endorsementSignature = c.endorsement === 'missing' ? '' : c.endorsement === 'mark' ? 'X' : c.endorsement === 'deposit-only' ? 'For Deposit Only' : c.endorsement === 'conditional' ? 'Pay only if work completed' : c.endorsement === 'third-party' ? 'Pay to the order of Avery Morgan' : c.endorsement;
+    if (c.llc) challenge.check.payeeName += ' LLC';
+    else if (c.businessNameReview) challenge.check.payeeName = 'Cedarline Services Inc.';
+    if (c.governmentJoin) challenge.check.payeeName += ' ' + c.governmentJoin + ' Avery Morgan';
+    if (c.itemType === 'cashier' && c.unusedCashier) challenge.document.bankTitle = 'Burke & Herbert · Cashier’s check';
+    c.tellerReference = {
+      payerName: challenge.makerId.legalName,
+      routingNumber: challenge.tellerFile.routingNumber,
+      accountNumber: challenge.tellerFile.accountNumber,
+      priorCheckNumber: String(Math.max(1,Number(challenge.check.checkNumber)-2)),
+      payerSignature: challenge.makerId.signature,
+      payerSignatureVariation: challenge.makerId.signatureVariation,
+      businessPayee: c.businessNameReview ? challenge.check.payeeName : null,
+      authorizedPresenter: challenge.id.legalName,
+      secondaryId: c.nonCustomer && c.twoValidIds ? 'Fictional passport ALT-'+challenge.caseId+' · same name / photo / DOB; valid through '+(new Date(exerciseDate).getFullYear()+4) : null,
+      presenterHistory: c.presenterHistoryApplicable ? 'Three earlier presentations reviewed; no adverse presenter-history findings.' : null,
+      trueChecksDetails: c.reasonableCause ? 'Confidential paying-bank information indicates possible nonpayment. Review recommendation and refer to the applicable exception.' : c.trueChecks === 'review' ? 'Review requested. No confidential nonpayment evidence was supplied. Evaluate all other case facts.' : 'No adverse recommendation. Review remains required for applicable deposits over $500.',
+    };
+    challenge.policy += ' Business and joint payee relationships are verified in the teller file; inspect endorsements separately from ID signature comparison.';
+  }
   challenge.caseDifficulty = mixedLevel;
   challenge.settings = settings;
-  const candidates = shuffle(eligibleCategoryIds(challenge, settings), random);
+  const candidates = shuffle(eligibleCategoryIds(challenge, settings).filter(id => {
+    const c=challenge.holdScenario;
+    if (!c) return true;
+    if (c.endorsement !== 'normal' && ['endorsement-missing','endorsement-signature-mismatch'].includes(id)) return false;
+    if (c.frontSignatureMark && ['maker-signature-suspicious','missing-required-field'].includes(id)) return false;
+    if ((c.governmentJoin || c.businessNameReview) && id === 'payee-mismatch') return false;
+    return true;
+  }), random);
   const maximum = Math.min(settings.maximumErrors, candidates.length);
   const requestedMinimum = Math.min(settings.minimumErrors, maximum);
   const minimum = settings.allowNoErrorCases ? requestedMinimum : Math.max(1, requestedMinimum);
   let issueCount = maximum > 0 ? randomInteger(minimum, maximum, random) : 0;
   if (settings.allowNoErrorCases && random() < (difficulty === 'Easy' ? 0.42 : 0.32)) issueCount = 0;
+  if (['cash','ach','wire'].includes(challenge.holdScenario?.itemType)) issueCount = 0;
+  if (['clean','corrected','postdate'].includes(challenge.holdScenario?.variant)) issueCount = 0;
   const chosen = candidates.slice(0, issueCount);
   if (chosen.includes('maker-signature-suspicious') && chosen.includes('missing-required-field')) {
     const replacement = candidates.find((id) => !chosen.includes(id));
@@ -474,9 +513,30 @@ export function createFraudInspectionCase(difficulty = 'Easy', overrides = {}, r
   challenge.enabledCategories = [...settings.enabledCategories];
   challenge.availableIssueOptions = FRAUD_INSPECTION_CATEGORIES.filter((item) => challenge.enabledCategories.includes(item.id));
   challenge.document.issueRegions = [...issueRegions];
+  if (challenge.holdScenario?.endorsement === 'missing' && !challenge.expectedIssues.some(i => i.id === 'endorsement-missing')) {
+    challenge.expectedIssues.push({id:'endorsement-missing',label:'Missing required endorsement',explanation:'Obtain the payee endorsement before processing.',regions:['check-endorsement']});
+    if (!challenge.enabledCategories.includes('endorsement-missing')) challenge.enabledCategories.push('endorsement-missing');
+    challenge.document.issueRegions.push('check-endorsement');
+  }
+  if (challenge.holdScenario?.incorrectInformation && !challenge.expectedIssues.some(i => i.id === 'amount-mismatch')) {
+    challenge.check.numericAmountCents += 700;
+    challenge.check.numericAmount = dollars(challenge.check.numericAmountCents / 100);
+    challenge.expectedIssues.push({id:'amount-mismatch',label:'Numeric and written amounts do not match',explanation:'Return to the payer for correction; never change the item yourself.',regions:['check-numeric-amount','check-written-amount']});
+    if (!challenge.enabledCategories.includes('amount-mismatch')) challenge.enabledCategories.push('amount-mismatch');
+    challenge.document.issueRegions.push('check-numeric-amount','check-written-amount');
+  }
   challenge.exerciseDateText = compactDate(new Date(challenge.exerciseDate + 'T00:00:00Z'));
+  challenge.availableIssueOptions = FRAUD_INSPECTION_CATEGORIES.filter(item => challenge.enabledCategories.includes(item.id));
   challenge.signatureVariationIsValid = challenge.signatureVariationIsValid && !challenge.expectedIssues.some((issue) => issue.id === 'endorsement-signature-mismatch');
   challenge.settings = { ...settings, scenarioDifficulty: mixedLevel };
+  if (challenge.holdScenario) {
+    challenge.holdScenario.inspectionIssues = challenge.expectedIssues.map(i => i.id);
+    if(challenge.holdScenario.nonCustomer && challenge.expectedIssues.some(i=>['id-expired','id-altered'].includes(i.id))) challenge.holdScenario.twoValidIds=false;
+    // Electronic/cash credits are transaction advices, not negotiable check documents.
+    if (['cash','ach','wire'].includes(challenge.holdScenario.itemType)) {
+      challenge.expectedIssues = []; challenge.document.issueRegions = [];
+    }
+  }
   return challenge;
 }
 

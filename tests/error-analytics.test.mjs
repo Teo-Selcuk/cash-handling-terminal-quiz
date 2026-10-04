@@ -2,6 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildErrorAnalytics, ERROR_SEVERITY_BANDS } from '../progress-analytics.mjs';
 
+test('hold decisions contribute raw-input opportunities and named error categories without changing legacy evidence',()=> {
+  const rows=[attempt('fraud-inspection',1,{outcome:'Incorrect',checkItemType:'personal',holdReason:'large',holdAnswer:{availability:'2'},holdExpected:{availability:[{day:7}]},holdDecisionChecks:{availability:{correct:false,label:'Wrong Availability Period'},notice:{correct:true,label:'Missing Hold Notice'}}})];
+  const analytics=buildErrorAnalytics(rows,{minimumOpportunities:1});
+  const category=analytics.byCategory.find(g=>g.label==='Wrong Availability Period');
+  assert.equal(category.errors,1);assert.equal(category.opportunities,1);
+  assert.ok(analytics.byRawInput.some(g=>g.label.includes('personal')&&g.errors===1));
+  assert.ok([...analytics.attemptDetails.values()][0].mistakes.some(m=>m.label==='Wrong Availability Period'));
+  assert.equal(analytics.byCategory.find(g=>g.label==='Missing Hold Notice').errors,0);
+});
+
 function attempt(game, index, values = {}) {
   const gameType = {
     cash: 'Cash handling', memory: 'Number memory', task: 'Task simulation',

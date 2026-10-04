@@ -33,7 +33,7 @@ test('typing charts keep unanswered attempts and separate difficulty settings', 
     difficulty: index === 2 ? 'Hard' : 'Easy', outcome: index === 4 ? 'Not answered' : 'Correct' }));
   for (const id of ['typing-speed', 'typing-character-accuracy']) {
     const points = buildChartSpecs(deduplicateHistory([...rows].reverse()), 'typing').find(chart => chart.id === id).series[0].points;
-    assert.deepEqual(progressionSegments(points), [[0, 1], [5, 6]]);
+    assert.deepEqual(progressionSegments(points), [[0, 1], [1, 3], [5, 6]]);
     assert.equal(points[4].value, null);
   }
 });

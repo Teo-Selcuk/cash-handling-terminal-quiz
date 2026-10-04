@@ -14,6 +14,8 @@ The [browser edition](https://teo-selcuk.github.io/cash-handling-terminal-quiz/)
 
 The website also includes **Chess**: a fullscreen chess arena, four difficulty presets with adjustable 0–20 bot levels, quick blitz clocks, untimed and timed games, 44 demonstrate-then-practice lessons, optional coaching, move replay, and separate progress analytics. See [Chess mode](docs/chess-mode.md) for timing, recovery, analysis, and local engine details.
 
+**Multitasker / OVERLOAD** runs one to nine simultaneous tasks with independent deadlines and a shared score: math, duplicate shapes, falling balls, Stroop colors, opposite arrows, wires, patterns, memory cards, and moles. Standard ends on the first mistake; Practice permits unlimited mistakes; Endurance and Custom use adjustable mistake budgets. Configure task selection, unlock points, timers, speed, scaling, distractions, and duration. History includes run and action evidence, connected progression charts, filters, combination errors, and one evidence-based practice recommendation. See [Multitasker mode](docs/multitasker-mode.md).
+
 - Easy, Medium, and Hard difficulty levels
 - Random customer totals and random cash combinations
 - Bills: $100, $50, $20, $10, $5, and $1
@@ -292,6 +294,9 @@ connection in a disposable Playwright context, including same-tab fragment
 pairing, storage failure and reconnect. Enable `QRALARM_RUN_CASH_BROWSER=1` there.
 The existing Node and browser suites remain the gameplay regression checks.
 Local testing does not publish these companion files to GitHub Pages.
+# Check acceptance and holds
+Check & ID Inspection also offers optional acceptance and hold training. See [Check hold training](docs/check-hold-training.md) for rules, saved evidence and verification.
+
 # Typing speed
 
 The browser game includes Easy, Medium, and Hard typing challenges with words or random characters. Override character count, typing time, rounds, and optional hidden-prompt preview; save/reset presets locally. History / Progress records WPM, CPM, character accuracy, exact matches, and submitted text. See [Typing mode](docs/typing-mode.md) for scoring and timing details.

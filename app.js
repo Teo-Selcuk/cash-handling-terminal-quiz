@@ -1,4 +1,8 @@
 import { enhanceHistoryTables } from './history-tables.mjs';
+import { createOverloadUI } from './overload-ui.mjs';
+import { summarizeOverload, overloadRecommendation } from './overload-analytics.mjs';
+import { decideCheck, scoreHoldDecision, ITEM_TYPES, ACTIONS } from './check-holds.mjs';
+import { renderHoldTraining, readHoldAnswer } from './hold-training-ui.mjs';
 import { TYPING_PRESETS, resolveTypingSettings, createTypingPrompt, scoreTyping, summarizeTyping } from './typing-core.mjs?v=20261002-typing';
 import { PATTERN_GAME_NAMES } from './pattern-games.mjs';
 import { createChessUI } from './chess-ui.mjs?v=20261003-history-layout';
@@ -9,13 +13,13 @@ import {
   resolveFraudInspectionSettings,
   scoreFraudInspectionAttempt,
   summarizeFraudHistory,
-} from './fraud-inspection.mjs?v=20260930-distinct-portraits';
-import { PRACTICE_GAMES, rankPracticeCandidates, recommendPractice, practiceSettings } from './adaptive-practice.mjs?v=20260918-progress';
+} from './fraud-inspection.mjs?v=20261003-overload';
+import { PRACTICE_GAMES, rankPracticeCandidates, recommendPractice, practiceSettings } from './adaptive-practice.mjs?v=20261003-overload';
 import {
   buildChartSpecs, buildConditionalReport, buildErrorAnalytics, buildGameFilters, buildProgressModel, comparePeriods,
   filterHistory, recommendNextChallenge, progressionSegments,
-} from './progress-analytics.mjs?v=20261003-history-layout';
-import { generateSampleHistory, generateSampleChessHistory } from './sample-history.mjs?v=20261002-all-games';
+} from './progress-analytics.mjs?v=20261003-overload';
+import { generateSampleHistory, generateSampleChessHistory } from './sample-history.mjs?v=20261003-overload';
 import {
   DENOMINATIONS,
   DIFFICULTY_CONFIG,
@@ -53,9 +57,9 @@ const PRESET_KEY = 'cash-handling-terminal-quiz-presets-v1';
 const CURRENT_CHALLENGE_KEY = 'cash-handling-terminal-quiz-current-challenge-v1';
 const SAMPLE_HISTORY_KEY = 'cash-handling-terminal-quiz-sample-history-v1';
 const CHART_APPEARANCE_KEY = 'cash-handling-terminal-quiz-chart-appearance-v1';
-const screens = ['typing', 'setup', 'chess', 'quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'error-detection-briefing', 'error-detection', 'fraud-inspection', 'feedback', 'summary', 'history'];
+const screens = ['overload', 'typing', 'setup', 'chess', 'quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'error-detection-briefing', 'error-detection', 'fraud-inspection', 'feedback', 'summary', 'history'];
 const refs = Object.fromEntries([
-  'typing-screen', 'setup-form', 'setup-screen', 'chess-screen', 'quiz-screen', 'feedback-screen', 'summary-screen', 'history-screen',
+  'overload-screen', 'typing-screen', 'setup-form', 'setup-screen', 'chess-screen', 'quiz-screen', 'feedback-screen', 'summary-screen', 'history-screen',
   'memory-read-screen', 'memory-answer-screen', 'task-briefing-screen', 'task-workspace-screen', 'error-detection-briefing-screen', 'error-detection-screen', 'fraud-inspection-screen', 'cash-setup-options', 'memory-setup-options', 'task-setup-options', 'error-detection-setup-options', 'fraud-setup-options',
   'question-count', 'time-limit', 'cash-builder-toggle', 'customer-bill-request-toggle', 'auto-continue-toggle', 'distraction-noise-toggle', 'question-progress', 'timer', 'amount-due',
   'tender-breakdown', 'customer-bill-request', 'customer-bill-request-text', 'customer-bill-request-status', 'flag-bill-request', 'answer-form', 'answer-amount', 'cash-builder-section', 'cash-builder-heading',
@@ -539,7 +543,7 @@ function ensureSampleHistory(regenerate = false) {
   if (!regenerate) {
     try {
       const saved = JSON.parse(sessionStorage.getItem(SAMPLE_HISTORY_KEY) ?? 'null');
-      if (Array.isArray(saved) && saved.length && saved.every((record) => record?.isSample === true) && saved.some(record => record.game === 'typing')) {
+      if (Array.isArray(saved) && saved.length && saved.every((record) => record?.isSample === true) && saved.some(record => record.game === 'typing') && saved.some(record => record.game === 'overload')) {
         historyView.sampleRecords = saved;
         return saved;
       }
@@ -798,9 +802,19 @@ function renderPresetEditor() {
 function updateGameSetup() {
   const game = selectedGame();
   chessUI.setupChanged(game);
+  document.getElementById('overload-setup-options').hidden = game !== 'overload';
+  document.querySelectorAll('#overload-setup-options input, #overload-setup-options select').forEach(node => { node.disabled = game !== 'overload'; });
   document.getElementById('typing-setup-options').hidden = game !== 'typing';
   document.querySelectorAll('#typing-setup-options input, #typing-setup-options select, #typing-setup-options button').forEach(node => { node.disabled = game !== 'typing'; });
   if (game === 'chess') return;
+  if (game === 'overload') {
+    if (selectedDifficulty() === 'Custom') document.querySelector('input[name="difficulty"][value="Easy"]').checked = true;
+    for (const id of ['cash-setup-options', 'memory-setup-options', 'task-setup-options', 'error-detection-setup-options', 'fraud-setup-options', 'preset-editor', 'custom-difficulty-card']) refs[id].hidden = true;
+    for (const level of ['Easy', 'Medium', 'Hard']) refs[`${level.toLowerCase()}-description`].textContent = 'Use the starting difficulty level and mode controls below.';
+    renderPracticeRecommendations(document.getElementById('setup-recommendations'), game, selectedDifficulty());
+    renderActivePractice();
+    return;
+  }
   if (game === 'typing') {
     if (selectedDifficulty() === 'Custom') document.querySelector('input[name="difficulty"][value="Easy"]').checked = true;
     for (const id of ['cash-setup-options', 'memory-setup-options', 'task-setup-options', 'error-detection-setup-options', 'fraud-setup-options', 'preset-editor', 'custom-difficulty-card']) refs[id].hidden = true;
@@ -872,6 +886,7 @@ function presetFor(game, difficulty) {
 }
 
 function sessionPreset() {
+  if (state.game === 'overload') return overloadUI.settings;
   if (state.game === 'typing') return state.typingSettings;
   if (state.game === 'fraud-inspection') return state.fraudSettings;
   return state.practicePlan?.preset ?? presetFor(state.game, state.difficulty);
@@ -891,6 +906,13 @@ function appendPracticeSettings(target, plan) {
 }
 
 function renderPracticeRecommendations(target, game, difficulty, history = getHistory()) {
+  if (game === 'overload') {
+    const plan = overloadRecommendation(history);
+    target.replaceChildren();
+    const note = document.createElement('p'); note.textContent = plan.reason; target.append(note);
+    if (plan.challenge) { const apply = document.createElement('button'); apply.type = 'button'; apply.textContent = 'Use practice plan'; apply.onclick = () => applyPracticePlan(plan); target.append(apply); }
+    return;
+  }
   if (game === 'typing') { target.textContent = 'Build accuracy first, then increase characters or shorten the timer. Saved typing results appear in History | Progress.'; return; }
   if (game === 'fraud-inspection') {
     const fraudSummary = summarizeFraudHistory(history);
@@ -953,6 +975,11 @@ function renderActivePractice() {
 
 function applyPracticePlan(plan) {
   resetDistractionAudioSetup();
+  if (plan.game === 'overload') {
+    document.querySelector('input[name="game"][value="overload"]').checked = true;
+    document.querySelector('input[name="difficulty"][value="Easy"]').checked = true;
+    overloadUI.applySettings(plan.preset); state.practicePlan = plan; updateGameSetup(); showScreen('setup'); return;
+  }
   document.querySelector(`input[name="game"][value="${plan.game}"]`).checked = true;
   document.querySelector(`input[name="difficulty"][value="${plan.difficulty}"]`).checked = true;
   refs[plan.game === 'cash' ? 'question-count' : `${plan.game}-question-count`].value = String(plan.questionCount);
@@ -2070,10 +2097,21 @@ function renderFraudCheckSvg(challenge, feedback = false) {
   ].join(' ');
   const title = '<title>Training sample check and endorsement</title>'
     + '<desc>Fictional check with written fields and a back endorsement area. Not negotiable and contains no real account data.</desc>';
+  if (['cash','ach','wire'].includes(challenge.holdScenario?.itemType)) {
+    const c = challenge.holdScenario;
+    return `<svg class="fraud-document-svg" role="img" aria-label="Fictional ${escapeSvgText(c.itemType)} transaction advice" viewBox="0 0 860 540" xmlns="http://www.w3.org/2000/svg"><title>Fictional transaction advice</title><rect x="8" y="8" width="844" height="524" rx="16" fill="${palette.paper}" stroke="${palette.accent}" stroke-width="3"/>`
+      + svgText(30,70,challenge.document.bankTitle,30,800,palette.accent)
+      + svgText(30,125,'TRANSACTION ADVICE · TRAINING SAMPLE',21,700,palette.ink)
+      + svgText(30,205,'Credit to: '+challenge.id.legalName,25,700,palette.ink)
+      + svgText(30,275,'Amount: $'+(c.amountCents/100).toFixed(2),30,800,palette.ink)
+      + svgText(30,345,'Date: '+challenge.exerciseDateText,23,600,palette.ink)
+      + svgText(30,415,'Reference: '+challenge.caseId,21,600,palette.ink)
+      + svgText(30,490,'Fictional credit confirmation · no real value',18,600,palette.ink)+'</svg>';
+  }
   const front = [
     '<rect x="8" y="8" width="844" height="425" rx="16" fill="' + palette.paper + '" stroke="' + palette.accent + '" stroke-width="3"/>',
     '<rect x="8" y="8" width="844" height="55" rx="16" fill="' + palette.accent + '"/>',
-    svgText(30, 43, challenge.document.olderDesign ? 'CEDARLINE SAVINGS · TRAINING DRAFT' : 'CEDARLINE COMMUNITY COOPERATIVE', 20, 800, '#ffffff'),
+    svgText(30, 43, challenge.document.bankTitle ?? (challenge.document.olderDesign ? 'CEDARLINE SAVINGS · TRAINING DRAFT' : 'CEDARLINE COMMUNITY COOPERATIVE'), 18, 800, '#ffffff'),
     svgText(668, 39, 'TRAINING SAMPLE', 12, 800, '#ffffff', 'letter-spacing="1"'),
     svgText(728, 91, 'NO REAL VALUE', 10, 800, palette.accent, 'letter-spacing="1"'),
     svgField(challenge, 'check-number', 29, 78, 160, 'CHECK NO.', check.checkNumber, { valueSize: 22, feedback }),
@@ -2100,7 +2138,9 @@ function renderFraudCheckSvg(challenge, feedback = false) {
     '<g class="fraud-doc-field ' + (feedback && markedRegion(challenge, 'check-endorsement') ? 'fraud-marked' : '') + '" data-region="check-endorsement">',
     '<path d="M30 641 H820" stroke="' + palette.rule + '" stroke-width="2"/>',
     check.endorsementSignature
-      ? signatureSvgText(check.endorsementSignature, check.endorsementVariation, 42, 630, palette.accent, 755)
+      ? challenge.holdScenario && challenge.holdScenario.endorsement !== 'normal'
+        ? svgText(42, 626, check.endorsementSignature, 23, 650, palette.ink)
+        : signatureSvgText(check.endorsementSignature, check.endorsementVariation, 42, 630, palette.accent, 755)
       : svgText(42, 626, '', 22, 500, palette.ink),
     '</g>',
     svgText(30, 663, 'TRAINING EXAMPLE ONLY · compare this signature with the PAYEE ID', 10, 550, '#536569'),
@@ -2213,7 +2253,7 @@ function setFraudDocumentZoom(kind, zoom, root = document) {
 }
 
 function renderFraudDocuments(target, challenge, feedback = false) {
-  const check = makeFraudDocumentCard('check', 'CHECK · FRONT AND ENDORSEMENT', renderFraudCheckSvg(challenge, feedback), feedback);
+  const check = makeFraudDocumentCard('check', ['cash','ach','wire'].includes(challenge.holdScenario?.itemType) ? 'TRANSACTION ADVICE' : 'CHECK · FRONT AND ENDORSEMENT', renderFraudCheckSvg(challenge, feedback), feedback);
   const payee = makeFraudDocumentCard('payee-id', 'PAYEE ID · ENDORSEMENT SIGNATURE', renderFraudIdSvg(challenge, 'payee-id', feedback), feedback);
   const maker = makeFraudDocumentCard('maker-id', 'MAKER ID · AUTHORIZED SIGNATURE', renderFraudIdSvg(challenge, 'maker-id', feedback), feedback);
   for (const [card, identity, fields] of [
@@ -2334,6 +2374,9 @@ function renderFraudInspectionQuestion() {
   }
   renderFraudDocuments(refs['fraud-document-grid'], challenge);
   renderFraudIssueOptions();
+  const reference=challenge.holdScenario?.tellerReference;
+  const referenceSignature=reference ? '<svg role="img" aria-label="Prior check payer signature" viewBox="0 0 860 100" xmlns="http://www.w3.org/2000/svg">'+signatureSvgText(reference.payerSignature,reference.payerSignatureVariation,20,75,challenge.document.palette.accent,800)+'</svg>' : '';
+  renderHoldTraining(document.getElementById('hold-decision-area'), challenge.holdScenario, referenceSignature);
 }
 
 function recordFraudInspectionAttempt(score, timedOut, elapsedSeconds) {
@@ -2351,11 +2394,30 @@ function recordFraudInspectionAttempt(score, timedOut, elapsedSeconds) {
     questionNumber: state.questionNumber,
     scenario: 'Fictional check and ID inspection',
     outcome: timedOut ? 'Timed Out' : score.correct ? 'Correct' : 'Incorrect',
-    expectedAnswer: expectedIssues.length ? expectedIssues.map((issue) => issue.label).join(' · ') : 'No issues found.',
-    userAnswer: selectedCategories.length ? selectedCategories.map((id) => categoryLabels.get(id)).join(' · ') : 'No issues found.',
+    expectedAnswer: (expectedIssues.length ? expectedIssues.map((issue) => issue.label).join(' · ') : 'No issues found.') + (challenge.holdScenario ? ' · '+decideCheck(challenge.holdScenario).explanation.join(' ') : ''),
+    userAnswer: (selectedCategories.length ? selectedCategories.map((id) => categoryLabels.get(id)).join(' · ') : 'No issues found.') + (score.holdScore ? ' · '+JSON.stringify(score.holdScore.answer) : ''),
     timeLimitSeconds: state.fraudSettings.timeLimitSeconds,
     timeUsedSeconds: Number(elapsedSeconds.toFixed(1)),
     fraudCaseId: challenge.caseId,
+    ...(challenge.holdScenario ? {
+      holdScenario: challenge.holdScenario,
+      holdAnswer: score.holdScore?.answer ?? null,
+      holdExpected: decideCheck(challenge.holdScenario),
+      holdDecisionChecks: score.holdScore?.checks ?? null,
+      holdDecisionErrors: score.holdScore?.errors ?? [],
+      holdDecisionAccuracyPercent: score.holdScore ? Object.values(score.holdScore.checks).filter(check => check.correct).length / Object.keys(score.holdScore.checks).length * 100 : null,
+      checkItemType: challenge.holdScenario.itemType,
+      checkClassification: decideCheck(challenge.holdScenario).classification,
+      holdApplicable: decideCheck(challenge.holdScenario).notice,
+      holdSelected: score.holdScore?.answer?.holdType ?? null,
+      holdReason: decideCheck(challenge.holdScenario).holdType,
+      correctAvailability: decideCheck(challenge.holdScenario).availability,
+      acceptanceDecision: score.holdScore?.answer?.action ?? null,
+      endorsementIssue: challenge.holdScenario.endorsement,
+      holdNoticeDecision: score.holdScore?.answer?.notice ?? null,
+      escalationDecision: score.holdScore?.answer?.action === 'manager',
+      rejectionReason: ['reject','correction','deposit-only','manager'].includes(decideCheck(challenge.holdScenario).action) ? decideCheck(challenge.holdScenario).explanation.join(' ') : null,
+    } : {}),
     fraudCaseDifficulty: challenge.caseDifficulty,
     fraudRunMode: state.fraudSettings.runMode,
     fraudTimeLimitSeconds: state.fraudSettings.timeLimitSeconds,
@@ -2393,8 +2455,15 @@ function populateFraudInspectionFeedback(record, score) {
     ? 'You found the complete issue set and left valid details alone.'
     : score.cleanCase ? 'This was a clean case. Review any valid details you marked.'
       : 'Compare the check, payee ID, and maker ID again. The highlighted fields show each actual issue.';
+  if (score.holdScore) refs['feedback-lead'].textContent = score.correct ? 'Your document review and acceptance / hold decisions were correct.' : 'Review the processing and availability feedback alongside any highlighted document discrepancies.';
   renderFraudDocuments(refs['fraud-feedback-documents'], state.fraudChallenge, true);
   refs['fraud-feedback-issues'].replaceChildren();
+  if (score.holdScore) {
+    const item = document.createElement('li');
+    const expected=score.holdScore.expected;
+    item.textContent = ITEM_TYPES[expected.itemType] + ' · ' + expected.classification + ' · ' + ACTIONS[expected.action] + '. ' + expected.explanation.join(' ') + (expected.workflow.length ? ' Required handling: ' + expected.workflow.join(', ') + '. ' : ' ') + (score.holdScore.errors.length ? score.holdScore.errors.join(' · ') : 'All hold and acceptance decisions correct.');
+    refs['fraud-feedback-issues'].append(item);
+  }
   const actualById = new Map(state.fraudChallenge.expectedIssues.map((issue) => [issue.id, issue]));
   const selected = new Set(state.fraudChallenge.enabledCategories
     .filter((id) => score.categoryResults[id] === 'found'));
@@ -2460,10 +2529,15 @@ function submitFraudInspectionAttempt(timedOut = false) {
   stopTimer();
   const selected = state.fraudSelections.has('no-issues') ? [] : [...state.fraudSelections];
   const score = scoreFraudInspectionAttempt(state.fraudChallenge, selected, timedOut);
+  if (state.fraudChallenge.holdScenario) {
+    const answer = readHoldAnswer(document.getElementById('hold-decision-area'));
+    score.holdScore = { ...scoreHoldDecision(state.fraudChallenge.holdScenario, answer), answer };
+    score.correct = score.correct && score.holdScore.correct;
+  }
   state.fraudCurrentStreak = score.correct ? state.fraudCurrentStreak + 1 : 0;
   state.fraudBestStreak = Math.max(state.fraudBestStreak, state.fraudCurrentStreak);
   const suddenDeathFailure = state.fraudSettings.runMode === 'sudden-death'
-    && (timedOut || score.missedIssueIds.length > 0 || score.falsePositiveIds.length > 0);
+    && !score.correct;
   if (suddenDeathFailure) state.fraudStoppedEarly = true;
   const record = recordFraudInspectionAttempt(score, timedOut, elapsedSeconds);
   state.results.push(record);
@@ -3846,12 +3920,12 @@ function chartSvgElement(name, attributes = {}) {
 
 function chartValue(point, metric) {
   if (point.value === null || point.value === undefined) return 'Not recorded';
-  if (metric === 'time') return `${Number(point.value).toFixed(1)}s`;
-  if (metric === 'attempts') return `${point.value}`;
-  if (metric === 'cents') return `${Math.round(point.value)}¢`;
-  if (['actions', 'digits', 'selections'].includes(metric)) return Number(point.value).toFixed(1);
-  if (['accuracy', 'error-rate', 'percentage-error'].includes(metric)) return `${Number(point.value).toFixed(metric === 'accuracy' || metric === 'error-rate' ? 0 : 2)}%`;
-  return `${point.value}%`;
+  const value = String(Number(Number(point.value).toFixed(2)));
+  if (metric === 'time' || metric === 'duration') return `${value}s`;
+  if (metric === 'WPM') return `${value} WPM`;
+  if (metric === 'cents') return `${value}¢`;
+  if (['attempts', 'actions', 'digits', 'selections', 'score', 'tasks'].includes(metric)) return value;
+  return `${value}%`;
 }
 
 function chartPaletteColor(ratio, palette) {
@@ -3955,6 +4029,10 @@ function mergeCoincidentScatterPoints(points, xFor, yFor) {
 }
 
 function chartAxisLabel(metric) {
+  if (metric === 'score') return 'Score';
+  if (metric === 'tasks') return 'Simultaneous tasks';
+  if (metric === 'duration') return 'Survival duration (seconds)';
+  if (metric === 'WPM') return 'Typing speed (WPM)';
   if (metric === 'time') return 'Response time (seconds)';
   if (metric === 'attempts') return 'Attempts';
   if (metric === 'cents') return 'Average cents off';
@@ -3984,7 +4062,8 @@ function chartScale(values, metric) {
 }
 
 function chartTickValue(value, metric) {
-  return metric === 'time' ? `${value}s` : ['accuracy', 'error-rate', 'percentage-error'].includes(metric) ? `${value}%` : String(value);
+  const label = String(Number(Number(value).toFixed(2)));
+  return metric === 'time' ? `${label}s` : ['accuracy', 'error-rate', 'percentage-error', '%'].includes(metric) ? `${label}%` : label;
 }
 
 function chartColorClass(spec, point, index) {
@@ -4007,6 +4086,35 @@ function chartColorClass(spec, point, index) {
   return 'chart-value-primary';
 }
 
+function overloadActivityTable(record) {
+  const wrap = document.createElement('div'); wrap.className = 'table-scroll';
+  const table = document.createElement('table');
+  table.innerHTML = '<thead><tr><th>Task / time</th><th>Expected</th><th>Response</th><th>Result / cause</th><th>Response seconds</th><th>Difficulty / tasks</th><th>Pressure / switching</th><th>Raw trial evidence</th></tr></thead>';
+  const body = document.createElement('tbody');
+  for (const event of record.overloadActivity ?? []) {
+    const row = document.createElement('tr');
+    for (const value of [event.task + ' / ' + Number(event.at.toFixed(2)) + 's', JSON.stringify(event.expected), JSON.stringify(event.answer), event.correct ? 'Correct' : event.errorCause, Number(event.responseTimeSeconds.toFixed(2)), `${event.difficulty} / ${event.taskCount}`, `${event.overlap ? 'Overlapping pressure' : 'Independent deadline'}${event.ignored ? ' · ignored' : ''}${event.rushed ? ' · rushed' : ''}`, JSON.stringify(event.raw)]) { const cell = document.createElement('td'); cell.textContent = value; row.append(cell); }
+    body.append(row);
+  }
+  table.append(body); wrap.append(table); return wrap;
+}
+
+function renderOverloadHistory(records) {
+  const panel = document.getElementById('overload-history'); panel.hidden = historyView.filters.game !== 'overload';
+  const runs = records.filter(record => record.game === 'overload'), stats = summarizeOverload(runs);
+  const fmt = value => value === null ? '—' : String(Number(Number(value).toFixed(2)));
+  document.getElementById('overload-history-metrics').textContent = `${stats.runs} completed runs · Best score ${stats.bestScore} · Average score ${fmt(stats.averageScore)} · Best survival ${fmt(stats.bestSurvival)}s · Average simultaneous tasks ${fmt(stats.averageTasks)} · Highest difficulty ${stats.highestDifficulty} · Action accuracy ${fmt(stats.accuracy)}%`;
+  document.getElementById('overload-history-evidence').textContent = stats.mostReliable ? `Most reliable: ${stats.mostReliable.label}. Least reliable: ${stats.leastReliable.label}. Each requires three runs and 15 actions. Use Evidence to inspect every action, deadline, input, and pressure condition.` : 'More evidence needed: complete three runs and 15 actions per task to identify strengths and weaknesses.';
+  const body = document.getElementById('overload-history-rows'); body.replaceChildren();
+  for (const record of [...runs].reverse()) {
+    const row = document.createElement('tr');
+    for (const value of [new Date(record.timestamp).toLocaleString(), record.sessionMode, record.overloadScore, `${fmt(record.overloadDuration)}s`, record.overloadDifficulty, record.overloadPeakTasks, `${fmt(record.overloadAccuracy)}%`, `${fmt(record.overloadAverageResponse)}s`, `${record.overloadErrors} / ${record.overloadExpired}`, `${record.overloadEndingTask ?? '—'} / ${record.overloadEndingReason ?? 'In progress'}`]) { const cell = document.createElement('td'); cell.textContent = value; row.append(cell); }
+    const cell = document.createElement('td'), button = document.createElement('button'); button.type = 'button'; button.textContent = 'Evidence'; button.onclick = () => openAttemptDetails(records, [record.attemptId], 'OVERLOAD raw activity'); cell.append(button); row.append(cell); body.append(row);
+  }
+  const tasks = document.getElementById('overload-task-rows'); tasks.replaceChildren();
+  for (const task of stats.tasks) { const row = document.createElement('tr'); for (const value of [task.label, `${task.actions} / ${task.runs}`, task.errors, `${fmt(task.accuracy)}%`, `${fmt(task.response)}s`]) { const cell = document.createElement('td'); cell.textContent = value; row.append(cell); } tasks.append(row); }
+}
+
 function openAttemptDetails(records, attemptIds, heading) {
   const rows = records.filter((record) => attemptIds.includes(record.attemptId));
   const errorAnalytics = buildErrorAnalytics(rows, { comparisonDisabled: true, minimumOpportunities: 1 });
@@ -4021,7 +4129,7 @@ function openAttemptDetails(records, attemptIds, heading) {
     const body = document.createElement('tbody');
     for (const record of [...rows].reverse()) {
       const row = document.createElement('tr');
-      const gameDetails = record.game === 'cash'
+      const gameDetails = record.game === 'overload' ? [`Score ${record.overloadScore}`, `${record.overloadPeakTasks} peak tasks`, `${record.overloadErrors} errors`, record.overloadEndingReason] : record.game === 'cash'
         ? [`Due ${record.amountDueCents}¢`, `Tender ${record.cashGivenCents}¢`, `${record.tenderPieceCount} pieces`, `${record.tenderDenominationTypes} denominations`, `Change/short ${record.changeOrShortfallCents}¢`]
         : record.game === 'memory'
           ? [`${record.totalDigits} digits`, `Display ${record.readTimeSeconds}s`, `Answer time ${record.writeTimeSeconds}s`, `${record.correctValueCount}/${record.valueCount} values`, `Streak ${record.memoryStreak ?? '—'}`]
@@ -4049,6 +4157,7 @@ function openAttemptDetails(records, attemptIds, heading) {
     table.append(body);
     wrap.append(table);
     refs['attempt-detail-content'].append(wrap);
+    for (const record of rows.filter(row => row.game === 'overload')) refs['attempt-detail-content'].append(overloadActivityTable(record));
   }
   enhanceHistoryTables(refs['attempt-detail-dialog']);
   if (typeof refs['attempt-detail-dialog'].showModal === 'function') refs['attempt-detail-dialog'].showModal();
@@ -4222,7 +4331,7 @@ function renderChartCard(spec, records) {
   });
   const xTitle = chartSvgElement('text', { class: 'chart-axis-title', x: plot.left + plotWidth / 2, y: 320, 'text-anchor': 'middle' });
   xTitle.textContent = spec.kind === 'scatter' ? 'Response time (seconds)' : points.every((point) => /^\d{4}-\d{2}-\d{2}$/.test(point.label)) ? 'Date'
-    : points.every((point) => /^Attempt \d+$/.test(point.label)) ? 'Attempt number' : 'Category';
+    : points.every((point) => /^Attempt \d+$/.test(point.label)) ? 'Attempt number' : spec.kind === 'line' ? 'Chronological attempt' : 'Category';
   xAxis.append(xTitle);
   svg.append(yAxis, xAxis);
   let dragStartX = null;
@@ -4529,6 +4638,7 @@ function displayNumericDifference(value, unit) {
 }
 
 function hasDetailedErrorEvidence(record) {
+  if (record.game === 'overload') return Array.isArray(record.overloadActivity);
   if (record.game === 'cash') return Boolean(record.cashTransactionType || record.transactionType || record.cashBuilder === true || record.cashDenominationStrictRequest === true);
   if (record.game === 'memory') return Array.isArray(record.expectedValues) && Array.isArray(record.answeredValues);
   if (record.game === 'task') return Array.isArray(record.taskStepEvidence) || Array.isArray(record.taskMistakeCategories);
@@ -4895,7 +5005,7 @@ function renderRecommendedChallenge(records) {
   const candidates = sampleMode ? [] : rankPracticeCandidates(records, historyPresetMap());
   const recommendation = recommendNextChallenge(records, sampleMode
     ? { game: historyView.filters.game }
-    : { candidatePlans: candidates, currentChallenge: state.currentChallenge });
+    : { game: historyView.filters.game, candidatePlans: candidates, currentChallenge: state.currentChallenge });
   const target = refs['history-recommendations'];
   const previous = refs['previous-challenges'];
   target.replaceChildren();
@@ -4913,7 +5023,7 @@ function renderRecommendedChallenge(records) {
     const card = document.createElement('article');
     card.className = 'practice-recommendation';
     const title = document.createElement('h4');
-    title.textContent = `${PRACTICE_GAMES[plan.game]} — ${plan.target}`;
+    title.textContent = `${plan.game === 'overload' ? 'Multitasker / OVERLOAD' : PRACTICE_GAMES[plan.game]} — ${plan.target}`;
     const why = document.createElement('p');
     const matchingWeakness = detailedWeakness?.game === plan.game ? ` Game-specific Error Analysis: ${formatSkillEvidence(detailedWeakness)}.` : '';
     why.textContent = `Why recommended: ${recommendation.reason}${matchingWeakness}`;
@@ -5002,8 +5112,10 @@ function renderFraudHistory(records) {
   refs['fraud-history-panel'].hidden = !visible;
   if (!visible) return;
   const summary = summarizeFraudHistory(records.filter((record) => record.game === 'fraud-inspection'));
+  const holdRecords = records.filter(record => record.game === 'fraud-inspection' && record.outcome !== 'Not answered' && record.holdDecisionChecks);
   const rate = (value) => value === null ? 'Not enough data' : value + '%';
   renderMetrics(refs['fraud-history-metrics'], [
+    ...(holdRecords.length ? [[String(holdRecords.length), 'Hold / acceptance cases'], [String(Number((holdRecords.filter(record => record.holdDecisionErrors?.length === 0).length / holdRecords.length * 100).toFixed(2))) + '%', 'Correct hold / acceptance decisions']] : []),
     [String(summary.casesReviewed), 'Cases reviewed'],
     [rate(summary.exactSetAccuracyPercent), 'Exact-case accuracy'],
     [rate(summary.accuracyPercent === null ? null : Math.round(summary.accuracyPercent)), 'Accuracy across issue choices'],
@@ -5101,6 +5213,7 @@ function renderHistory() {
   renderHistoryInsights(records, errorAnalytics);
   renderHistoryRows(records, errorAnalytics);
   renderFraudHistory(records);
+  renderOverloadHistory(records);
   enhanceHistoryTables(refs['history-screen']);
 }
 
@@ -5117,6 +5230,7 @@ function applyHistoryQuickRange(kind) {
 }
 
 function openHistory() {
+  if (state.activeScreen === 'overload') { overloadUI.stop(); historyView.filters = { game: 'overload' }; }
   if (['typing', 'quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'error-detection'].includes(state.activeScreen)) {
     setMessage('Finish the current round before opening history.');
     return;
@@ -5136,7 +5250,7 @@ function downloadHistory() {
     setMessage('There is no history to download yet.');
     return;
   }
-  const csv = toCsv(history);
+  const csv = toCsv(history.map(record => Object.fromEntries(Object.entries(record).map(([key, value]) => [key, value !== null && typeof value === 'object' ? JSON.stringify(value) : value]))));
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -5311,9 +5425,14 @@ typingElement('reset').addEventListener('click', () => {
 });
 
 const chessUI = createChessUI({ showScreen, renderChart: renderChartCard, showChartData: spec => openChartData(spec.title, chartSpecDataTable(spec)) });
+const overloadUI = createOverloadUI({ showScreen, onSave(record) {
+  state.game = 'overload'; state.sessionId = record.sessionId; state.difficulty = record.difficulty; state.questionCount = 1;
+  state.results = record.outcome === 'Not answered' ? [] : [record]; persistRecord(record);
+}, onHistory() { historyView.filters = { game: 'overload' }; renderHistory(); showScreen('history'); } });
 
 refs['setup-form'].addEventListener('submit', (event) => {
   event.preventDefault();
+  if (selectedGame() === 'overload') { stopTimer(); resetDistractionAudioSetup(); overloadUI.start(); return; }
   if (selectedGame() === 'chess') {
     state.game = 'chess';
     chessUI.start().catch(error => setMessage(error.message));
@@ -5369,6 +5488,7 @@ refs['setup-form'].addEventListener('submit', (event) => {
       return;
     }
     const overrides = {
+      useHoldTypes: document.getElementById('fraud-use-holds').checked,
       questionCount,
       timeLimitSeconds,
       ...(custom ? {
@@ -5609,6 +5729,7 @@ refs['start-another'].addEventListener('click', () => {
 refs['open-history'].addEventListener('click', openHistory);
 refs['summary-history'].addEventListener('click', openHistory);
 refs['back-to-setup'].addEventListener('click', () => {
+  overloadUI.stop();
   clearPracticePlan();
   resetDistractionAudioSetup();
   updateGameSetup();

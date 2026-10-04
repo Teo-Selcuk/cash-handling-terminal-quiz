@@ -36,15 +36,15 @@ export async function checkSampleHistory(browser, site) {
     await page.locator('#history-data-source input[value="sample"]').check();
     await page.locator('#history-sample-banner').waitFor({ state: 'visible' });
     assert.match(await page.locator('#history-sample-banner').innerText(), /SAMPLE DATA MODE/);
-    assert.equal(Number((await page.locator('#history-metrics .metric strong').first().textContent()).replaceAll(',', '')), 1200);
+    assert.equal(Number((await page.locator('#history-metrics .metric strong').first().textContent()).replaceAll(',', '')), 1680);
     assert.match(await page.locator('#history-error-data-label').textContent(), /Based on Sample Data/);
     assert.match(await page.locator('#history-error-metrics').innerText(), /Overall error rate/);
     assert.ok(await page.locator('#history-error-category-table tbody tr').count() > 1, 'sample mode has game-specific error categories');
     assert.ok(await page.locator('#history-error-raw-table tbody tr').count() > 1, 'sample mode has raw-input error rates');
     assert.ok(await page.locator('#history-error-combination-table tbody tr').count() > 1, 'sample mode has input-combination rates');
     assert.equal(await page.locator('#history-rows tr').first().locator('td').count(), 8, 'sample attempt rows include both error fields');
-    assert.equal(await page.locator('#history-rows tr').count(), 1200, 'all attempts remain available inside the bounded viewport');
-    assert.match(await page.locator('#history-attempt-summary').textContent(), /1,200 matching/);
+    assert.equal(await page.locator('#history-rows tr').count(), 1680, 'all attempts remain available inside the bounded viewport');
+    assert.match(await page.locator('#history-attempt-summary').textContent(), /1,680 matching/);
     assert.equal(await page.locator('#clear-history').isDisabled(), true, 'real history clear is disabled in sample mode');
     assert.match(await page.locator('#history-insights').innerText(), /Based on Sample Data/);
     assert.equal(await page.locator('#history-recommendations button').filter({ hasText: 'Based on Sample Data' }).count(), 0);
@@ -54,7 +54,7 @@ export async function checkSampleHistory(browser, site) {
     const firstDataset = await page.evaluate((key) => sessionStorage.getItem(key), sampleKey);
     assert.ok(firstDataset?.includes('"isSample":true'), 'sample rows live in session storage');
 
-    for (const [range, expectedMin] of [['today', 1], ['yesterday', 1], ['7d', 1], ['30d', 500], ['30a', 30], ['50a', 50], ['all', 1200]]) {
+    for (const [range, expectedMin] of [['today', 1], ['yesterday', 1], ['7d', 1], ['30d', 500], ['30a', 30], ['50a', 50], ['all', 1680]]) {
       await page.locator(`#history-quick-ranges button[data-history-range="${range}"]`).click();
       const value = Number((await page.locator('#history-metrics .metric strong').first().textContent()).replaceAll(',', ''));
       assert.ok(value >= expectedMin, `${range} includes expected sample attempts`);
@@ -75,7 +75,7 @@ export async function checkSampleHistory(browser, site) {
 
     const gameFilters = {
       cash: 'Contains denominations', memory: 'Digits per value', task: 'Workflow',
-      'error-detection': 'Puzzle family', 'fraud-inspection': 'Actual issue category', typing: 'Typing content',
+      'error-detection': 'Puzzle family', 'fraud-inspection': 'Actual issue category', typing: 'Typing content', overload: 'Mini-games',
     };
     for (const [game, field] of Object.entries(gameFilters)) {
       await page.locator(`#history-game-tabs button[data-history-game="${game}"]`).click();
@@ -163,7 +163,7 @@ export async function checkSampleHistory(browser, site) {
     await page.waitForFunction((key) => sessionStorage.getItem(key)?.length > 0, sampleKey);
     const regenerated = await page.evaluate((key) => sessionStorage.getItem(key), sampleKey);
     assert.notEqual(regenerated, firstDataset, 'Regenerate Sample Data creates another dataset');
-    assert.equal(Number((await page.locator('#history-metrics .metric strong').first().textContent()).replaceAll(',', '')), 1200);
+    assert.equal(Number((await page.locator('#history-metrics .metric strong').first().textContent()).replaceAll(',', '')), 1680);
     assert.equal(await page.evaluate((key) => localStorage.getItem(key), historyKey), original, 'switching, filtering, and regenerating never changes real history');
     assert.equal(await page.evaluate((key) => localStorage.getItem(key), challengeKey), originalChallenge, 'sample recommendations do not change the saved real challenge');
 
@@ -202,7 +202,7 @@ export async function checkSampleHistory(browser, site) {
     assert.match(await emptyPage.locator('#history-empty-real').innerText(), /No real history yet\./);
     await emptyPage.locator('#history-view-sample').click();
     assert.match(await emptyPage.locator('#history-sample-banner').innerText(), /SAMPLE DATA MODE/);
-    assert.equal(Number((await emptyPage.locator('#history-metrics .metric strong').first().textContent()).replaceAll(',', '')), 1200);
+    assert.equal(Number((await emptyPage.locator('#history-metrics .metric strong').first().textContent()).replaceAll(',', '')), 1680);
     assert.equal(await emptyPage.evaluate((key) => localStorage.getItem(key), historyKey), '[]', 'sample mode leaves an empty real history empty');
     assert.equal(await emptyPage.evaluate((key) => localStorage.getItem(key), challengeKey), null, 'sample mode creates no persistent real recommendation');
   } finally {

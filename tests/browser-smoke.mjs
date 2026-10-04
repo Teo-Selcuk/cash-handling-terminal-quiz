@@ -13,13 +13,16 @@ import { checkGuidance } from './browser-guidance-checks.mjs';
 import { checkProgress } from './browser-progress-checks.mjs';
 import { checkSampleHistory } from './browser-sample-history-checks.mjs';
 import { checkFraudInspection } from './browser-fraud-inspection-checks.mjs';
+import { checkHoldTraining } from './browser-hold-training-checks.mjs';
+import { checkChartFormatting } from './browser-chart-format-checks.mjs';
 import { checkChess } from './browser-chess-checks.mjs';
+import { checkOverload } from './browser-overload-checks.mjs';
 const { chromium } = createRequire(import.meta.url)('playwright');
 const root = process.env.QUIZ_STATIC_ROOT || fileURLToPath(new URL('../', import.meta.url));
 const server = createServer(async (request, response) => {
   const path = new URL(request.url, 'http://localhost').pathname;
   const file = path === '/' ? 'index.html' : path.slice(1);
-  if (!['history-tables.mjs', 'typing-core.mjs', 'index.html', 'app.js', 'style.css', 'quiz-core.mjs', 'pattern-games.mjs', 'distraction-sounds.mjs', 'adaptive-practice.mjs', 'progress-analytics.mjs', 'fraud-inspection.mjs', 'sample-history.mjs', 'chess-ui.mjs', 'chess-core.mjs', 'chess-board.mjs', 'chess-engine.mjs', 'chess-lessons.mjs', 'chess-storage.mjs', 'chess-analytics.mjs', 'assets/chess/chess.mjs', 'assets/chess/chess.js.map', 'assets/chess/stockfish-19-lite-single.js', 'assets/chess/stockfish-19-lite-single.wasm', 'assets/chess/chess-LICENSE', 'assets/chess/stockfish-COPYING.txt', 'assets/fraud/id-portrait-female-20260922.jpg', 'assets/fraud/id-portrait-male-20260922.jpg', 'assets/fraud/id-portrait-female-2-20260929.jpg', 'assets/fraud/id-portrait-male-2-20260929.jpg'].includes(file)) {
+  if (!['overload-core.mjs', 'overload-ui.mjs', 'overload-analytics.mjs', 'check-holds.mjs', 'hold-training-ui.mjs', 'history-tables.mjs', 'typing-core.mjs', 'index.html', 'app.js', 'style.css', 'quiz-core.mjs', 'pattern-games.mjs', 'distraction-sounds.mjs', 'adaptive-practice.mjs', 'progress-analytics.mjs', 'fraud-inspection.mjs', 'sample-history.mjs', 'chess-ui.mjs', 'chess-core.mjs', 'chess-board.mjs', 'chess-engine.mjs', 'chess-lessons.mjs', 'chess-storage.mjs', 'chess-analytics.mjs', 'assets/chess/chess.mjs', 'assets/chess/chess.js.map', 'assets/chess/stockfish-19-lite-single.js', 'assets/chess/stockfish-19-lite-single.wasm', 'assets/chess/chess-LICENSE', 'assets/chess/stockfish-COPYING.txt', 'assets/fraud/id-portrait-female-20260922.jpg', 'assets/fraud/id-portrait-male-20260922.jpg', 'assets/fraud/id-portrait-female-2-20260929.jpg', 'assets/fraud/id-portrait-male-2-20260929.jpg'].includes(file)) {
     response.writeHead(404).end(); return;
   }
   response.setHeader('Content-Type', file.endsWith('.jpg') ? 'image/jpeg' : ({ '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.mjs': 'text/javascript', '.wasm': 'application/wasm' })[extname(file)] ?? 'text/plain');
@@ -56,20 +59,25 @@ try {
     };
   });
   const base = process.env.QUIZ_LIVE_URL || `http://127.0.0.1:${server.address().port}/`;
-  if (process.env.QUIZ_FOCUSED === 'history-layout') {
+  if (process.env.QUIZ_FOCUSED === 'overload') {
+    await checkOverload(browser, base);
+  } else if (process.env.QUIZ_FOCUSED === 'history-layout') {
     await checkHistoryLayout(browser, base);
   } else if (process.env.QUIZ_FOCUSED === 'typing') {
     await checkTyping(browser, base);
   } else if (process.env.QUIZ_FOCUSED === 'chess') {
     await checkChess(browser, base);
   } else if (process.env.QUIZ_FOCUSED === 'progress') {
+    await checkChartFormatting(browser, base);
     await checkProgress(browser, base);
     await checkSampleHistory(browser, base);
     console.log('Focused History and Progress browser checks passed.');
   } else if (process.env.QUIZ_FOCUSED === 'fraud') {
     await checkFraudInspection(browser, base);
+    await checkHoldTraining(browser, base);
     console.log('Focused Fraud Inspection browser checks passed.');
   } else {
+  await checkOverload(browser, base);
   await checkTyping(browser, base);
   await checkResponsive(browser, base);
   await checkGuidance(browser, base);
@@ -78,6 +86,8 @@ try {
   await checkSampleHistory(browser, base);
   await checkHistoryLayout(browser, base);
   await checkFraudInspection(browser, base);
+  await checkHoldTraining(browser, base);
+  await checkChartFormatting(browser, base);
   await checkChess(browser, base);
   await checkAutoContinue(browser, base);
   await checkTimeouts(browser, base);

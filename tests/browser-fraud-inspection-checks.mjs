@@ -76,8 +76,12 @@ export async function checkFraudInspection(browser, base) {
     await page.setViewportSize({ width: 1280, height: 1000 });
     for (const [width, height] of [[1920, 1080], [2560, 1440]]) {
       await page.setViewportSize({ width, height });
-      const bottom = await page.locator('#fraud-document-grid').evaluate(grid => grid.getBoundingClientRect().bottom);
-      assert.ok(bottom <= height, `full check and selected identity fit together at ${width}×${height}: ${bottom}`);
+      const geometry = await page.locator('#fraud-document-grid [data-fraud-card="check"] .fraud-doc-viewport').evaluate(viewport => {
+        const svg = viewport.querySelector('svg');
+        return {ratio:svg.getBoundingClientRect().width/viewport.clientWidth, aspect:svg.getBoundingClientRect().height/svg.getBoundingClientRect().width, fits:viewport.scrollHeight<=viewport.clientHeight+1};
+      });
+      assert.ok(geometry.ratio >= .98 && geometry.fits, `check fills panel without internal cropping at ${width}×${height}: ${JSON.stringify(geometry)}`);
+      assert.ok(Math.abs(geometry.aspect - 690/860) < .01, 'full document aspect ratio preserved');
       assert.equal(await page.locator('.fraud-profile-icon').count(), 2);
       assert.ok(await page.locator('.fraud-readable-details dd').evaluateAll(fields => fields.every(field => parseFloat(getComputedStyle(field).fontSize) >= 16)));
       await page.screenshot({ path: (process.env.TEMP || '/tmp') + `/fraud-inspection-${width}.png`, fullPage: true });

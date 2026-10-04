@@ -14,9 +14,9 @@ export async function checkHistoryLayout(browser, base) {
     await page.locator('#open-history').click();
     for (const source of ['real', 'sample']) {
       await page.locator(`#history-data-source input[value="${source}"]`).check();
-      for (const game of ['all', 'cash', 'memory', 'task', 'error-detection', 'fraud-inspection', 'typing']) {
+      for (const game of ['all', 'cash', 'memory', 'task', 'error-detection', 'fraud-inspection', 'typing', 'overload']) {
         await page.locator(`#history-game-tabs button[data-history-game="${game}"]`).click();
-        const body = game === 'typing' ? '#typing-history-rows' : '#history-rows';
+        const body = game === 'overload' ? '#overload-history-rows' : game === 'typing' ? '#typing-history-rows' : '#history-rows';
         const shell = page.locator(body).locator('xpath=ancestor::div[contains(@class,"history-table-container")]');
         const viewport = shell.locator('.history-table-viewport');
         await shell.getByRole('button', { name: 'Normal Table', exact: true }).click();
@@ -42,13 +42,14 @@ export async function checkHistoryLayout(browser, base) {
         await page.locator('#error-analysis-sort').selectOption('alphabetical');
         assert.equal(await shell.getAttribute('data-table-size'), 'expanded', 'rerender preserves table state');
         await shell.getByRole('button', { name: 'Normal Table', exact: true }).click();
-        for (const id of ['accuracy-over-time', 'response-time-over-time']) {
+        for (const id of game === 'overload' ? ['overload-accuracy', 'overload-response'] : ['accuracy-over-time', 'response-time-over-time']) {
           const chart = page.locator(`[data-chart-id="${id}"]`);
           assert.ok(await chart.locator('.chart-series-line').count(), `${id} draws a progression line`);
           assert.ok(await chart.locator('.analytics-mark circle').count() > 1);
         }
         assert.equal(await page.locator('[data-chart-kind="scatter"] .chart-series-line').count(), 0, 'response-time correlation scatter stays unconnected');
       }
+      await page.locator('#history-game-tabs button[data-history-game="typing"]').click();
       if (source === 'sample') {
         const shell = page.locator('#typing-history-rows').locator('xpath=ancestor::div[contains(@class,"history-table-container")]');
         await shell.getByRole('button', { name: 'Minimize Table', exact: true }).click();

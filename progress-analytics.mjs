@@ -1,11 +1,14 @@
 // Pure local-history analytics. Unknown fields stay unknown so older attempts are
 // never represented as easier, faster, or more complete than they were recorded.
+import { TASKS as OVERLOAD_TASKS } from './overload-core.mjs';
+import { overloadChartSpecs, overloadRecommendation } from './overload-analytics.mjs';
 
 const ANSWERED_OUTCOMES = new Set(['Correct', 'Incorrect', 'Timed Out']);
 const OUTCOMES = new Set([...ANSWERED_OUTCOMES, 'Not answered']);
 const GAME_NAMES = Object.freeze({
   typing: 'Typing speed', cash: 'Cash handling', memory: 'Number memory', task: 'Task simulation', 'error-detection': 'Error detection',
   'fraud-inspection': 'Check & ID Fraud Inspection',
+  overload: 'Multitasker / OVERLOAD',
 });
 const GAME_BY_NAME = new Map(Object.entries(GAME_NAMES).map(([key, value]) => [value.toLowerCase(), key]));
 const known = (value) => value !== null && value !== undefined && value !== '';
@@ -126,7 +129,7 @@ export function normalizeHistoryRecord(record, index = 0) {
     isAnswered: answered,
     isCorrect: record.outcome === 'Correct',
     attemptAccuracyPercent: add('attemptAccuracyPercent', answered ? record.outcome === 'Correct' ? 100 : 0 : null),
-    responseTimeSeconds: add('responseTimeSeconds', elapsed),
+    responseTimeSeconds: add('responseTimeSeconds', game === 'overload' ? positive(record.overloadAverageResponse) : elapsed),
     difficulty: known(record.difficulty) ? String(record.difficulty) : null,
     session: known(record.sessionId) ? String(record.sessionId) : null,
     sessionMode: known(record.sessionMode) ? String(record.sessionMode) : null,
@@ -209,6 +212,17 @@ export function normalizeHistoryRecord(record, index = 0) {
     fraudExpectedCategories: add('fraudExpectedCategories', Array.isArray(record.fraudExpectedCategories)
       ? record.fraudExpectedCategories.filter((item) => typeof item === 'string' && item) : null),
     fraudCleanCase: add('fraudCleanCase', boolean(record.fraudCleanCase)),
+    overloadScore: add('overloadScore', positive(record.overloadScore)),
+    overloadPeakTasks: add('overloadPeakTasks', integer(record.overloadPeakTasks)),
+    overloadDifficulty: add('overloadDifficulty', integer(record.overloadDifficulty)),
+    overloadTasks: add('overloadTasks', Array.isArray(record.overloadTasks)?record.overloadTasks:null),
+    checkItemType: add('checkItemType', record.checkItemType ?? null),
+    checkClassification: add('checkClassification', record.checkClassification ?? null),
+    holdApplicable: add('holdApplicable', boolean(record.holdApplicable)),
+    holdReason: add('holdReason', record.holdReason ?? null),
+    holdSelected: add('holdSelected', record.holdSelected ?? null),
+    acceptanceDecision: add('acceptanceDecision', record.acceptanceDecision ?? null),
+    endorsementIssue: add('endorsementIssue', record.endorsementIssue ?? null),
   };
   attempt.hasRecorded = (field) => available.has(field);
   attempt.recordedFields = available;
@@ -270,6 +284,9 @@ function gameMatches(record, filters) {
     && range(record.falseFlagCount, error.falseFlagCount) && range(record.timeLimitSeconds, error.timeLimitSeconds)
     && (error.cleanPuzzle === undefined || record.cleanPuzzle === error.cleanPuzzle);
   if (record.game === 'fraud-inspection') return selected(record.fraudRunMode, fraud.runModes)
+    && selected(record.checkItemType, fraud.itemTypes)
+    && selected(record.holdReason, fraud.holdReasons)
+    && selected(record.acceptanceDecision, fraud.acceptanceDecisions)
     && selected(record.fraudCaseDifficulty, fraud.caseDifficulties)
     && range(record.fraudTimeLimitSeconds, fraud.timeLimitSeconds)
     && range(record.fraudExpectedIssueCount, fraud.expectedIssueCount)
@@ -279,6 +296,7 @@ function gameMatches(record, filters) {
       || fraud.issueCategories.some((id) => record.fraudExpectedCategories?.includes(id)))
     && (fraud.cleanCase === undefined || record.fraudCleanCase === fraud.cleanCase);
   if (record.game === 'typing') return selected(record.typingMode, filters.typing?.modes) && range(record.typingCharacters, filters.typing?.characters) && range(record.wpm, filters.typing?.wpm);
+  if (record.game === 'overload') return selected(record.sessionMode, filters.overload?.modes) && range(record.overloadPeakTasks,filters.overload?.tasks) && range(record.overloadScore,filters.overload?.score) && range(record.overloadDifficulty,filters.overload?.difficulty) && (!filters.overload?.miniGames?.length||filters.overload.miniGames.every(task=>record.overloadTasks?.includes(task)));
   return true;
 }
 
@@ -357,6 +375,9 @@ export function buildGameFilters(history, game = 'all') {
     rangeField('error.falseFlagCount', 'False flags', 'flags', selectedRecords, 'falseFlagCount'), rangeField('error.timeLimitSeconds', 'Time limit', 'seconds', selectedRecords, 'timeLimitSeconds'),
   );
   if (game === 'fraud-inspection') fields.push(
+    facetField('fraud.itemTypes', 'Check / item type', selectedRecords, record => [record.checkItemType]),
+    facetField('fraud.holdReasons', 'Hold reason', selectedRecords, record => [record.holdReason]),
+    facetField('fraud.acceptanceDecisions', 'Acceptance decision', selectedRecords, record => [record.acceptanceDecision]),
     facetField('fraud.runModes', 'Speed training', selectedRecords, (record) => [record.fraudRunMode]),
     facetField('fraud.caseDifficulties', 'Case difficulty', selectedRecords, (record) => [record.fraudCaseDifficulty]),
     facetField('fraud.issueCategories', 'Actual issue category', selectedRecords, (record) => record.fraudExpectedCategories),
@@ -366,6 +387,7 @@ export function buildGameFilters(history, game = 'all') {
     rangeField('fraud.timeLimitSeconds', 'Seconds per case', 'seconds', selectedRecords, 'fraudTimeLimitSeconds'),
     { id: 'fraud.cleanCase', label: 'Clean check and ID', type: 'boolean', available: countAvailable(selectedRecords, 'fraudCleanCase') },
   );
+  if(game==='overload') fields.push(facetField('overload.modes','Run mode',selectedRecords,r=>[r.sessionMode]),facetField('overload.miniGames','Mini-games',selectedRecords,r=>r.overloadTasks),rangeField('overload.tasks','Peak simultaneous tasks','tasks',selectedRecords,'overloadPeakTasks'),rangeField('overload.score','Score','points',selectedRecords,'overloadScore'),rangeField('overload.difficulty','Difficulty reached','level',selectedRecords,'overloadDifficulty'));
   return { game, availableAttempts: selectedRecords.length, fields };
 }
 
@@ -509,13 +531,14 @@ function finishErrorGroups(groups, minimumOpportunities, sortBy) {
   const rows = [...groups.values()].map((group) => {
     const interval = wilsonInterval(group.errors, group.opportunities);
     const ids = [...group.attemptIds];
+    const eligible = group.opportunities >= minimumOpportunities && (group.game !== 'overload' || ids.length >= 3 && group.opportunities >= 15);
     return {
       ...group, attemptIds: ids, attemptCount: ids.length, correct: group.opportunities - group.errors,
       errorRatePercent: errorPercent(group.errors, group.opportunities), displayRate: `${errorPercent(group.errors, group.opportunities)}% (${group.errors} of ${group.opportunities})`,
       interval, meanPercentageError: group.percentages.length ? round2(average(group.percentages)) : null,
       medianPercentageError: group.percentages.length ? round2(median(group.percentages)) : null,
-      eligibleForRanking: group.opportunities >= minimumOpportunities,
-      evidenceLabel: group.opportunities >= 10 ? 'Recurring signal' : group.opportunities >= minimumOpportunities ? 'Early signal' : 'Limited signal',
+      eligibleForRanking: eligible,
+      evidenceLabel: !eligible ? 'Limited signal' : group.opportunities >= 10 ? 'Recurring signal' : 'Early signal',
     };
   });
   const compare = (left, right) => {
@@ -577,6 +600,9 @@ function addSettingGroups(rows, record, add) {
     if (known(record.ruleLayers)) settings.push(['rule-layers', `${record.ruleLayers} rule layers`]);
     if (known(record.detailCount)) settings.push(['clues', `${record.detailCount} clues`]);
   } else if (game === 'fraud-inspection') {
+    if (known(record.checkItemType)) settings.push(['item-type', `Item · ${record.checkItemType}`]);
+    if (known(record.holdReason)) settings.push(['hold-reason', `Hold · ${record.holdReason}`]);
+    if (known(record.acceptanceDecision)) settings.push(['acceptance', `Action · ${record.acceptanceDecision}`]);
     if (known(record.fraudRunMode)) settings.push(['run-mode', `Run mode · ${record.fraudRunMode}`]);
     if (known(record.fraudExpectedCategories?.length)) settings.push(['issue-count', `${record.fraudExpectedCategories.length} actual issues`]);
   }
@@ -806,6 +832,18 @@ function addErrorDetectionEvidence(record, byCategory, byRawInput, mistakesForAt
 }
 
 function addFraudEvidence(record, byCategory, byRawInput, mistakesForAttempt, mistakeCounts) {
+  if (record.holdDecisionChecks && record.outcome !== 'Not answered') {
+    for (const [field, result] of Object.entries(record.holdDecisionChecks)) {
+      const error = result.correct === false;
+      const label = result.label;
+      addErrorOpportunity(byCategory, { key: `hold:${field}:${label}`, label, game: 'fraud-inspection', error, record });
+      addErrorOpportunity(byRawInput, { key: `hold:${field}:${record.checkItemType}:${record.holdReason}`, label: `${label} · ${record.checkItemType} · ${record.holdReason}`, game: 'fraud-inspection', error, record });
+      if (error) {
+        mistakesForAttempt.push({key:`hold:${field}`,label,detail:`Selected ${JSON.stringify(record.holdAnswer?.[field] ?? null)}; expected ${JSON.stringify(record.holdExpected)}`});
+        mistakeCounts.set(label,(mistakeCounts.get(label) ?? 0)+1);
+      }
+    }
+  }
   const resultMap = record.fraudCategoryResults && typeof record.fraudCategoryResults === 'object' ? record.fraudCategoryResults : null;
   const expected = new Set(Array.isArray(record.fraudExpectedCategories) ? record.fraudExpectedCategories.filter((id) => typeof id === 'string' && id) : []);
   const missed = new Set(Array.isArray(record.fraudMissedCategories) ? record.fraudMissedCategories.filter((id) => typeof id === 'string' && id) : []);
@@ -969,6 +1007,17 @@ export function buildErrorAnalytics(history, { previousRecords = [], comparisonC
     if (record.game === 'task') addTaskEvidence(record, byCategoryGroups, byRawInputGroups, numericResponses, mistakesForAttempt, mistakeCounts);
     if (record.game === 'error-detection') addErrorDetectionEvidence(record, byCategoryGroups, byRawInputGroups, mistakesForAttempt, mistakeCounts);
     if (record.game === 'fraud-inspection') addFraudEvidence(record, byCategoryGroups, byRawInputGroups, mistakesForAttempt, mistakeCounts);
+    if (record.game === 'overload') {
+      for(const event of record.overloadActivity??[]) {
+        const task=OVERLOAD_TASKS.find(t=>t.id===event.task);if(!task)continue;
+        const labels=[task.error,...(event.expired?['Timeout']:[]),...(event.ignored?['Ignored urgent task']:[]),...(event.overlap?['Error during overlapping pressure']:[])];
+        for(const label of labels) addErrorOpportunity(byCategoryGroups,{key:`overload:${label}`,label,game:'overload',error:!event.correct,record});
+        addErrorOpportunity(byRawInputGroups,{key:`overload:${event.task}:${event.taskCount}:${event.difficulty}`,label:`${task.name} · ${event.taskCount} tasks · level ${event.difficulty}`,game:'overload',error:!event.correct,record});
+        for (const label of [`${event.taskCount} simultaneous tasks`, ...(event.taskCount >= 5 ? ['5+ simultaneous tasks'] : []), ...(event.difficulty >= 7 && event.deadlineSeconds < 6 ? ['Hard difficulty + short timers'] : [])]) addErrorOpportunity(byRawInputGroups, {key:`overload:condition:${label}`,label,game:'overload',error:!event.correct,record});
+        for(let i=0;i<event.activeTasks.length;i++)for(let j=i+1;j<event.activeTasks.length;j++){const pair=[event.activeTasks[i],event.activeTasks[j]].sort();addErrorOpportunity(byRawInputGroups,{key:`overload:pair:${pair.join('+')}`,label:pair.map(id=>OVERLOAD_TASKS.find(t=>t.id===id)?.name??id).join(' + '),game:'overload',error:!event.correct,record});}
+        if(!event.correct){const label=event.errorCause??task.error;mistakesForAttempt.push({key:`overload:${event.task}`,label,detail:JSON.stringify({expected:event.expected,answer:event.answer,raw:event.raw,overlap:event.overlap})});mistakeCounts.set(label,(mistakeCounts.get(label)??0)+1);}
+      }
+    }
     addSettingGroups(bySettingGroups, record, addErrorOpportunity);
     addConditionCombination(combinationGroups, record);
     addInputCombinationEvidence(inputCombinationGroups, record, addErrorOpportunity);
@@ -1133,11 +1182,14 @@ function groupedMeanPoints(records, getKey, getValue) {
 
 export function progressionSegments(points) {
   const segments = [];
-  for (let index = 1; index < points.length; index += 1) {
-    const previous = points[index - 1], point = points[index];
-    if (Number.isFinite(previous.value) && Number.isFinite(point.value)
-      && previous.seriesKey === point.seriesKey) segments.push([index - 1, index]);
-  }
+  const previousBySeries = new Map();
+  points.forEach((point, index) => {
+    const key = point.seriesKey ?? 'value';
+    if (!Number.isFinite(point.value)) { previousBySeries.delete(key); return; }
+    const previous = previousBySeries.get(key);
+    if (previous !== undefined) segments.push([previous, index]);
+    previousBySeries.set(key, index);
+  });
   return segments;
 }
 
@@ -1183,8 +1235,13 @@ function conditionAxes(game) {
     ['Clue count', (row) => row.clueCount], ['Puzzle type', (row) => row.puzzleType],
     ['Clean puzzle', (row) => row.cleanPuzzle === null ? null : row.cleanPuzzle ? 'Clean' : 'Has anomalies']];
   if (game === 'fraud-inspection') return [...common, ['Run mode', (row) => row.fraudRunMode], ['Case difficulty', (row) => row.fraudCaseDifficulty],
+    ['Item type', row => row.checkItemType], ['Availability class', row => row.checkClassification],
+    ['Hold applicable', row => row.holdApplicable], ['Hold reason', row => row.holdReason],
+    ['Hold selected', row => row.holdSelected], ['Acceptance decision', row => row.acceptanceDecision],
+    ['Endorsement', row => row.endorsementIssue],
     ['Issue count', (row) => row.fraudExpectedIssueCount], ['Actual issue', (row) => row.fraudExpectedCategories],
     ['Clean case', (row) => row.fraudCleanCase === null ? null : row.fraudCleanCase ? 'Clean' : 'Has issues']];
+  if(game==='overload')return [...common,['Mode',row=>row.sessionMode],['Peak tasks',row=>row.overloadPeakTasks],['Difficulty reached',row=>row.overloadDifficulty],['Mini-games',row=>row.overloadTasks]];
   return common;
 }
 
@@ -1259,6 +1316,7 @@ export function buildConditionalReport(history, game = 'all', selectedIds = []) 
 /** Return accessible, data-only specifications for shared and game-specific charts. */
 export function buildChartSpecs(history, game = 'all') {
   const records = modelRows(history).filter((record) => game === 'all' || record.game === game);
+  if(game==='overload')return overloadChartSpecs(records);
   const model = buildProgressModel(records);
   const daily = model.daily;
   const timed = records.filter((record) => record.isAnswered && record.responseTimeSeconds !== null);
@@ -1343,6 +1401,9 @@ export function buildChartSpecs(history, game = 'all') {
   );
   if (game === 'fraud-inspection') {
     specs.push(
+      chart('hold-decision-progression', 'Hold / acceptance accuracy over time', records.filter(row => row.holdScenario).map(row => ({key:row.attemptId,label:new Date(row.timestamp).toLocaleString(),value:row.isAnswered?row.holdDecisionAccuracyPercent:null,count:1,attemptIds:[row.attemptId]})), {kind:'line'}),
+      chart('hold-reason-accuracy', 'Hold / acceptance accuracy by reason', groupedMeanPoints(records, row => row.holdReason, row => row.holdDecisionAccuracyPercent)),
+      chart('hold-item-accuracy', 'Hold / acceptance accuracy by item', groupedMeanPoints(records, row => row.checkItemType, row => row.holdDecisionAccuracyPercent)),
       chart('fraud-run-mode', 'Exact-set accuracy by run mode', groupedPoints(records, (row) => row.fraudRunMode)),
       chart('fraud-difficulty', 'Exact-set accuracy by case difficulty', groupedPoints(records, (row) => row.fraudCaseDifficulty)),
       chart('fraud-clean', 'Exact-set accuracy by clean case', groupedPoints(records, (row) => row.fraudCleanCase === null ? null : row.fraudCleanCase ? 'Clean' : 'Has issues')),
@@ -1464,6 +1525,8 @@ function previousChallengeEvidence(records) {
 /** Select one global, explainable next challenge from the weakest supported group. */
 export function recommendNextChallenge(history, options = {}) {
   const records = modelRows(history);
+  if(options.game==='overload'||records.length&&records.every(r=>r.game==='overload'))return overloadRecommendation(records);
+  if ((!options.game || options.game === 'all') && options.candidatePlans?.[0]?.game === 'overload') return overloadRecommendation(records);
   const weaknesses = findWeaknesses(records, options.game ?? 'all');
   const recovered = previousChallengeEvidence(records);
   const current = options.currentChallenge ?? null;

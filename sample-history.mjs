@@ -1,9 +1,10 @@
 import { createTypingPrompt, scoreTyping } from './typing-core.mjs';
+import { sampleOverloadRecord } from './overload-analytics.mjs';
 import { ChessSession } from './chess-core.mjs';
 import { CHESS_LESSONS } from './chess-lessons.mjs';
 const DAY_MS = 86400000;
 const DIFFICULTIES = ['Easy', 'Medium', 'Hard', 'Custom'];
-const GAMES = ['cash', 'memory', 'task', 'error-detection', 'fraud-inspection', 'typing'];
+const GAMES = ['cash', 'memory', 'task', 'error-detection', 'fraud-inspection', 'typing', 'overload'];
 const DENOMINATIONS = [10000, 5000, 2000, 1000, 500, 100, 25, 10, 5, 1];
 const FRAUD_CATEGORIES = [
   'payee-mismatch', 'amount-mismatch', 'date-issue', 'check-alteration', 'handwriting-issue',
@@ -268,7 +269,7 @@ export function generateSampleChessHistory({ now = new Date(), seed = 42, count 
 }
 
 /** Make isolated fake local-history rows. No browser storage is read or written. */
-export function generateSampleHistory({ now = new Date(), count = 1200, seed = Math.floor(Math.random() * 0xFFFFFFFF) } = {}) {
+export function generateSampleHistory({ now = new Date(), count = 1680, seed = Math.floor(Math.random() * 0xFFFFFFFF) } = {}) {
   const total = clamp(Math.floor(Number(count) || 1200), 1, 10000);
   const random = randomSource(seed);
   const recentCount = Math.ceil(total * 0.85);
@@ -305,7 +306,7 @@ export function generateSampleHistory({ now = new Date(), count = 1200, seed = M
     const row = game === 'cash' ? cashRecord(common, random, index)
       : game === 'memory' ? memoryRecord(common, random)
         : game === 'task' ? taskRecord(common, random)
-          : game === 'error-detection' ? errorRecord(common, random) : game === 'typing' ? typingRecord(common, random) : fraudRecord(common, random);
+          : game === 'error-detection' ? errorRecord(common, random) : game === 'typing' ? typingRecord(common, random) : game === 'overload' ? sampleOverloadRecord(common,random,index) : fraudRecord(common, random);
     rows.push(row);
   }
   return rows;
