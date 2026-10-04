@@ -5964,7 +5964,7 @@ function requireGameAccess(game) {
   showScreen('setup');
   document.getElementById('fraud-access-note').hidden=false;
   const account=document.getElementById('account-area');account.open=true;
-  setMessage('Check & ID Fraud Inspection requires the approved account. Sign in to continue.');
+  setMessage('Sign in to view all games.');
   document.getElementById('account-email').focus();
   return false;
 }
