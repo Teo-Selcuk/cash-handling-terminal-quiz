@@ -1077,25 +1077,66 @@ body.chess-arena #chess-screen {
 .overload-remaining { white-space: nowrap; font-variant-numeric: tabular-nums; font-size: .85rem; }
 .overload-panel.overload-urgent { border-color: var(--danger); box-shadow: inset 0 .25rem var(--danger); }
 .overload-panel.overload-urgent .overload-remaining { font-weight: 750; color: var(--danger); }
-.account-area summary { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; }
-#account-status { margin-left: auto; font-size: .85rem; font-weight: 500; }
-.account-area input { width: 100%; margin-top: .35rem; }
-.account-area .action-row { margin-top: .75rem; }
-#account-error { color: var(--danger); overflow-wrap: anywhere; }
+.account-area {
+  width: min(100%, 68rem);
+  margin: 0 0 1rem;
+  overflow: clip;
+  border: 1px solid var(--line);
+  border-radius: .9rem;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.account-summary {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: .65rem;
+  min-height: 3.75rem;
+  padding: .75rem 1rem;
+  cursor: pointer;
+  list-style: none;
+}
+.account-summary::-webkit-details-marker { display: none; }
+.account-summary-title { font-weight: 800; }
+.account-summary-user { padding: .2rem .55rem; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: .82rem; font-weight: 650; }
+#account-status { min-width: 0; color: var(--muted); font-size: .84rem; text-align: right; overflow-wrap: anywhere; }
+.account-summary-chevron { display: grid; width: 1.75rem; height: 1.75rem; place-items: center; border-radius: 50%; background: var(--surface-quiet); color: var(--brand); transition: transform .18s ease; }
+.account-area[open] .account-summary { border-bottom: 1px solid var(--line); background: var(--surface-quiet); }
+.account-area[open] .account-summary-chevron { transform: rotate(180deg); }
+.account-content { padding: clamp(1rem, 2.5vw, 1.75rem); }
+#account-error { margin: .5rem 0 0; color: var(--danger); overflow-wrap: anywhere; }
 .account-area form[inert] { opacity: .65; }
-.account-intro { display:flex; align-items:flex-start; gap:1rem; justify-content:space-between; margin-top:1.25rem; }
-.account-intro h2 { margin:.25rem 0 .5rem; font-size:1.6rem; }
-.account-intro p { max-width:42rem; }
-.account-badge { border:1px solid var(--brand); border-radius:2rem; padding:.35rem .7rem; font-size:.8rem; white-space:nowrap; }
-.account-password-field { display:flex; gap:.5rem; align-items:center; }
-.account-password-field input { min-width:0; flex:1; }
-.account-remember { display:flex; align-items:center; gap:.6rem; margin-top:1rem; }
-.account-area .account-remember input { width:auto; margin:0; }
-.account-permission-note, .account-guest-note { color:var(--muted); font-size:.9rem; }
-.account-guest-note { border-top:1px solid var(--line); padding-top:1rem; }
-.account-area form { padding:1rem; border:1px solid var(--line); border-radius:var(--radius); background:var(--surface); }
-.account-area input[type="email"], .account-area input[type="password"], .account-area input[type="text"] { min-height:3rem; padding:.75rem .9rem; border:1px solid var(--line); border-radius:.4rem; font:inherit; color:var(--ink); background:var(--surface); }
+.account-intro { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1.25rem; }
+.account-intro .eyebrow { margin-bottom: .35rem; }
+.account-intro h2 { margin: 0 0 .35rem; font-size: 1.65rem; }
+.account-intro p:last-child { max-width: 42rem; margin: 0; color: var(--muted); }
+.account-badge { flex: none; padding: .4rem .7rem; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-quiet); color: var(--muted); font-size: .8rem; font-weight: 650; white-space: nowrap; }
+.account-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.account-form-grid > label { min-width: 0; }
+.account-password-field { display: flex; align-items: center; gap: .5rem; margin-top: .35rem; }
+.account-password-field input { min-width: 0; flex: 1; }
+.account-remember { display: flex; align-items: center; gap: .6rem; margin: 0; color: var(--muted); font-size: .9rem; font-weight: 550; }
+.account-remember input { width: 1rem; height: 1rem; margin: 0; accent-color: var(--brand-fill); }
+.account-form-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem 1rem; margin-top: 1.1rem; }
+.account-submit-row { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; }
+.account-permission-note, .account-guest-note { color: var(--muted); font-size: .85rem; }
+.account-bottom-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem 1rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+.account-guest-note { margin: 0; }
+.account-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.account-area input[type="email"], .account-area input[type="password"], .account-area input[type="text"] { width: 100%; min-height: 3rem; margin-top: .4rem; padding: .75rem .9rem; border: 1px solid var(--line); border-radius: .55rem; font: inherit; color: var(--ink); background: var(--canvas); }
+.account-password-field input { margin-top: 0; }
+.account-summary:focus-visible { outline: .1875rem solid var(--accent); outline-offset: -.25rem; }
 .game-locked { opacity:.65; }
 .game-access-note { padding:.8rem 1rem; border-left:3px solid var(--brand); background:var(--transaction-surface); color:var(--transaction-text); border-radius:var(--radius); }
 .game-access-note button { color:inherit; }
-@media(max-width:550px) { .account-intro { flex-direction:column-reverse; gap:.5rem; } .account-badge { white-space:normal; } }
+@media(max-width:620px) {
+  .account-summary { grid-template-columns: auto 1fr auto; gap: .45rem; padding: .7rem .8rem; }
+  #account-status { grid-column: 1 / 3; grid-row: 2; text-align: left; }
+  .account-summary-chevron { grid-column: 3; grid-row: 1 / 3; }
+  .account-intro { align-items: flex-start; flex-direction: column; gap: .75rem; }
+  .account-form-grid { grid-template-columns: minmax(0, 1fr); gap: .75rem; }
+  .account-form-footer, .account-submit-row { align-items: flex-start; flex-direction: column; }
+  .account-submit-row .primary-button { width: 100%; }
+  .account-bottom-row { align-items: flex-start; flex-direction: column; }
+}
+@media(prefers-reduced-motion:reduce) { .account-summary-chevron { transition:none; } }

@@ -7,7 +7,7 @@
     <meta name="theme-color" content="#12343b">
     <title>Cash, Memory &amp; Detail Trainer</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="style.css?v=20261004-private">
+    <link rel="stylesheet" href="style.css?v=20261004-account-card">
   </head>
   <body>
     <main class="app-shell">
@@ -25,20 +25,31 @@
 
       <p class="screen-reader-only" id="message" role="status" aria-live="polite"></p>
 
-      <details id="account-area" class="preset-editor account-area">
-        <summary>Private account · <span id="account-user">Guest</span> <span id="account-status" role="status" aria-live="polite">Loading accounts…</span></summary>
-        <div class="account-intro"><div><p class="eyebrow">Access by permission</p><h2>Welcome back</h2><p>Sign in to view all games and keep your progress synced across devices.</p></div><span class="account-badge">One approved account</span></div>
-        <form id="account-form" inert>
-          <div class="form-grid">
-            <label>Email / username<input id="account-email" type="email" autocomplete="username" inputmode="email" placeholder="Your approved email" required></label>
-            <label>Password<span class="account-password-field"><input id="account-password" type="password" autocomplete="current-password" required><button id="account-show-password" type="button" class="text-button" aria-pressed="false" aria-label="Show password">Show</button></span></label>
+      <details id="account-area" class="account-area">
+        <summary class="account-summary">
+          <span class="account-summary-title">Private account</span>
+          <span class="account-summary-user" id="account-user">Guest</span>
+          <span id="account-status" role="status" aria-live="polite">Loading accounts…</span>
+          <span class="account-summary-chevron" aria-hidden="true">⌄</span>
+        </summary>
+        <div class="account-content">
+          <div class="account-intro"><div><p class="eyebrow">Your progress, wherever you practice</p><h2>Welcome back</h2><p>Sign in to view all games and keep your progress synced across devices.</p></div><span class="account-badge">One approved account</span></div>
+          <form id="account-form" inert>
+            <div class="account-form-grid">
+              <label>Email address<input id="account-email" type="email" autocomplete="username" inputmode="email" placeholder="Your approved email" required></label>
+              <label>Password<span class="account-password-field"><input id="account-password" type="password" autocomplete="current-password" required><button id="account-show-password" type="button" class="text-button" aria-pressed="false" aria-label="Show password">Show</button></span></label>
+            </div>
+            <div class="account-form-footer">
+              <label class="account-remember"><input id="account-remember" type="checkbox" checked><span>Keep me signed in on this device</span></label>
+              <div class="account-submit-row"><button id="account-submit" type="submit" class="primary-button">Sign in</button><span class="account-permission-note">Accounts are provided by the site owner. Public sign-up is closed.</span></div>
+            </div>
+          </form>
+          <div class="account-bottom-row">
+            <p class="account-guest-note">Guest progress stays in this browser. Sign in to sync your progress across devices.</p>
+            <div class="account-actions"><button id="account-signout" type="button" class="secondary-button" hidden>Sign out</button><button id="account-import" type="button" class="secondary-button" hidden disabled>Import existing device history &amp; settings</button><button id="account-retry" type="button" class="text-button">Retry connection</button></div>
           </div>
-          <label class="account-remember"><input id="account-remember" type="checkbox" checked>Keep me signed in on this device</label>
-          <div class="action-row"><button id="account-submit" type="submit" class="primary-button">Sign in</button><span class="account-permission-note">Accounts are provided by the site owner. Public sign-up is closed.</span></div>
-        </form>
-        <p class="account-guest-note">Guest progress stays in this browser. Sign in to sync your progress across devices.</p>
-        <div class="action-row"><button id="account-signout" type="button" class="secondary-button" hidden>Sign out</button><button id="account-import" type="button" class="secondary-button" hidden disabled>Import existing device history &amp; settings</button><button id="account-retry" type="button" class="text-button">Retry connection</button></div>
-        <p id="account-error" role="alert"></p>
+          <p id="account-error" role="alert"></p>
+        </div>
       </details>
 
       <details id="qralarm-connection" class="preset-editor qralarm-compact" inert>
