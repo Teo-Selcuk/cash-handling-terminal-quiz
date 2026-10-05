@@ -8,6 +8,7 @@ import { renderHoldTraining, readHoldAnswer } from './hold-training-ui.mjs?v=202
 import { TYPING_PRESETS, resolveTypingSettings, createTypingPrompt, scoreTyping, summarizeTyping } from './typing-core.mjs?v=20261002-typing';
 import { PATTERN_GAME_NAMES } from './pattern-games.mjs';
 import { createChessUI } from './chess-ui.mjs?v=20261003-accounts';
+import { ChessStore } from './chess-storage.mjs';
 import { createDistractionSamples } from './distraction-sounds.mjs';
 import {
   FRAUD_INSPECTION_CATEGORIES,
@@ -5887,7 +5888,8 @@ function setupQRAlarmConnection() {
   const fields = ['sessionId', 'questionNumber', 'outcome', 'timeUsedSeconds',
     'evidenceVersion', 'game', 'difficulty', 'plannedQuestions', 'sessionStartedAt',
     'sessionCompletedAt', 'sessionElapsedSeconds', 'autoContinue', 'continuousNoise',
-    'noiseMaintained', 'cashBuilder', 'customerRequests'];
+    'noiseMaintained', 'cashBuilder', 'customerRequests', 'overloadActivity',
+    'chessPlayerMoveSeconds', 'chessWon'];
   async function exchange(endpoint, body) {
     const response = await fetch(connection.bridge + endpoint, {
       method: 'POST', credentials: 'omit', cache: 'no-store',
@@ -5903,9 +5905,22 @@ function setupQRAlarmConnection() {
       if (request.request_id) {
         let body;
         try {
-          const records = getHistory(true).map((record) => {
+          const chess = new ChessStore(localStorage).games().map((game) => ({
+            evidenceVersion: 2, game: 'chess', sessionId: `chess:${game.id}`,
+            questionNumber: 1, plannedQuestions: 1, difficulty: game.settings.difficulty,
+            sessionStartedAt: game.startedAt, sessionCompletedAt: game.endedAt,
+            sessionElapsedSeconds: game.endedAt ? (Date.parse(game.endedAt) - Date.parse(game.startedAt)) / 1000 : 0,
+            timeUsedSeconds: game.endedAt ? (Date.parse(game.endedAt) - Date.parse(game.startedAt)) / 1000 : 0,
+            outcome: !game.result || !game.endedAt ? 'Not answered' : game.result.winner === game.player ? 'Correct' : 'Incorrect',
+            chessWon: Boolean(game.result && game.result.winner === game.player),
+            chessPlayerMoveSeconds: game.moves.filter(move => move.color === game.player).map(move => move.elapsedMs / 1000),
+          }));
+          const records = [...getHistory(true), ...chess].map((record) => {
             if (!record || typeof record !== 'object' || Array.isArray(record)) throw new Error('Invalid saved history.');
-            return Object.fromEntries(fields.filter((key) => Object.hasOwn(record, key)).map((key) => [key, record[key]]));
+            return Object.fromEntries(fields.filter((key) => Object.hasOwn(record, key)).map((key) => [key,
+              key === 'overloadActivity' && Array.isArray(record[key])
+                ? record[key].map(action => ({ correct: action.correct, responseTimeSeconds: action.responseTimeSeconds }))
+                : record[key]]));
           });
           body = { records };
         } catch {

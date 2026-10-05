@@ -285,6 +285,13 @@ does not rewrite that snapshot. Older history is preserved but cannot prove
 fields it did not save. Playback evidence describes application audio state,
 not physical speaker volume.
 
+The connection also projects completed Chess games from the versioned ChessStore
+into measurement evidence: player move durations and whether the player won.
+Lesson attempts remain separate. Multitasker exports each task action's correctness
+and response time rather than treating a completed run as one correct quiz answer.
+The projection includes no chess notation, board positions, task prompts or answers.
+Unreadable native storage blocks the snapshot rather than silently dropping it.
+
 QRAlarm requests measurement fields only; the bridge does not receive answer
 text or serve files/commands. A storage failure is reported explicitly rather
 than returned as an empty successful history. Each fresh unlock needs a matching
