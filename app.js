@@ -1,13 +1,13 @@
 import { accountStorage as localStorage, initializeAccounts } from './firebase-accounts.mjs?v=20261004-private';
 import { canPlayGame } from './account-access.mjs';
-import { enhanceHistoryTables } from './history-tables.mjs';
+import { enhanceHistoryTables } from './history-tables.mjs?v=20261008-advanced-errors';
 import { createOverloadUI } from './overload-ui.mjs?v=20261003-accounts';
 import { summarizeOverload, overloadRecommendation } from './overload-analytics.mjs?v=20261003-accounts';
 import { decideCheck, scoreHoldDecision, ITEM_TYPES, ITEM_REASONS, ACTIONS, HOLD_TYPES, availabilityText } from './check-holds.mjs?v=20261003-accounts';
 import { renderHoldTraining, readHoldAnswer } from './hold-training-ui.mjs?v=20261003-accounts';
 import { TYPING_PRESETS, resolveTypingSettings, createTypingPrompt, scoreTyping, summarizeTyping } from './typing-core.mjs?v=20261002-typing';
 import { PATTERN_GAME_NAMES } from './pattern-games.mjs';
-import { createChessUI } from './chess-ui.mjs?v=20261003-accounts';
+import { createChessUI } from './chess-ui.mjs?v=20261008-advanced-errors';
 import { ChessStore } from './chess-storage.mjs';
 import { createDistractionSamples } from './distraction-sounds.mjs';
 import {
@@ -22,7 +22,7 @@ import {
   buildChartSpecs, buildConditionalReport, buildErrorAnalytics, buildAdvancedErrorAnalytics, buildGameFilters, buildProgressModel, comparePeriods,
   filterHistory, recommendNextChallenge, progressionSegments,
 } from './progress-analytics.mjs?v=20261008-advanced-errors';
-import { generateSampleHistory, generateSampleChessHistory } from './sample-history.mjs?v=20261003-accounts';
+import { generateSampleHistory, generateSampleChessHistory } from './sample-history.mjs?v=20261008-advanced-errors';
 import {
   DENOMINATIONS,
   DIFFICULTY_CONFIG,

@@ -1,4 +1,4 @@
-import { enhanceHistoryList } from './history-tables.mjs';
+import { enhanceHistoryList } from './history-tables.mjs?v=20261008-advanced-errors';
 import { Chess, ChessSession, DEFAULT_POSITION, DIFFICULTIES, normalizeSettings } from './chess-core.mjs';
 import { ChessBoard } from './chess-board.mjs';
 import { ChessEngine, analyzeMove } from './chess-engine.mjs';
