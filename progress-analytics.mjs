@@ -1197,6 +1197,114 @@ function chart(id, title, points, options = {}) {
   return { id, title, kind: options.kind ?? 'bar', description: options.description ?? '', axisLabel: options.axisLabel,
     series: [{ id: options.seriesId ?? 'value', label: options.seriesLabel ?? title, metric: options.metric ?? 'accuracy', points }], attemptIds: [...new Set(points.flatMap((point) => point.attemptIds))] };
 }
+
+/** Positional comparisons use string offsets, not inferred insertion alignment.
+ * Arithmetic signatures describe plausible mistakes, never a proven cause. */
+export function buildAdvancedErrorAnalytics(history) {
+  const memory = { positions: [], lengths: [], regions: [], details: [], confusion: Array.from({ length: 10 }, () => Array(10).fill(0)), missing: 0, extra: 0, unavailable: 0 };
+  const cash = { details: [], categories: [], operations: [], centOperations: [], difficulties: [], transactions: [], magnitude: [], unavailable: 0 };
+  const maps = Object.fromEntries(['positions', 'lengths', 'regions', 'categories', 'operations', 'centOperations', 'difficulties', 'transactions', 'magnitude'].map(key => [key, new Map()]));
+  const trends = new Map(); const cashDays = new Map();
+  const add = (map, key, error, record, label = key) => {
+    key = String(key);
+    if (!map.has(key)) map.set(key, { key, label: String(label), opportunities: 0, errors: 0, attemptIds: new Set() });
+    const group = map.get(key); group.opportunities++; group.errors += Number(error); group.attemptIds.add(record.attemptId);
+  };
+  const submittedInteger = value => Number.isSafeInteger(value) && value >= 0;
+  const records = deduplicateHistory(history).filter(r => r.isAnswered);
+  for (const record of records) {
+    if (record.game === 'memory') {
+      const expected = record.expectedValues; const entered = record.answeredValues;
+      if (!Array.isArray(expected) || !expected.length || !expected.every(v => typeof v === 'string' && /^\d+(?:\.\d+)?$/.test(v))
+        || !Array.isArray(entered) || (record.outcome === 'Timed Out' && !entered.some(v => String(v ?? '').trim()))) { memory.unavailable++; continue; }
+      expected.forEach((raw, index) => {
+        const answer = String(entered[index] ?? '');
+        const left = raw.replace('.', ''); const right = answer.replaceAll(/\s/g, '').replace('.', '');
+        const missing = Math.max(0, left.length - right.length); const extra = Math.max(0, right.length - left.length);
+        memory.missing += missing; memory.extra += extra;
+        const wrongPositions = [];
+        for (let p = 0; p < left.length; p++) {
+          const error = left[p] !== right[p]; if (error) wrongPositions.push(p + 1);
+          add(maps.positions, p + 1, error, record, `Position ${p + 1}`);
+          add(maps.regions, p / left.length < 1 / 3 ? 'Beginning' : p / left.length < 2 / 3 ? 'Middle' : 'End', error, record);
+          if (/\d/.test(right[p] ?? '')) memory.confusion[Number(left[p])][Number(right[p])]++;
+          if (record.day) {
+            if (!trends.has(p + 1)) trends.set(p + 1, new Map());
+            add(trends.get(p + 1), record.day, error, record);
+          }
+        }
+        add(maps.lengths, left.length, raw !== answer.replaceAll(/\s/g, ''), record, `${left.length} digits`);
+        memory.details.push({ attemptId: record.attemptId, timestamp: record.timestamp, difficulty: record.difficulty, sequence: index + 1,
+          expected: raw, entered: answer, wrongPositions, missing, extra, decimalError: raw.indexOf('.') !== answer.replaceAll(/\s/g, '').indexOf('.') });
+      });
+      // Extra whole values have no expected positions and cannot enter a digit confusion cell.
+      for (const value of entered.slice(expected.length)) memory.extra += String(value).replaceAll(/\D/g, '').length;
+    }
+    if (record.game === 'cash') {
+      const expected = record.changeOrShortfallCents; const entered = record.userDeclaredAmountCents;
+      if (!submittedInteger(expected) || !submittedInteger(entered) || !record.userAnswer || record.outcome === 'Timed Out') { cash.unavailable++; continue; }
+      let operation = 'unavailable'; let left = null; let right = null;
+      if (['addition', 'subtraction'].includes(record.arithmeticOperation) && submittedInteger(record.arithmeticLeftCents) && submittedInteger(record.arithmeticRightCents)) {
+        left = record.arithmeticLeftCents; right = record.arithmeticRightCents;
+        if ((record.arithmeticOperation === 'addition' ? left + right : left - right) === expected) operation = record.arithmeticOperation;
+      } else if (submittedInteger(record.amountDueCents) && submittedInteger(record.cashGivenCents) && record.amountDueCents !== record.cashGivenCents) {
+        left = Math.max(record.amountDueCents, record.cashGivenCents); right = Math.min(record.amountDueCents, record.cashGivenCents);
+        if (left - right === expected) operation = 'subtraction';
+      }
+      const wrong = expected !== entered; const dollarsWrong = Math.floor(expected / 100) !== Math.floor(entered / 100);
+      const centsWrong = expected % 100 !== entered % 100;
+      const component = !wrong ? 'Correct' : dollarsWrong && centsWrong ? 'Both' : dollarsWrong ? 'Dollar-only' : 'Cent-only';
+      let operatorConfusion = null; let centOperatorConfusion = null; let carryBorrow = null; let crossesDollar = null;
+      if (operation !== 'unavailable') {
+        const addition = operation === 'addition'; const opposite = addition ? left - right : left + right;
+        operatorConfusion = wrong && opposite !== expected && entered === opposite;
+        const oppositeCents = addition ? ((left % 100 - right % 100) + 100) % 100 : (left % 100 + right % 100) % 100;
+        centOperatorConfusion = wrong && entered % 100 === oppositeCents && oppositeCents !== expected % 100;
+        crossesDollar = addition ? left % 100 + right % 100 >= 100 : left % 100 < right % 100;
+        carryBorrow = crossesDollar && wrong && entered === expected + (addition ? -100 : 100);
+        add(maps.operations, operation, wrong, record);
+        add(maps.centOperations, operation, centsWrong, record);
+        add(maps.categories, 'Likely operator confusion', operatorConfusion, record);
+        add(maps.categories, 'Likely cent operator confusion', centOperatorConfusion, record);
+        if (crossesDollar) add(maps.categories, 'Likely carry/borrow omission', carryBorrow, record);
+      }
+      for (const category of ['Dollar-only', 'Cent-only', 'Both']) add(maps.categories, category, component === category, record);
+      add(maps.difficulties, record.difficulty ?? 'Unknown', wrong, record);
+      add(maps.transactions, record.cashTransactionType ?? 'Unknown', wrong, record);
+      const difference = entered - expected;
+      const magnitude = Math.abs(difference);
+      add(maps.magnitude, magnitude === 0 ? '$0.00' : magnitude < 100 ? '$0.01–0.99' : magnitude < 1000 ? '$1–9.99' : magnitude < 10000 ? '$10–99.99' : '$100+', wrong, record);
+      if (record.day) add(cashDays, record.day, wrong, record);
+      cash.details.push({ attemptId: record.attemptId, timestamp: record.timestamp, difficulty: record.difficulty, transaction: record.cashTransactionType,
+        expected, entered, difference, magnitude, component, operation, left, right, operatorConfusion, centOperatorConfusion, carryBorrow, crossesDollar });
+    }
+  }
+  const finish = map => [...map.values()].map(g => ({ ...g, attemptIds: [...g.attemptIds], accuracyPercent: Math.round(10000 * (g.opportunities - g.errors) / g.opportunities) / 100,
+    errorRatePercent: Math.round(10000 * g.errors / g.opportunities) / 100 }));
+  for (const key of ['positions', 'lengths', 'regions']) memory[key] = finish(maps[key]);
+  memory.positions.sort((a, b) => Number(a.key) - Number(b.key)); memory.lengths.sort((a, b) => Number(a.key) - Number(b.key));
+  memory.mostMissed = [...memory.positions].filter(g => g.opportunities >= 5).sort((a,b) => b.errorRatePercent-a.errorRatePercent)[0] ?? null;
+  memory.mostAccurate = [...memory.positions].filter(g => g.opportunities >= 5).sort((a,b) => b.accuracyPercent-a.accuracyPercent)[0] ?? null;
+  for (const key of ['categories', 'operations', 'centOperations', 'difficulties', 'transactions', 'magnitude']) cash[key] = finish(maps[key]);
+  const spec = (id, title, groups, metric = 'errorRatePercent', kind = 'bar', unit = 'error-rate') => chart(id, title,
+    groups.map(g => ({ key: g.key, label: g.label, value: g[metric], count: g.opportunities, attemptIds: g.attemptIds, detail: g })),
+    { metric: unit, kind, description: 'Uses the current data source and history filters. Rates show supported opportunities only; see tables for counts.' });
+  const charts = [spec('memory-position-error', 'Error rate by digit position', memory.positions), spec('memory-position-accuracy', 'Accuracy by digit position', memory.positions, 'accuracyPercent', 'bar', 'accuracy'),
+    spec('memory-length-error', 'Error rate by number length', memory.lengths), spec('memory-region-error', 'Beginning / middle / end digit errors', memory.regions),
+    spec('cash-components', 'Dollar vs cent error rates', cash.categories.filter(g => ['Dollar-only', 'Cent-only', 'Both'].includes(g.key))),
+    spec('cash-operations', 'Addition vs subtraction accuracy', cash.operations, 'accuracyPercent', 'bar', 'accuracy'),
+    spec('cash-operator-confusion', 'Operator confusion frequency', cash.categories.filter(g => g.key === 'Likely operator confusion'), 'errors', 'bar', 'count'),
+    spec('cash-cent-mistakes', 'Cent addition/subtraction mistakes', cash.centOperations),
+    spec('cash-cent-confusion', 'Likely cent operator confusion', cash.categories.filter(g => g.key === 'Likely cent operator confusion')),
+    spec('cash-carry-borrow', 'Carry/borrow error frequency', cash.categories.filter(g => g.key === 'Likely carry/borrow omission')),
+    spec('cash-magnitude', 'Error magnitude distribution', cash.magnitude, 'opportunities', 'bar', 'count'),
+    spec('cash-common-mistakes', 'Most common mistake types (overlapping)', [...cash.categories].sort((a,b) => b.errors-a.errors), 'errors', 'bar', 'count'),
+    spec('cash-mistakes-time', 'Mistake frequency over time', finish(cashDays).sort((a,b) => a.key.localeCompare(b.key)), 'errors', 'line', 'count'),
+    spec('cash-difficulty', 'Arithmetic accuracy by difficulty', cash.difficulties, 'accuracyPercent', 'bar', 'accuracy'),
+    spec('cash-transaction', 'Arithmetic accuracy by transaction type', cash.transactions, 'accuracyPercent', 'bar', 'accuracy')];
+  for (const [position, days] of [...trends].sort((a,b) => a[0]-b[0])) charts.push(spec(`memory-position-${position}-time`, `Position ${position} accuracy over time`, finish(days).sort((a,b) => a.key.localeCompare(b.key)), 'accuracyPercent', 'line', 'accuracy'));
+  return { memory, cash, charts: charts.filter(s => s.series[0].points.length) };
+}
 function band(value, bands, suffix = '') { if (value === null) return null; const found = bands.find(([max]) => value <= max); return found ? found[1] : `${bands.at(-1)[0]}+${suffix}`; }
 
 const speedBand = (seconds) => seconds === null ? null : seconds <= 5 ? '0–5s' : seconds <= 10 ? '>5–10s' : seconds <= 15 ? '>10–15s' : '>15s';

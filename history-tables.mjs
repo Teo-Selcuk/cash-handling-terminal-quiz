@@ -1,5 +1,20 @@
 // Shared presentation for tables and chess history lists; gameplay storage is untouched.
 const sizes = new Map();
+const setters = new WeakMap();
+function globalControls(root) {
+  const page = root.closest('dialog, .screen');
+  if (!page || page.querySelector(':scope > .global-table-controls')) return;
+  const toolbar = document.createElement('div'); toolbar.className = 'global-table-controls history-table-controls';
+  toolbar.setAttribute('aria-label', 'All table sizes');
+  for (const [label, size] of [['Minimize All Tables', 'minimized'], ['Maximize All Tables', 'expanded'], ['Reset Tables to Default', 'normal']]) {
+    const button = document.createElement('button'); button.type = 'button'; button.className = 'text-button'; button.textContent = label;
+    button.addEventListener('click', () => {
+      for (const shell of page.querySelectorAll('.history-table-container')) setters.get(shell)?.(size);
+    });
+    toolbar.append(button);
+  }
+  page.prepend(toolbar);
+}
 const observed = new Set();
 let serial = 0;
 const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(entries => {
@@ -23,6 +38,7 @@ function rowCount(viewport) {
 }
 
 export function enhanceHistoryTables(root) {
+  globalControls(root);
   for (const viewport of observed) if (!viewport.isConnected) { observer?.unobserve(viewport); observed.delete(viewport); }
   for (const table of root.querySelectorAll('table')) {
     let viewport = table.closest('.history-table-viewport');
@@ -41,6 +57,7 @@ export function enhanceHistoryTables(root) {
 }
 
 export function enhanceHistoryList(viewport, key, label) {
+  globalControls(viewport);
   if (viewport.classList.contains('history-table-viewport')) {
     viewport.parentElement.querySelector('.history-table-count').textContent = `${rowCount(viewport)} rows · ${viewport.parentElement.dataset.tableSize} view`;
     requestAnimationFrame(() => measure(viewport));
@@ -73,6 +90,7 @@ export function enhanceHistoryList(viewport, key, label) {
     toolbar.append(button); buttons.push([button, value]);
   }
   shell.prepend(toolbar);
+  setters.set(shell, setSize);
   setSize(sizes.get(key) ?? 'normal');
   if (!observed.has(viewport)) { observed.add(viewport); observer?.observe(viewport); }
 }

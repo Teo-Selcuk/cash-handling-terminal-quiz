@@ -19,9 +19,9 @@ import {
 } from './fraud-inspection.mjs?v=20261003-accounts';
 import { PRACTICE_GAMES, rankPracticeCandidates, recommendPractice, practiceSettings } from './adaptive-practice.mjs?v=20261003-accounts';
 import {
-  buildChartSpecs, buildConditionalReport, buildErrorAnalytics, buildGameFilters, buildProgressModel, comparePeriods,
+  buildChartSpecs, buildConditionalReport, buildErrorAnalytics, buildAdvancedErrorAnalytics, buildGameFilters, buildProgressModel, comparePeriods,
   filterHistory, recommendNextChallenge, progressionSegments,
-} from './progress-analytics.mjs?v=20261003-accounts';
+} from './progress-analytics.mjs?v=20261008-advanced-errors';
 import { generateSampleHistory, generateSampleChessHistory } from './sample-history.mjs?v=20261003-accounts';
 import {
   DENOMINATIONS,
@@ -1388,6 +1388,9 @@ function recordAnswer(answer, score, timedOut, elapsedSeconds) {
     cashClearClicks: state.cashActions.clear,
     cashTransactionType: transactionType,
     changeOrShortfallCents: question.expectedAmountCents,
+    arithmeticOperation: transactionType === 'Exact' ? null : 'subtraction',
+    arithmeticLeftCents: Math.max(question.dueCents, question.tenderedCents),
+    arithmeticRightCents: Math.min(question.dueCents, question.tenderedCents),
     expectedAnswer: expectedAnswerText(question),
     recommendedBreakdown: formatBreakdown(customerRequest?.expectedBreakdown ?? buildBreakdown(question.expectedAmountCents)),
     userAnswer: answer?.type ?? '',
@@ -3938,7 +3941,7 @@ function chartValue(point, metric) {
   if (metric === 'time' || metric === 'duration') return `${value}s`;
   if (metric === 'WPM') return `${value} WPM`;
   if (metric === 'cents') return `${value}¢`;
-  if (['attempts', 'actions', 'digits', 'selections', 'score', 'tasks'].includes(metric)) return value;
+  if (['count', 'attempts', 'actions', 'digits', 'selections', 'score', 'tasks'].includes(metric)) return value;
   return `${value}%`;
 }
 
@@ -4043,6 +4046,7 @@ function mergeCoincidentScatterPoints(points, xFor, yFor) {
 }
 
 function chartAxisLabel(metric) {
+  if (metric === 'count') return 'Occurrences';
   if (metric === 'score') return 'Score';
   if (metric === 'tasks') return 'Simultaneous tasks';
   if (metric === 'duration') return 'Survival duration (seconds)';
@@ -4743,6 +4747,7 @@ function renderErrorAnalysis(records, history) {
   const chartSpecs = [analytics.charts.category, analytics.charts.rawInput, analytics.charts.trend, analytics.charts.magnitude]
     .filter((spec) => spec.series[0].points.length && (spec.id !== 'numeric-percentage-error' || analytics.numeric.responses.length));
   refs['history-error-charts'].replaceChildren(...chartSpecs.map((spec) => renderChartCard(spec, records)));
+  renderAdvancedErrorAnalysis(records);
   if (!chartSpecs.length) {
     const empty = document.createElement('p');
     empty.className = 'chart-empty';
@@ -4812,6 +4817,63 @@ function renderErrorAnalysis(records, history) {
   distribution.append(distributionHeading, distributionList);
   refs['history-error-distribution'].replaceChildren(distribution);
   return analytics;
+}
+
+function renderAdvancedErrorAnalysis(records) {
+  const target = document.getElementById('advanced-error-analytics'); target.replaceChildren();
+  const { memory, cash, charts } = buildAdvancedErrorAnalytics(records);
+  if (!records.some(row => ['memory', 'cash'].includes(row.game))) return;
+  const heading = document.createElement('h4'); heading.textContent = 'Detailed digit and arithmetic analysis'; target.append(heading);
+  const note = document.createElement('p'); note.className = 'chart-note';
+  note.textContent = `Digit offsets are compared from the beginning of each value; leading zeros are preserved. Missing digits count as positional errors; extra digits and decimal placement are separate. Blank timeouts and unavailable legacy evidence are excluded (${memory.unavailable} memory, ${cash.unavailable} cash). Dollar-only / cent-only / both are exclusive; likely operator and carry/borrow signatures overlap. Carry/borrow rates use only crossing opportunities. Cash gameplay records subtraction for change and shortfall; addition accuracy requires a saved addition answer. A matching signature suggests a cause but does not prove it.`;
+  target.append(note);
+  const table = (id, label, headers, rows, format) => {
+    const section = document.createElement('section'); section.id = id;
+    const title = document.createElement('h4'); title.textContent = label; section.append(title);
+    const body = document.createElement('div'); section.append(body); target.append(section);
+    appendAnalyticsTable(body, headers, rows, 'No supported answers in the current selection.', row => makeAnalyticsRow(format(row)));
+  };
+  const counts = g => [g.label, `${g.errors} / ${g.opportunities}`, `${g.errorRatePercent}%`, `${g.accuracyPercent}%`];
+  if (records.some(r => r.game === 'memory')) {
+    const highlights = document.createElement('p');
+    highlights.textContent = `Most missed position: ${memory.mostMissed ? `${memory.mostMissed.label} (${memory.mostMissed.errorRatePercent}%)` : 'needs five opportunities per position'}. Most accurate: ${memory.mostAccurate ? `${memory.mostAccurate.label} (${memory.mostAccurate.accuracyPercent}%)` : 'needs five opportunities per position'}. Missing digits: ${memory.missing}. Extra digits: ${memory.extra}.`;
+    target.append(highlights);
+    table('memory-position-analysis', 'Digit position accuracy', ['Position', 'Errors / digits', 'Error rate', 'Accuracy'], memory.positions, counts);
+    table('memory-length-analysis', 'Number length comparison', ['Length', 'Wrong / values', 'Error rate', 'Accuracy'], memory.lengths, counts);
+    table('memory-region-analysis', 'First, middle and last digits', ['Region', 'Errors / digits', 'Error rate', 'Accuracy'], memory.regions, counts);
+    table('memory-digit-confusion', 'Digit confusion heatmap (0–9)', ['Expected ↓ / Entered →', ...Array.from({length: 10}, (_, i) => String(i))], memory.confusion.map((cells, expected) => ({cells, expected})), row => [row.expected, ...row.cells]);
+    const heatmap = target.querySelector('#memory-digit-confusion');
+    heatmap.querySelectorAll('tbody tr').forEach((tr, expected) => [...tr.cells].slice(1).forEach((cell, entered) => {
+      const count = memory.confusion[expected][entered];
+      cell.classList.add('digit-heat-cell'); if (count) cell.classList.add(expected === entered ? 'digit-match' : 'digit-confused');
+      cell.style.setProperty('--heat-opacity', String(Math.min(0.8, 0.12 + count / Math.max(1, ...memory.confusion.flat()))));
+      cell.title = `Expected ${expected}, entered ${entered}: ${count} ${expected === entered ? 'correct digits' : 'substitutions'}`;
+    }));
+    const legend = document.createElement('p'); legend.className = 'chart-note'; legend.textContent = 'Cell counts: diagonal = correctly recalled digits; other cells = substitutions. Missing/extra digits have no digit pair and are excluded. Darker cells indicate higher counts.'; heatmap.append(legend);
+    table('memory-digit-details', 'Raw digit comparison history', ['Timestamp', 'Difficulty', 'Value #', 'Expected', 'Entered', 'Wrong positions', 'Missing', 'Extra', 'Decimal mismatch'], memory.details, r => [r.timestamp, r.difficulty, r.sequence, r.expected, r.entered, r.wrongPositions.join(', ') || 'None', r.missing, r.extra, r.decimalError ? 'Yes' : 'No']);
+  }
+  if (records.some(r => r.game === 'cash')) {
+    table('cash-arithmetic-categories', 'Arithmetic mistake frequencies', ['Type', 'Errors / opportunities', 'Error rate', 'Accuracy'], cash.categories, counts);
+    table('cash-operation-analysis', 'Addition and subtraction results', ['Operation', 'Wrong / answers', 'Error rate', 'Accuracy'], cash.operations, counts);
+    table('cash-cent-operation-analysis', 'Cent errors by operation', ['Operation', 'Wrong cents / answers', 'Error rate', 'Accuracy'], cash.centOperations, counts);
+    table('cash-arithmetic-details', 'Raw arithmetic comparison history', ['Timestamp', 'Difficulty', 'Transaction', 'Operation', 'Operands', 'Expected', 'Entered', 'Difference', 'Component', 'Likely opposite', 'Likely cents opposite', 'Likely carry/borrow'], cash.details,
+      r => [r.timestamp, r.difficulty, r.transaction, r.operation, r.operation === 'unavailable' ? 'Unavailable' : `${formatMoney(r.left)} ${r.operation === 'addition' ? '+' : '−'} ${formatMoney(r.right)}`, formatMoney(r.expected), formatMoney(r.entered), `${r.difference < 0 ? '−' : '+'}${formatMoney(Math.abs(r.difference))}`, r.component,
+        ...[r.operatorConfusion, r.centOperatorConfusion, r.carryBorrow].map(v => v === null ? 'Unavailable' : v ? 'Yes' : 'No')]);
+  }
+  const chartGrid = document.createElement('div'); chartGrid.className = 'advanced-error-charts';
+  const positionTrends = charts.filter(spec => /^memory-position-\d+-time$/.test(spec.id));
+  chartGrid.append(...charts.filter(spec => !positionTrends.includes(spec)).map(spec => renderChartCard(spec, records))); target.append(chartGrid);
+  if (positionTrends.length) {
+    const label = document.createElement('label'); label.textContent = 'Digit position trend '; label.className = 'field';
+    const select = document.createElement('select'); select.setAttribute('aria-label', 'Digit position trend');
+    positionTrends.forEach(spec => { const option = document.createElement('option'); option.value = spec.id; option.textContent = spec.title; select.append(option); });
+    select.value = positionTrends.some(spec => spec.id === historyView.memoryTrendPosition) ? historyView.memoryTrendPosition : positionTrends[0].id;
+    label.append(select); target.append(label);
+    const trend = document.createElement('div'); target.append(trend);
+    const update = () => { historyView.memoryTrendPosition = select.value; trend.replaceChildren(renderChartCard(positionTrends.find(spec => spec.id === select.value), records)); enhanceHistoryTables(target); };
+    select.addEventListener('change', update); update();
+  }
+  enhanceHistoryTables(target);
 }
 
 function renderHistoryInsights(records, errorAnalytics = buildErrorAnalytics(records, { comparisonDisabled: true })) {

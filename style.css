@@ -1140,3 +1140,9 @@ body.chess-arena #chess-screen {
   .account-bottom-row { align-items: flex-start; flex-direction: column; }
 }
 @media(prefers-reduced-motion:reduce) { .account-summary-chevron { transition:none; } }
+.advanced-error-charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.global-table-controls { flex-wrap: wrap; margin-bottom: 1rem; }
+.digit-heat-cell { position: relative; text-align: center; font-variant-numeric: tabular-nums; }
+.digit-match { background: color-mix(in srgb, #25885d calc(var(--heat-opacity) * 100%), transparent); }
+.digit-confused { background: color-mix(in srgb, #dd8557 calc(var(--heat-opacity) * 100%), transparent); }
+@media (max-width: 760px) { .advanced-error-charts { grid-template-columns: minmax(0, 1fr); } }

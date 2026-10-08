@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { generateSampleHistory } from '../sample-history.mjs';
+import { buildAdvancedErrorAnalytics } from '../progress-analytics.mjs';
 
 export async function checkHistoryLayout(browser, base) {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
@@ -16,6 +17,30 @@ export async function checkHistoryLayout(browser, base) {
       await page.locator(`#history-data-source input[value="${source}"]`).check();
       for (const game of ['all', 'cash', 'memory', 'task', 'error-detection', 'fraud-inspection', 'typing', 'overload']) {
         await page.locator(`#history-game-tabs button[data-history-game="${game}"]`).click();
+        const sizes = () => page.locator('#history-screen .history-table-container').evaluateAll(nodes => nodes.map(n => n.dataset.tableSize));
+        await page.getByRole('button', { name: 'Minimize All Tables', exact: true }).click();
+        assert.ok((await sizes()).every(size => size === 'minimized'));
+        await page.getByRole('button', { name: 'Maximize All Tables', exact: true }).click();
+        assert.ok((await sizes()).every(size => size === 'expanded'));
+        await page.getByRole('button', { name: 'Reset Tables to Default', exact: true }).click();
+        assert.ok((await sizes()).every(size => size === 'normal'));
+        if (game === 'memory' && source === 'real') {
+          const expected = buildAdvancedErrorAnalytics(real.filter(r => r.game === 'memory'));
+          const rows = await page.locator('#memory-position-analysis tbody tr').allTextContents();
+          assert.equal(rows.length, expected.memory.positions.length);
+          expected.memory.positions.forEach((p, index) => assert.ok(rows[index].includes(`${p.errors} / ${p.opportunities}`)));
+          assert.equal(await page.locator('#memory-digit-confusion tbody tr').count(), 10);
+          const trend = page.getByRole('combobox', { name: 'Digit position trend', exact: true });
+          const last = await trend.locator('option').last().getAttribute('value');
+          await trend.selectOption(last);
+          assert.equal(await page.locator(`[data-chart-id="${last}"]`).count(), 1);
+        }
+        if (game === 'cash' && source === 'real') {
+          const expected = buildAdvancedErrorAnalytics(real.filter(r => r.game === 'cash'));
+          assert.equal(await page.locator('#cash-arithmetic-details tbody tr').count(), expected.cash.details.length);
+          assert.equal(await page.locator('[data-chart-id="cash-magnitude"] .analytics-mark').count(), expected.cash.magnitude.length);
+          assert.ok(!(await page.locator('[data-chart-id="cash-magnitude"] .analytics-mark').first().getAttribute('aria-label')).includes('%'));
+        }
         const body = game === 'overload' ? '#overload-history-rows' : game === 'typing' ? '#typing-history-rows' : '#history-rows';
         const shell = page.locator(body).locator('xpath=ancestor::div[contains(@class,"history-table-container")]');
         const viewport = shell.locator('.history-table-viewport');
@@ -76,6 +101,13 @@ export async function checkHistoryLayout(browser, base) {
     assert.equal(await page.locator('#chess-history-games').isVisible(), false);
     await chess.getByRole('button', { name: 'Expand Table', exact: true }).click();
     assert.equal(await page.locator('#chess-history-games').isVisible(), true);
+    await page.locator('#history-game-tabs button[data-history-game="memory"]').click();
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.locator('#memory-digit-confusion').screenshot({ path: resolve(process.env.TEMP || '/tmp', 'quiz-digit-heatmap-dark.png') });
+    for (const width of [320, 768, 1440]) {
+      await page.setViewportSize({ width, height: 1000 });
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `digit analytics fit ${width}px`);
+    }
     assert.deepEqual(errors, []);
     console.log('History layout: every game, Real/Sample, 28-row scroll areas, minimize/expand, regeneration, sticky headers, progression lines, and 320–1440px passed');
   } finally { await context.close(); }

@@ -77,7 +77,9 @@ function cashRecord(record, random, index) {
     const denomination = select(random, DENOMINATIONS);
     selectedCounts[denomination] = Math.max(0, (selectedCounts[denomination] ?? 0) + (random() < 0.5 ? 1 : -1));
   }
-  const declaredAmount = record.outcome === 'Correct' ? Math.abs(delta) : Math.max(0, Math.abs(delta) + select(random, [1, 5, 25, 100]));
+  const larger = Math.max(due, tendered); const smaller = Math.min(due, tendered);
+  const borrowOmission = larger % 100 < smaller % 100 ? Math.abs(delta) + 100 : Math.abs(delta) + 1;
+  const declaredAmount = record.outcome === 'Correct' ? Math.abs(delta) : select(random, [Math.abs(delta) + 1, Math.abs(delta) + 100, Math.abs(delta) + 101, due + tendered, borrowOmission]);
   const selectedTotal = cashBuilder ? Object.entries(selectedCounts).reduce((sum, [cents, count]) => sum + Number(cents) * count, 0) : 0;
   const answerMode = hasRequest ? 'Cash builder + customer requests' : cashBuilder ? 'Cash builder' : 'Normal';
   return {
@@ -105,13 +107,19 @@ function memoryRecord(record, random) {
   const digitCounts = Array.from({ length: valueCount }, () => 4 + Math.floor(random() * 9));
   const expectedValues = digitCounts.map((length) => Array.from({ length }, () => Math.floor(random() * 10)).join(''));
   const correctValueCount = record.outcome === 'Correct' ? valueCount : record.outcome === 'Timed Out' ? 0 : Math.floor(random() * valueCount);
-  const answeredValues = record.outcome === 'Timed Out' ? [] : expectedValues.map((value, index) => index < correctValueCount ? value
-    : value.slice(0, -1) + String((Number(value.at(-1)) + 1) % 10));
+  const answeredValues = record.outcome === 'Timed Out' ? [] : expectedValues.map((value, index) => {
+    if (index < correctValueCount) return value;
+    const position = Math.floor(random() * value.length);
+    const kind = select(random, ['substitution', 'substitution', 'missing', 'extra']);
+    if (kind === 'missing') return value.slice(0, position) + value.slice(position + 1);
+    if (kind === 'extra') return value + String(Math.floor(random() * 10));
+    return value.slice(0, position) + String((Number(value[position]) + 1 + Math.floor(random() * 8)) % 10) + value.slice(position + 1);
+  });
   return {
     ...record, game: 'memory', gameType: 'Number memory', expectedValues, answeredValues, valueCount,
     digitsByValue: digitCounts, totalDigits: digitCounts.reduce((sum, digits) => sum + digits, 0), decimalMode: false,
     readTimeSeconds: select(random, [1, 2, 3, 5, 8]), writeTimeSeconds: record.timeLimitSeconds,
-    correctValueCount, mismatchPositions: record.outcome === 'Correct' ? [] : [digitCounts.at(-1)],
+    correctValueCount, mismatchPositions: record.outcome === 'Timed Out' ? [] : [...new Set(expectedValues.flatMap((value, index) => [...value].flatMap((digit, position) => digit === answeredValues[index]?.[position] ? [] : [position + 1])))],
     memoryStreak: correctValueCount === valueCount ? 1 + Math.floor(random() * 12) : 0,
     expectedAnswer: expectedValues.join(' • '), userAnswer: record.outcome === 'Timed Out' ? '' : answeredValues.join(' • '),
   };
