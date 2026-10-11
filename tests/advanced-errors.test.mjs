@@ -2,6 +2,23 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildAdvancedErrorAnalytics } from '../progress-analytics.mjs';
 const row = (game, fields) => ({ game, outcome: 'Incorrect', timestamp: '2026-10-08T12:00:00Z', ...fields });
+
+test('value position and digit position heatmap records observed denominators and swap patterns', () => {
+  const result = buildAdvancedErrorAnalytics([
+    row('memory', { expectedValues: ['58372', '94168'], answeredValues: ['58312', '94168'] }),
+    row('memory', { expectedValues: ['012'], answeredValues: ['021'] }),
+  ]);
+  assert.equal(result.memory.valuePositions.find(g => g.key === '1').errors, 2);
+  assert.equal(result.memory.valuePositions.find(g => g.key === '2').accuracyPercent, 100);
+  assert.equal(result.memory.cells.find(g => g.key === '1:4').errorRatePercent, 100);
+  assert.equal(result.memory.cells.find(g => g.key === '2:4').opportunities, 1);
+  assert.equal(result.memory.details[0].digitPairs[3].expected, '7');
+  assert.equal(result.memory.details[0].digitPairs[3].entered, '1');
+  assert.deepEqual(result.memory.details[2].swaps, ['2↔3']);
+  assert.equal(result.memory.points, 0.5);
+  assert.equal(result.memory.scoredAttempts, 2);
+  assert.ok(result.charts.some(c => c.id === 'memory-total-load-error'));
+});
 test('memory preserves zeros, positions, missing/extra digits and confusion denominators', () => {
   const result = buildAdvancedErrorAnalytics([
     row('memory', { expectedValues: ['583729', '0012'], answeredValues: ['583719', '001'] }),

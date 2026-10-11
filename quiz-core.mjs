@@ -339,11 +339,53 @@ export function scoreMemoryAnswer(challenge, answer) {
   const normalizedAnswer = normalizedValues.join(' • ');
   const correct = expectedValues.length === normalizedValues.length
     && expectedValues.every((value, index) => value === normalizedValues[index]);
+  const correctValueCount = expectedValues.filter((value, index) => value === normalizedValues[index]).length;
+  let correctDigitCount = 0; let totalDigitCount = 0; let extraDigitCount = 0;
+  expectedValues.forEach((value, index) => {
+    const digits = value.replace('.', '');
+    const entered = (typeof answerValues[index] === 'string' ? answerValues[index].replaceAll(/\s/g, '') : '').replace('.', '');
+    totalDigitCount += digits.length;
+    extraDigitCount += Math.max(0, entered.length - digits.length);
+    for (let p = 0; p < digits.length; p++) correctDigitCount += Number(digits[p] === entered[p]);
+  });
+  extraDigitCount += normalizedValues.slice(expectedValues.length).reduce((sum, value) => sum + value.replace('.', '').length, 0);
   return {
     correct,
     normalizedAnswer,
     normalizedValues,
+    correctValueCount, totalValueCount: expectedValues.length,
+    attemptScore: expectedValues.length ? correctValueCount / expectedValues.length : 0,
+    correctDigitCount, totalDigitCount, extraDigitCount,
+    digitAccuracyPercent: totalDigitCount ? Math.round(correctDigitCount / totalDigitCount * 10000) / 100 : null,
   };
+}
+
+/** Additive view of legacy evidence; never fills in unknown digit answers. */
+export function memoryCredit(record) {
+  if (!['Correct', 'Incorrect', 'Timed Out'].includes(record?.outcome)) return null;
+  if (Array.isArray(record.expectedValues) && record.expectedValues.length
+    && record.expectedValues.every(value => typeof value === 'string' && /^\d+(?:\.\d+)?$/.test(value))
+    && Array.isArray(record.answeredValues) && record.answeredValues.every(value => typeof value === 'string')) return scoreMemoryAnswer({ values: record.expectedValues }, record.answeredValues);
+  const total = record.valueCount; const correct = record.correctValueCount;
+  if (Number.isSafeInteger(total) && total > 0 && Number.isSafeInteger(correct) && correct >= 0 && correct <= total) {
+    return { attemptScore: correct / total, correctValueCount: correct, totalValueCount: total,
+      correctDigitCount: null, totalDigitCount: null, digitAccuracyPercent: null, extraDigitCount: null };
+  }
+  return null;
+}
+
+export function historyCredit(record) {
+  if (!['Correct', 'Incorrect', 'Timed Out'].includes(record?.outcome)) return null;
+  return record.game === 'memory' || record.gameType === 'Number memory'
+    ? memoryCredit(record)?.attemptScore ?? null : Number(record.outcome === 'Correct');
+}
+
+export function creditSummary(records) {
+  const scores = records.map(historyCredit).filter(value => value !== null);
+  const totalPoints = scores.reduce((sum, value) => sum + value, 0);
+  const fractional = records.some(row => row.game === 'memory' || row.gameType === 'Number memory');
+  return { totalPoints, scoredAttempts: scores.length,
+    accuracyPercent: scores.length ? fractional ? Math.round(totalPoints / scores.length * 10000) / 100 : Math.round(totalPoints / scores.length * 100) : null };
 }
 
 export const ERROR_DETECTION_PUZZLE_FAMILIES = Object.freeze([
@@ -1465,7 +1507,8 @@ export function summarizeHistory(records) {
     timedOut,
     notAnswered,
     incorrect,
-    accuracyPercent: percent(correct),
+    ...creditSummary(history),
+    accuracyPercent: history.some(row => row.game === 'memory' || row.gameType === 'Number memory') ? creditSummary(history).accuracyPercent ?? 0 : percent(correct),
     outcomes: [
       { key: 'correct', label: 'Correct', count: correct, percent: percent(correct) },
       { key: 'incorrect', label: 'Incorrect', count: incorrect, percent: percent(incorrect) },
@@ -1479,7 +1522,8 @@ export function summarizeHistory(records) {
         level,
         answered: recordsForLevel.length,
         correct: correctForLevel,
-        accuracyPercent: recordsForLevel.length ? Math.round((correctForLevel / recordsForLevel.length) * 100) : 0,
+        ...(recordsForLevel.some(row => row.game === 'memory' || row.gameType === 'Number memory') ? creditSummary(recordsForLevel) : {}),
+        accuracyPercent: recordsForLevel.some(row => row.game === 'memory' || row.gameType === 'Number memory') ? creditSummary(recordsForLevel).accuracyPercent ?? 0 : recordsForLevel.length ? Math.round(correctForLevel / recordsForLevel.length * 100) : 0,
       };
     }),
   };

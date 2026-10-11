@@ -2,6 +2,8 @@
 // never represented as easier, faster, or more complete than they were recorded.
 import { TASKS as OVERLOAD_TASKS } from './overload-core.mjs?v=20261003-accounts';
 import { overloadChartSpecs, overloadRecommendation } from './overload-analytics.mjs?v=20261003-accounts';
+import { memoryCredit, historyCredit, creditSummary } from './quiz-core.mjs?v=20261011-fair-credit';
+import { analyzeCashMistakes } from './cash-mistakes.mjs?v=20261011-fair-credit';
 
 const ANSWERED_OUTCOMES = new Set(['Correct', 'Incorrect', 'Timed Out']);
 const OUTCOMES = new Set([...ANSWERED_OUTCOMES, 'Not answered']);
@@ -106,6 +108,7 @@ export function normalizeHistoryRecord(record, index = 0) {
   const tenderValues = game === 'cash' ? denominationValues(record) : null;
   const workload = game === 'cash' ? cashWorkload(record) : null;
   const digitErrors = game === 'memory' && answered ? digitDistance(record.expectedValues, record.answeredValues) : null;
+  const credit = game === 'memory' ? memoryCredit(record) : null;
   const dueCents = integer(record.amountDueCents);
   const tenderCents = integer(record.cashGivenCents);
   const derivedTransaction = dueCents !== null && tenderCents !== null
@@ -128,7 +131,8 @@ export function normalizeHistoryRecord(record, index = 0) {
     timestampMs: dateValue(record.timestamp),
     isAnswered: answered,
     isCorrect: record.outcome === 'Correct',
-    attemptAccuracyPercent: add('attemptAccuracyPercent', answered ? record.outcome === 'Correct' ? 100 : 0 : null),
+    attemptScore: historyCredit({ ...record, game }),
+    attemptAccuracyPercent: add('attemptAccuracyPercent', answered ? game === 'memory' ? credit ? credit.attemptScore * 100 : null : record.outcome === 'Correct' ? 100 : 0 : null),
     responseTimeSeconds: add('responseTimeSeconds', game === 'overload' ? positive(record.overloadAverageResponse) : elapsed),
     difficulty: known(record.difficulty) ? String(record.difficulty) : null,
     session: known(record.sessionId) ? String(record.sessionId) : null,
@@ -168,7 +172,10 @@ export function normalizeHistoryRecord(record, index = 0) {
     decimalMode: add('decimalMode', typeof record.decimalMode === 'boolean' ? record.decimalMode : Array.isArray(record.expectedValues) ? record.expectedValues.some((value) => String(value).includes('.')) : null),
     readSeconds: add('readSeconds', positive(record.readTimeSeconds)),
     writeSeconds: add('writeSeconds', positive(record.writeTimeSeconds)),
-    correctValueCount: add('correctValueCount', integer(record.correctValueCount)),
+    correctValueCount: add('correctValueCount', credit?.correctValueCount ?? integer(record.correctValueCount)),
+    correctDigitCount: add('correctDigitCount', credit?.correctDigitCount ?? null),
+    totalDigitCount: add('totalDigitCount', credit?.totalDigitCount ?? null),
+    digitAccuracyPercent: add('digitAccuracyPercent', credit?.digitAccuracyPercent ?? null),
     mismatchPositions: add('mismatchPositions', mismatch),
     wrongDigits: add('wrongDigits', digitErrors?.wrong ?? null),
     omittedDigits: add('omittedDigits', digitErrors?.omitted ?? null),
@@ -391,7 +398,7 @@ export function buildGameFilters(history, game = 'all') {
   return { game, availableAttempts: selectedRecords.length, fields };
 }
 
-function modelRows(records) { return Array.isArray(records) && records.every((record) => record?.attemptId) ? records : deduplicateHistory(records); }
+function modelRows(records) { return Array.isArray(records) && records.every((record) => typeof record?.hasRecorded === 'function') ? records : deduplicateHistory(records); }
 
 /** Build consistent cards, daily trends, streaks, and comparison inputs from records. */
 export function buildProgressModel(history) {
@@ -419,7 +426,7 @@ export function buildProgressModel(history) {
   return {
     attemptIds: records.map((record) => record.attemptId), attempts: records.length, answered: answered.length, correct: correct.length,
     incorrect: answered.filter((record) => record.outcome === 'Incorrect').length, timedOut: answered.filter((record) => record.outcome === 'Timed Out').length,
-    accuracyPercent: percent(correct.length, answered.length), averageResponseTimeSeconds: average(times), eligibleResponseAttempts: times.length,
+    ...creditSummary(answered), averageResponseTimeSeconds: average(times), eligibleResponseAttempts: times.length,
     attemptsToday: todayRows.length, attemptsPerDay: average(daily.map((row) => row.attempts)), accuracyPerDay: average(daily.map((row) => row.accuracyPercent).filter((value) => value !== null)),
     speedPerDay: average(daily.map((row) => row.averageResponseTimeSeconds).filter((value) => value !== null)), daily,
     bestAccuracyPercent: daily.length ? Math.max(...daily.map((row) => row.accuracyPercent ?? 0)) : null,
@@ -432,7 +439,7 @@ function buildProgressModelShallow(records) {
   const answered = records.filter((record) => record.isAnswered);
   const correct = answered.filter((record) => record.isCorrect);
   const times = answered.map((record) => record.responseTimeSeconds).filter((value) => value !== null);
-  return { attempts: records.length, answered: answered.length, correct: correct.length, accuracyPercent: percent(correct.length, answered.length), averageResponseTimeSeconds: average(times), eligibleResponseAttempts: times.length };
+  return { attempts: records.length, answered: answered.length, correct: correct.length, ...creditSummary(answered), averageResponseTimeSeconds: average(times), eligibleResponseAttempts: times.length };
 }
 
 export const ERROR_SEVERITY_BANDS = Object.freeze([
@@ -1145,7 +1152,8 @@ export function comparePeriods(history, periods = {}) {
 function aggregatePoint(key, label, rows, metric = 'accuracy') {
   const model = buildProgressModelShallow(rows);
   return {
-    key, label, count: metric === 'attempts' ? model.attempts : model.answered,
+    key, label, count: metric === 'attempts' ? model.attempts : metric === 'accuracy' ? model.scoredAttempts : model.answered,
+    measure: rows.some(row => row.game === 'memory') ? 'mean' : 'rate',
     value: metric === 'attempts' ? model.attempts : metric === 'time' ? model.averageResponseTimeSeconds : model.accuracyPercent,
     attemptIds: rows.map((record) => record.attemptId), detail: model,
   };
@@ -1201,10 +1209,14 @@ function chart(id, title, points, options = {}) {
 /** Positional comparisons use string offsets, not inferred insertion alignment.
  * Arithmetic signatures describe plausible mistakes, never a proven cause. */
 export function buildAdvancedErrorAnalytics(history) {
-  const memory = { positions: [], lengths: [], regions: [], details: [], confusion: Array.from({ length: 10 }, () => Array(10).fill(0)), missing: 0, extra: 0, unavailable: 0 };
-  const cash = { details: [], categories: [], operations: [], centOperations: [], difficulties: [], transactions: [], magnitude: [], unavailable: 0 };
+  const memory = { positions: [], lengths: [], regions: [], details: [], confusion: Array.from({ length: 10 }, () => Array(10).fill(0)), missing: 0, extra: 0, unavailable: 0,
+    valuePositions: [], cells: [], loads: [], valueCounts: [], totalLoads: [], correctValues: 0, totalValues: 0, correctDigits: 0, totalDigits: 0, points: 0, scoredAttempts: 0 };
+  const cash = { details: [], categories: [], operations: [], centOperations: [], difficulties: [], transactions: [], magnitude: [], unavailable: 0,
+    stages: [], causes: [], billConfusion: [], coinConfusion: [], causeDays: [], stepDays: [] };
   const maps = Object.fromEntries(['positions', 'lengths', 'regions', 'categories', 'operations', 'centOperations', 'difficulties', 'transactions', 'magnitude'].map(key => [key, new Map()]));
   const trends = new Map(); const cashDays = new Map();
+  const extraMaps = Object.fromEntries(['valuePositions', 'cells', 'loads', 'valueCounts', 'totalLoads', 'stages', 'causes', 'billConfusion', 'coinConfusion'].map(key => [key, new Map()]));
+  const causeDays = new Map(); const stepDays = new Map();
   const add = (map, key, error, record, label = key) => {
     key = String(key);
     if (!map.has(key)) map.set(key, { key, label: String(label), opportunities: 0, errors: 0, attemptIds: new Set() });
@@ -1214,17 +1226,27 @@ export function buildAdvancedErrorAnalytics(history) {
   const records = deduplicateHistory(history).filter(r => r.isAnswered);
   for (const record of records) {
     if (record.game === 'memory') {
+      const credit = memoryCredit(record);
+      if (credit) {
+        memory.points += credit.attemptScore; memory.scoredAttempts++;
+        memory.correctValues += credit.correctValueCount; memory.totalValues += credit.totalValueCount;
+        if (credit.totalDigitCount !== null) { memory.correctDigits += credit.correctDigitCount; memory.totalDigits += credit.totalDigitCount; }
+      }
       const expected = record.expectedValues; const entered = record.answeredValues;
       if (!Array.isArray(expected) || !expected.length || !expected.every(v => typeof v === 'string' && /^\d+(?:\.\d+)?$/.test(v))
-        || !Array.isArray(entered) || (record.outcome === 'Timed Out' && !entered.some(v => String(v ?? '').trim()))) { memory.unavailable++; continue; }
+        || !Array.isArray(entered) || !entered.every(v => typeof v === 'string') || (record.outcome === 'Timed Out' && !entered.some(v => String(v ?? '').trim()))) { memory.unavailable++; continue; }
       expected.forEach((raw, index) => {
         const answer = String(entered[index] ?? '');
         const left = raw.replace('.', ''); const right = answer.replaceAll(/\s/g, '').replace('.', '');
         const missing = Math.max(0, left.length - right.length); const extra = Math.max(0, right.length - left.length);
         memory.missing += missing; memory.extra += extra;
         const wrongPositions = [];
+        const digitPairs = []; const swaps = [];
         for (let p = 0; p < left.length; p++) {
           const error = left[p] !== right[p]; if (error) wrongPositions.push(p + 1);
+          digitPairs.push({ position: p + 1, expected: left[p], entered: right[p] ?? 'Missing', correct: !error });
+          if (p + 1 < left.length && left[p] !== left[p + 1] && right[p] === left[p + 1] && right[p + 1] === left[p]) swaps.push(`${p + 1}↔${p + 2}`);
+          add(extraMaps.cells, `${index + 1}:${p + 1}`, error, record, `Value ${index + 1} / digit ${p + 1}`);
           add(maps.positions, p + 1, error, record, `Position ${p + 1}`);
           add(maps.regions, p / left.length < 1 / 3 ? 'Beginning' : p / left.length < 2 / 3 ? 'Middle' : 'End', error, record);
           if (/\d/.test(right[p] ?? '')) memory.confusion[Number(left[p])][Number(right[p])]++;
@@ -1234,8 +1256,15 @@ export function buildAdvancedErrorAnalytics(history) {
           }
         }
         add(maps.lengths, left.length, raw !== answer.replaceAll(/\s/g, ''), record, `${left.length} digits`);
+        const valueWrong = raw !== answer.replaceAll(/\s/g, '');
+        add(extraMaps.valuePositions, index + 1, valueWrong, record, `Value ${index + 1}`);
+        add(extraMaps.valueCounts, expected.length, valueWrong, record, `${expected.length} values`);
+        const digits = expected.map(v => v.replace('.', '').length);
+        const load = digits.reduce((sum, v) => sum + v, 0);
+        add(extraMaps.totalLoads, load, valueWrong, record, `${load} total digits`);
+        add(extraMaps.loads, `${record.difficulty ?? 'Unknown'} | ${expected.length} values | ${[...new Set(digits)].sort((a,b) => a-b).join('/')} digits | ${load} total`, valueWrong, record);
         memory.details.push({ attemptId: record.attemptId, timestamp: record.timestamp, difficulty: record.difficulty, sequence: index + 1,
-          expected: raw, entered: answer, wrongPositions, missing, extra, decimalError: raw.indexOf('.') !== answer.replaceAll(/\s/g, '').indexOf('.') });
+          expected: raw, entered: answer, wrongPositions, digitPairs, swaps, missing, extra, decimalError: raw.indexOf('.') !== answer.replaceAll(/\s/g, '').indexOf('.') });
       });
       // Extra whole values have no expected positions and cannot enter a digit confusion cell.
       for (const value of entered.slice(expected.length)) memory.extra += String(value).replaceAll(/\D/g, '').length;
@@ -1275,8 +1304,38 @@ export function buildAdvancedErrorAnalytics(history) {
       const magnitude = Math.abs(difference);
       add(maps.magnitude, magnitude === 0 ? '$0.00' : magnitude < 100 ? '$0.01–0.99' : magnitude < 1000 ? '$1–9.99' : magnitude < 10000 ? '$10–99.99' : '$100+', wrong, record);
       if (record.day) add(cashDays, record.day, wrong, record);
+      const analysis = analyzeCashMistakes(record);
+      for (const step of analysis.steps) add(maps.operations, `Recorded ${step.operation}`, step.wrong, record);
+      if (analysis.steps.some(step => step.wrong)) {
+        add(extraMaps.causes, 'Confirmed: Intermediate arithmetic', true, record);
+        if (record.day) {
+          const key = 'Confirmed: Intermediate arithmetic';
+          if (!causeDays.has(key)) causeDays.set(key, new Map());
+          add(causeDays.get(key), record.day, true, record);
+        }
+      }
+      for (const step of analysis.steps) {
+        const key = `Confirmed step ${step.stage}`;
+        add(extraMaps.stages, key, step.wrong, record);
+        if (record.day) {
+          if (!stepDays.has(key)) stepDays.set(key, new Map());
+          add(stepDays.get(key), record.day, step.wrong, record);
+        }
+      }
+      for (const type of new Set(analysis.possibilities.map(p => `${p.evidence}: ${p.type}`))) {
+        add(extraMaps.causes, type, true, record);
+        if (record.day) {
+          if (!causeDays.has(type)) causeDays.set(type, new Map());
+          add(causeDays.get(type), record.day, true, record);
+        }
+      }
+      for (const stage of new Set(analysis.possibilities.map(p => `${p.evidence}: ${p.stage}`))) add(extraMaps.stages, stage, true, record);
+      for (const category of ['Bill', 'Coin']) {
+        const pairs = new Map(analysis.possibilities.filter(p => p.type === `${category} denomination`).map(p => [`${p.from}:${p.to}`, p]));
+        for (const [key, p] of pairs) add(extraMaps[category === 'Bill' ? 'billConfusion' : 'coinConfusion'], key, true, record, `$${(p.from / 100).toFixed(2)} → $${(p.to / 100).toFixed(2)}`);
+      }
       cash.details.push({ attemptId: record.attemptId, timestamp: record.timestamp, difficulty: record.difficulty, transaction: record.cashTransactionType,
-        expected, entered, difference, magnitude, component, operation, left, right, operatorConfusion, centOperatorConfusion, carryBorrow, crossesDollar });
+        expected, entered, difference, magnitude, component, operation, left, right, operatorConfusion, centOperatorConfusion, carryBorrow, crossesDollar, ...analysis });
     }
   }
   const finish = map => [...map.values()].map(g => ({ ...g, attemptIds: [...g.attemptIds], accuracyPercent: Math.round(10000 * (g.opportunities - g.errors) / g.opportunities) / 100,
@@ -1286,10 +1345,23 @@ export function buildAdvancedErrorAnalytics(history) {
   memory.mostMissed = [...memory.positions].filter(g => g.opportunities >= 5).sort((a,b) => b.errorRatePercent-a.errorRatePercent)[0] ?? null;
   memory.mostAccurate = [...memory.positions].filter(g => g.opportunities >= 5).sort((a,b) => b.accuracyPercent-a.accuracyPercent)[0] ?? null;
   for (const key of ['categories', 'operations', 'centOperations', 'difficulties', 'transactions', 'magnitude']) cash[key] = finish(maps[key]);
+  for (const key of ['valuePositions', 'cells', 'loads', 'valueCounts', 'totalLoads']) memory[key] = finish(extraMaps[key]);
+  for (const key of ['stages', 'causes', 'billConfusion', 'coinConfusion']) cash[key] = finish(extraMaps[key]);
+  cash.causeDays = [...causeDays].map(([label, days]) => ({ label, points: finish(days).sort((a,b) => a.key.localeCompare(b.key)) }));
+  cash.stepDays = [...stepDays].map(([label, days]) => ({ label, points: finish(days).sort((a,b) => a.key.localeCompare(b.key)) }));
   const spec = (id, title, groups, metric = 'errorRatePercent', kind = 'bar', unit = 'error-rate') => chart(id, title,
     groups.map(g => ({ key: g.key, label: g.label, value: g[metric], count: g.opportunities, attemptIds: g.attemptIds, detail: g })),
     { metric: unit, kind, description: 'Uses the current data source and history filters. Rates show supported opportunities only; see tables for counts.' });
   const charts = [spec('memory-position-error', 'Error rate by digit position', memory.positions), spec('memory-position-accuracy', 'Accuracy by digit position', memory.positions, 'accuracyPercent', 'bar', 'accuracy'),
+    spec('memory-value-position-error', 'Error rate by value position', memory.valuePositions),
+    spec('memory-value-position-accuracy', 'Accuracy by value position', memory.valuePositions, 'accuracyPercent', 'bar', 'accuracy'),
+    spec('memory-value-count-credit', 'Value accuracy vs number of values', memory.valueCounts, 'accuracyPercent', 'bar', 'accuracy'),
+    spec('memory-total-load-error', 'Observed wrong-value probability vs total digits', memory.totalLoads),
+    spec('memory-difficulty-load', 'Value accuracy by difficulty and memory load', memory.loads, 'accuracyPercent', 'bar', 'accuracy'),
+    spec('cash-stage-errors', 'Mistakes by calculation stage (confirmed / inferred)', cash.stages, 'errors', 'bar', 'count'),
+    spec('cash-likely-causes', 'Frequent likely causes (overlapping possibilities)', cash.causes, 'errors', 'bar', 'count'),
+    spec('cash-bill-confusion', 'Possible bill denomination confusion', cash.billConfusion, 'errors', 'bar', 'count'),
+    spec('cash-coin-confusion', 'Possible coin denomination confusion', cash.coinConfusion, 'errors', 'bar', 'count'),
     spec('memory-length-error', 'Error rate by number length', memory.lengths), spec('memory-region-error', 'Beginning / middle / end digit errors', memory.regions),
     spec('cash-components', 'Dollar vs cent error rates', cash.categories.filter(g => ['Dollar-only', 'Cent-only', 'Both'].includes(g.key))),
     spec('cash-operations', 'Addition vs subtraction accuracy', cash.operations, 'accuracyPercent', 'bar', 'accuracy'),
@@ -1303,6 +1375,8 @@ export function buildAdvancedErrorAnalytics(history) {
     spec('cash-difficulty', 'Arithmetic accuracy by difficulty', cash.difficulties, 'accuracyPercent', 'bar', 'accuracy'),
     spec('cash-transaction', 'Arithmetic accuracy by transaction type', cash.transactions, 'accuracyPercent', 'bar', 'accuracy')];
   for (const [position, days] of [...trends].sort((a,b) => a[0]-b[0])) charts.push(spec(`memory-position-${position}-time`, `Position ${position} accuracy over time`, finish(days).sort((a,b) => a.key.localeCompare(b.key)), 'accuracyPercent', 'line', 'accuracy'));
+  cash.stepDays.forEach((group, index) => charts.push(spec(`cash-step-${index}-time`, `${group.label}: accuracy over time`, group.points, 'accuracyPercent', 'line', 'accuracy')));
+  cash.causeDays.forEach((group, index) => charts.push(spec(`cash-cause-${index}-time`, `${group.label}: frequency over time`, group.points, 'errors', 'line', 'count')));
   return { memory, cash, charts: charts.filter(s => s.series[0].points.length) };
 }
 function band(value, bands, suffix = '') { if (value === null) return null; const found = bands.find(([max]) => value <= max); return found ? found[1] : `${bands.at(-1)[0]}+${suffix}`; }
@@ -1321,9 +1395,20 @@ export function wilsonInterval(successes, attempts) {
 
 function ratePoint(label, rows) {
   const correct = rows.filter((row) => row.isCorrect).length;
-  return { key: label, label, value: percent(correct, rows.length), count: rows.length, correct,
-    interval: wilsonInterval(correct, rows.length),
+  const model = creditSummary(rows);
+  const fractional = rows.some(row => row.game === 'memory');
+  return { key: label, label, value: model.accuracyPercent, count: model.scoredAttempts, correct: fractional ? model.totalPoints : correct,
+    measure: fractional ? 'mean' : 'rate', interval: fractional ? null : wilsonInterval(correct, rows.length),
     attemptIds: rows.map((row) => row.attemptId) };
+}
+
+function creditByTime(label, rows, seconds) {
+  const eligible = rows.filter(row => historyCredit(row) !== null);
+  const point = ratePoint(label, eligible);
+  point.correct = eligible.reduce((sum, row) => sum + (row.responseTimeSeconds <= seconds ? historyCredit(row) : 0), 0);
+  point.value = eligible.length ? point.measure === 'mean' ? Math.round(point.correct / eligible.length * 10000) / 100 : percent(point.correct, eligible.length) : null;
+  point.interval = point.measure === 'mean' ? null : wilsonInterval(point.correct, eligible.length);
+  return point;
 }
 
 function conditionAxes(game) {
@@ -1355,7 +1440,7 @@ function conditionAxes(game) {
 
 /** Conditional choices and exact rates share the filtered, normalized attempt set. */
 export function buildConditionalReport(history, game = 'all', selectedIds = []) {
-  const records = modelRows(history).filter((row) => row.isAnswered && (game === 'all' || row.game === game));
+  const records = modelRows(history).filter((row) => row.isAnswered && historyCredit(row) !== null && (game === 'all' || row.game === game));
   const groups = new Map();
   for (const row of records) for (const [axis, getter] of conditionAxes(row.game)) {
     const values = getter(row);
@@ -1381,7 +1466,7 @@ export function buildConditionalReport(history, game = 'all', selectedIds = []) 
     const key = `${row.game}|${row.difficulty ?? '?'}|${row.sessionMode ?? row.fraudRunMode ?? '?'}`;
     if (!strata.has(key)) strata.set(key, { rows: [], correct: 0 });
     strata.get(key).rows.push(row);
-    strata.get(key).correct += Number(row.isCorrect);
+    strata.get(key).correct += historyCredit(row);
   }
   const summaries = choices.map((group) => {
     const qualifying = group.rows;
@@ -1413,10 +1498,7 @@ export function buildConditionalReport(history, game = 'all', selectedIds = []) 
     speed: SPEED_BANDS.map((label) => ratePoint(label, matched.filter((row) => speedBand(row.responseTimeSeconds) === label))),
     correctBy: [5, 10, 15].map((seconds) => {
       const measured = matched.filter((row) => row.responseTimeSeconds !== null);
-      const point = ratePoint(`By ${seconds}s`, measured);
-      point.correct = measured.filter((row) => row.isCorrect && row.responseTimeSeconds <= seconds).length;
-      point.value = percent(point.correct, measured.length);
-      point.interval = wilsonInterval(point.correct, measured.length);
+      const point = creditByTime(`By ${seconds}s`, measured, seconds);
       return { seconds, ...point };
     }) };
 }
@@ -1430,14 +1512,11 @@ export function buildChartSpecs(history, game = 'all') {
   const timed = records.filter((record) => record.isAnswered && record.responseTimeSeconds !== null);
   const speedPoints = SPEED_BANDS.map((label) => ratePoint(label, timed.filter((row) => speedBand(row.responseTimeSeconds) === label))).filter((point) => point.count);
   const thresholdPoints = [5, 10, 15].map((seconds) => {
-    const point = ratePoint(`By ${seconds}s`, timed);
-    point.correct = timed.filter((row) => row.isCorrect && row.responseTimeSeconds <= seconds).length;
-    point.value = percent(point.correct, timed.length);
-    point.interval = wilsonInterval(point.correct, timed.length);
+    const point = creditByTime(`By ${seconds}s`, timed, seconds);
     return point;
   }).filter((point) => point.count);
   const specs = [
-    chart('accuracy-over-time', 'Accuracy over time', daily.map((row) => ({ key: row.day, label: row.day, value: row.accuracyPercent, count: row.answered, attemptIds: row.attemptIds, detail: row })), { kind: 'line' }),
+    chart('accuracy-over-time', 'Accuracy over time', daily.map((row) => ({ key: row.day, label: row.day, value: row.accuracyPercent, count: row.scoredAttempts, measure: records.some(r => r.game === 'memory') ? 'mean' : 'rate', attemptIds: row.attemptIds, detail: row })), { kind: 'line' }),
     chart('response-time-over-time', 'Response time over time', daily.map((row) => ({ key: row.day, label: row.day, value: row.averageResponseTimeSeconds, count: row.eligibleResponseAttempts, attemptIds: row.attemptIds, detail: row })), { kind: 'line', metric: 'time' }),
     chart('attempts-per-day', 'Attempts per day', daily.map((row) => ({ key: row.day, label: row.day, value: row.attempts, count: row.attempts, attemptIds: row.attemptIds, detail: row })), { metric: 'attempts' }),
     chart('outcomes', 'Correct, incorrect, and timed out', groupedPoints(records, (record) => record.outcome, 'attempts'), { metric: 'attempts' }),
@@ -1485,7 +1564,7 @@ export function buildChartSpecs(history, game = 'all') {
     chart('memory-mismatch-position', 'Mismatch position frequency', groupedPoints(records.filter((record) => record.mismatchPositions !== null), (record) => record.mismatchPositions, 'attempts'), { metric: 'attempts' }),
     chart('memory-decimal', 'Accuracy with and without decimals', groupedPoints(records, (row) => row.decimalMode === null ? null : row.decimalMode ? 'Decimals' : 'Whole numbers')),
     chart('memory-error-distance', 'Average digit errors by load', groupedMeanPoints(records, (row) => row.totalDigits, (row) => row.wrongDigits === null ? null : row.wrongDigits + row.omittedDigits + row.extraDigits + row.decimalErrors), { metric: 'digits' }),
-    chart('memory-partial-recall', 'Average values recalled by digit load', groupedMeanPoints(records, (row) => row.totalDigits, (row) => row.correctValueCount !== null && row.valueCount > 0 ? row.correctValueCount / row.valueCount * 100 : null).map((point) => ({ ...point, value: Math.round(point.value) })), { axisLabel: 'Values recalled (%)' }),
+    chart('memory-partial-recall', 'Average values recalled by digit load', groupedMeanPoints(records, (row) => row.totalDigits, (row) => historyCredit(row) === null ? null : historyCredit(row) * 100).map((point) => ({ ...point, value: Math.round(point.value * 100) / 100 })), { axisLabel: 'Values recalled (%)' }),
   );
   if (game === 'task') specs.push(
     chart('task-workflow', 'Sequence quality by workflow', groupedPoints(records, (record) => record.workspaceKind)),
