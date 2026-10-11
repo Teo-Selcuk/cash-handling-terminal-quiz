@@ -1146,3 +1146,8 @@ body.chess-arena #chess-screen {
 .digit-match { background: color-mix(in srgb, #25885d calc(var(--heat-opacity) * 100%), transparent); }
 .digit-confused { background: color-mix(in srgb, #dd8557 calc(var(--heat-opacity) * 100%), transparent); }
 @media (max-width: 760px) { .advanced-error-charts { grid-template-columns: minmax(0, 1fr); } }
+.cash-working { margin-block: 1rem; }
+.cash-working-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; margin-block: 1rem; }
+.cash-working input, .cash-working select { width: 100%; min-width: 0; }
+.cash-working label { display: grid; gap: .25rem; }
+@media (max-width: 650px) { .cash-working-row { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

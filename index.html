@@ -7,7 +7,7 @@
     <meta name="theme-color" content="#12343b">
     <title>Cash, Memory &amp; Detail Trainer</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="style.css?v=20261008-advanced-errors">
+    <link rel="stylesheet" href="style.css?v=20261011-fair-credit">
   </head>
   <body>
     <main class="app-shell">
@@ -458,6 +458,12 @@
             <div class="denomination-list" id="cash-builder" aria-label="Cash denominations"></div>
           </section>
 
+          <details class="cash-working">
+            <summary>Record your working (optional)</summary>
+            <p>Your own cash total and up to three calculations help locate mistakes after submission. Blank steps are excluded from analysis.</p>
+            <label>Cash total you counted ($)<input id="cash-working-total" type="text" inputmode="decimal" placeholder="0.00" autocomplete="off"></label>
+            <div id="cash-working-steps"></div>
+          </details>
           <button class="primary-button" id="submit-answer" type="submit">Submit answer</button>
         </form>
       </section>
@@ -906,6 +912,6 @@
     </dialog>
 
     <footer>Browser edition. The original PowerShell quiz remains in this repository.</footer>
-    <script type="module" src="app.js?v=20261008-advanced-errors"></script>
+    <script type="module" src="app.js?v=20261011-fair-credit"></script>
   </body>
 </html>

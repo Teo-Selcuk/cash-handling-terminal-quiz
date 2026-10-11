@@ -3,6 +3,8 @@ import { mkdir } from 'node:fs/promises';
 import { APPROVED_UID } from '../account-access.mjs';
 import { firebaseConfig } from '../firebase-config.mjs';
 import { answer } from './browser-history-checks.mjs';
+import { memoryCredit } from '../quiz-core.mjs';
+import { buildProgressModel } from '../progress-analytics.mjs';
 const email='approved@example.com';
 const password='Test-'+crypto.randomUUID();
 const historyKey='cash-handling-terminal-quiz-history-v1';
@@ -50,6 +52,7 @@ export async function checkGuestAccess(browser,base){
 }
 export async function withApprovedProfiles(browser,base,run){
   assert.equal(process.env.QUIZ_EMULATORS,'1');
+  await fetch('http://127.0.0.1:9088/emulator/v1/projects/cash-handling-quiz/databases/(default)/documents',{method:'DELETE'});
   await fetch('http://127.0.0.1:9309/emulator/v1/projects/cash-handling-quiz/accounts',{method:'DELETE'});
   await seed(APPROVED_UID,email);
   const original=browser.newContext.bind(browser),initial=await original();await routeEmulators(initial);const page=await initial.newPage();await page.goto(base);await ready(page);await login(page);await saved(page);const storageState=await initial.storageState({indexedDB:true});await initial.close();
@@ -75,6 +78,7 @@ export async function checkFirebase(browser,base){
     console.log('LIVE Firebase signup API rejects account creation; guest site restrictions passed.');return;
   }
   await fetch('http://127.0.0.1:9309/emulator/v1/projects/cash-handling-quiz/accounts',{method:'DELETE'});
+  await fetch('http://127.0.0.1:9088/emulator/v1/projects/cash-handling-quiz/databases/(default)/documents',{method:'DELETE'});
   await seed(APPROVED_UID,email);await seed('unapproved-test','unapproved@example.com');await rulesChecks();
   const contexts=[];const newProfile=async()=>{const context=await browser.newContext();contexts.push(context);await routeEmulators(context);const page=await context.newPage();await page.goto(base);await ready(page);return page;};
   const rows=page=>page.evaluate(async({module,key})=>JSON.parse((await import(module)).accountStorage.getItem(key)),{module:accountModule,key:historyKey});
@@ -82,9 +86,24 @@ export async function checkFirebase(browser,base){
     const a=await newProfile();await login(a);await saved(a);assert.equal(await a.locator('input[name="game"][value="fraud-inspection"]').isEnabled(),true);
     await a.locator('input[name="game"][value="fraud-inspection"]').check();await a.getByRole('button',{name:'Start quiz',exact:true}).click();await a.locator('#fraud-inspection-screen').waitFor();await a.locator('[data-issue-id="no-issues"]').click();await a.locator('#submit-fraud-inspection').click();await saved(a);
     const b=await newProfile();await login(b);await saved(b);assert.deepEqual(await rows(b),await rows(a));
-    await a.goto(base);await ready(a);await saved(a);await a.context().setOffline(true);await a.locator('input[name="game"][value="memory"]').check();await a.locator('#memory-question-count').fill('1');await a.getByRole('button',{name:'Start quiz',exact:true}).click();await answer(a,'memory');await a.locator('#feedback-screen').waitFor();assert.match(await a.locator('#account-status').textContent(),/Offline/);await a.context().setOffline(false);await saved(a);await b.waitForFunction(async({module,key})=>JSON.parse((await import(module)).accountStorage.getItem(key)).length===2,{module:accountModule,key:historyKey});
-    await a.locator('#account-area').evaluate(node=>node.open=true);await a.locator('#account-signout').click();await ready(a);assert.equal(await a.locator('input[name="game"][value="fraud-inspection"]').isDisabled(),true);await login(a);await saved(a);assert.equal((await rows(a)).length,2);
+    await a.goto(base);await ready(a);await saved(a);await a.context().setOffline(true);
+    await a.locator('input[name="game"][value="memory"]').check();await a.locator('#memory-question-count').fill('1');
+    await a.locator('#preset-editor summary').click();
+    await a.locator('#preset-memory-value-min').fill('2');await a.locator('#preset-memory-value-max').fill('2');
+    await a.locator('#save-preset').click();await a.getByRole('button',{name:'Start quiz',exact:true}).click();
+    const expected=await a.locator('#memory-number li span:not(.memory-value-index)').allTextContents();
+    await a.locator('#memory-answer-now').click();await a.locator('#memory-answer-1').fill(expected[0]);await a.locator('#memory-answer-2').fill('0');
+    await a.locator('#memory-answer-form button[type="submit"]').click();await a.locator('#feedback-screen').waitFor();
+    assert.match(await a.locator('#feedback-details').innerText(),/0.50\/1.00/);
+    assert.match(await a.locator('#account-status').textContent(),/Offline/);await a.context().setOffline(false);await saved(a);
+    await b.waitForFunction(async({module,key})=>JSON.parse((await import(module)).accountStorage.getItem(key)).length===2,{module:accountModule,key:historyKey});
+    const synced=await rows(b);assert.equal(memoryCredit(synced.find(row=>row.gameType==='Number memory')).attemptScore,0.5);
+    await b.reload();await ready(b);await saved(b);
+    assert.equal(buildProgressModel((await rows(b)).filter(row=>row.gameType==='Number memory')).accuracyPercent,50);
+    await a.locator('#account-area').evaluate(node=>node.open=true);await a.locator('#account-signout').click();
+    await a.waitForFunction(()=>document.documentElement.dataset.appReady==='true' && document.querySelector('input[name="game"][value="fraud-inspection"]').disabled);
+    assert.equal(await a.locator('input[name="game"][value="fraud-inspection"]').isDisabled(),true);await login(a);await saved(a);assert.equal((await rows(a)).length,2);
     const c=await newProfile();await login(c,'unapproved@example.com');await c.locator('#account-error').filter({hasText:'does not have permission'}).waitFor();assert.equal(await c.locator('input[name="game"][value="fraud-inspection"]').isDisabled(),true);assert.equal(await c.locator('#account-user').textContent(),'Guest · saved on this device');
-    console.log('Emulator Firebase passed: approved login, Fraud gameplay, two profiles, offline sync, sign out/in, rejected unapproved account and strict UID rules. No real owner data was changed.');
+    console.log('Emulator Firebase passed: approved login, Fraud gameplay, fractional memory credit across two profiles and reload, offline sync, sign out/in, rejected unapproved account and strict UID rules. No real owner data was changed.');
   }finally{for(const context of contexts)await context.close();}
 }

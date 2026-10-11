@@ -1,5 +1,6 @@
 import { accountStorage as localStorage, initializeAccounts } from './firebase-accounts.mjs?v=20261004-private';
 import { canPlayGame } from './account-access.mjs';
+import { analyzeCashMistakes } from './cash-mistakes.mjs?v=20261011-fair-credit';
 import { enhanceHistoryTables } from './history-tables.mjs?v=20261008-advanced-errors';
 import { createOverloadUI } from './overload-ui.mjs?v=20261003-accounts';
 import { summarizeOverload, overloadRecommendation } from './overload-analytics.mjs?v=20261003-accounts';
@@ -21,7 +22,7 @@ import { PRACTICE_GAMES, rankPracticeCandidates, recommendPractice, practiceSett
 import {
   buildChartSpecs, buildConditionalReport, buildErrorAnalytics, buildAdvancedErrorAnalytics, buildGameFilters, buildProgressModel, comparePeriods,
   filterHistory, recommendNextChallenge, progressionSegments,
-} from './progress-analytics.mjs?v=20261008-advanced-errors';
+} from './progress-analytics.mjs?v=20261011-fair-credit';
 import { generateSampleHistory, generateSampleChessHistory } from './sample-history.mjs?v=20261008-advanced-errors';
 import {
   DENOMINATIONS,
@@ -36,7 +37,6 @@ import {
   createMemoryChallenge,
   createTaskChallenge,
   createQuestion,
-  createCashGuidance,
   evaluateCustomerBillRequest,
   formatBreakdown,
   formatMoney,
@@ -47,12 +47,13 @@ import {
   resolveMemoryDifficultyPreset,
   resolveTaskDifficultyPreset,
   scoreMemoryAnswer,
+  memoryCredit,
   scoreTaskAttempt,
   scoreAnswer,
   scoreErrorDetectionAttempt,
   summarizeHistory,
   toCsv,
-} from './quiz-core.mjs?v=20260908-practice';
+} from './quiz-core.mjs?v=20261011-fair-credit';
 
 await initializeAccounts();
 const HISTORY_KEY = 'cash-handling-terminal-quiz-history-v1';
@@ -1200,7 +1201,8 @@ function renderCustomerBillRequest() {
   const request = state.question?.customerBillRequest;
   refs['customer-bill-request'].hidden = !request;
   if (!request) return;
-  refs['customer-bill-request-text'].textContent = request.text;
+  refs['customer-bill-request-text'].textContent = request.canFlag
+    ? `${request.text.split(/ That totals| A \$30 bill/)[0]} Check whether this request is possible, then flag it or calculate the correct amount.` : request.text;
   refs['flag-bill-request'].hidden = !request.canFlag;
   updateCustomerBillRequestStatus();
 }
@@ -1265,6 +1267,7 @@ function renderQuestion() {
   refs['amount-due'].textContent = formatMoney(question.dueCents);
   refs['tender-breakdown'].textContent = question.breakdownText;
   refs['answer-form'].reset();
+  renderCashWorking();
   refs['answer-amount'].disabled = true;
   refs['cash-builder-section'].hidden = !state.cashBuilderEnabled;
   resetBuilder();
@@ -1274,8 +1277,7 @@ function renderQuestion() {
   panel.replaceChildren();
   panel.hidden = state.cashSessionMode !== 'guided';
   if (!panel.hidden) {
-    const guide = createCashGuidance(question);
-    for (const [title, text] of [['Customer says', guide.customer], ['1. Count and compare', guide.calculation], ['2. Say to the customer', guide.say], ['3. Enter your answer', guide.answer], ['4. Handle the cash', [guide.request, guide.cash].filter(Boolean).join(' ')]]) {
+    for (const [title, text] of [['Customer says', `I would like to pay ${formatMoney(question.dueCents)}. Here is my cash.`], ['1. Count and compare', 'Multiply each denomination by its quantity, add the amounts, then compare the total with the amount due. Subtract the smaller amount from the larger.'], ['2. Say to the customer', 'Explain whether the payment is exact, change is due, or more money is needed. State the amount you calculated.'], ['3. Enter your answer', 'Choose Exact, Change, or Short and enter your calculated amount. You can record your own working below.'], ['4. Handle the cash', 'Follow any customer bill preference. Your result and explanation will be shown after submission.']]) {
       const heading = document.createElement('h3');
       heading.textContent = title;
       const paragraph = document.createElement('p');
@@ -1351,6 +1353,35 @@ function collectAnswer() {
   };
 }
 
+function renderCashWorking() {
+  const target = document.getElementById('cash-working-steps'); target.replaceChildren();
+  for (let index = 1; index <= 3; index++) {
+    const row = document.createElement('div'); row.className = 'cash-working-row'; row.dataset.stage = String(index);
+    for (const [field, label] of [['left', 'First amount'], ['operation', 'Operation'], ['right', 'Second amount'], ['entered', 'Your result']]) {
+      const wrap = document.createElement('label'); wrap.textContent = `Step ${index}: ${label}`;
+      const input = document.createElement(field === 'operation' ? 'select' : 'input');
+      input.dataset.field = field;
+      if (field === 'operation') {
+        for (const [value, text] of [['addition', '+ Add'], ['subtraction', '− Subtract']]) {
+          const option = document.createElement('option'); option.value = value; option.textContent = text; input.append(option);
+        }
+      } else { input.type = 'text'; input.inputMode = 'decimal'; input.placeholder = '0.00'; input.autocomplete = 'off'; }
+      wrap.append(input); row.append(wrap);
+    }
+    target.append(row);
+  }
+}
+
+function readCashWorking() {
+  const calculationSteps = [...document.querySelectorAll('#cash-working-steps .cash-working-row')].map(row => ({
+    leftCents: parseAmountToCents(row.querySelector('[data-field="left"]').value),
+    rightCents: parseAmountToCents(row.querySelector('[data-field="right"]').value),
+    operation: row.querySelector('[data-field="operation"]').value,
+    enteredCents: parseAmountToCents(row.querySelector('[data-field="entered"]').value),
+  }));
+  return { calculationSteps, countedTenderCents: parseAmountToCents(document.getElementById('cash-working-total').value) };
+}
+
 function recordAnswer(answer, score, timedOut, elapsedSeconds) {
   const question = state.question;
   const selectedCash = answer?.breakdown ?? [];
@@ -1377,6 +1408,7 @@ function recordAnswer(answer, score, timedOut, elapsedSeconds) {
     cashGivenCents: question.tenderedCents,
     cashBreakdown: question.breakdownText,
     tenderBreakdown,
+    ...(answer || timedOut ? readCashWorking() : {}),
     tenderDenominationCounts: Object.fromEntries(tenderBreakdown.map((item) => [item.cents, item.count])),
     tenderBillCount,
     tenderCoinCount,
@@ -1435,6 +1467,9 @@ function populateFeedback(record, score) {
     ['Request handling', record.customerBillRequestHandling],
   );
   if (state.cashBuilderEnabled) details.splice(3, 0, ['Selected cash', `${record.userCashTotal} — ${record.userCashBreakdown}`]);
+  const analysis = analyzeCashMistakes(record);
+  if (analysis.possibilities.length) details.push(['Possible mistakes', analysis.possibilities.map(p => `${p.evidence}: ${p.stage} — ${p.description}`).join('; ')]);
+  if (analysis.steps.some(step => step.wrong)) details.push(['Recorded step errors', analysis.steps.filter(step => step.wrong).map(step => `Step ${step.stage}: expected ${formatMoney(step.expectedCents)}, entered ${formatMoney(step.enteredCents)}`).join('; ')]);
   for (const [term, description] of details) {
     const dt = document.createElement('dt');
     const dd = document.createElement('dd');
@@ -1538,16 +1573,15 @@ function recordMemoryAnswer(answer, score, timedOut, elapsedSeconds) {
   const expectedValues = [...challenge.values];
   const normalizedAnswer = answer.map((value) => String(value ?? '').replaceAll(/\s/g, ''));
   const mismatchPositions = [];
-  let correctValueCount = 0;
   expectedValues.forEach((expected, index) => {
     const received = normalizedAnswer[index] ?? '';
-    if (expected === received) correctValueCount += 1;
     const expectedDigits = expected.replace('.', '');
     const receivedDigits = received.replace('.', '');
     for (let position = 0; position < expectedDigits.length; position += 1) {
       if (expectedDigits[position] !== receivedDigits[position]) mismatchPositions.push(position + 1);
     }
   });
+  const credit = scoreMemoryAnswer(challenge, answer);
   return {
     timestamp: new Date().toISOString(),
     sessionId: state.sessionId,
@@ -1565,12 +1599,23 @@ function recordMemoryAnswer(answer, score, timedOut, elapsedSeconds) {
     writeTimeSeconds: challenge.writeSeconds,
     timeUsedSeconds: Number(elapsedSeconds.toFixed(1)),
     answerDurationSeconds: Number(elapsedSeconds.toFixed(1)),
-    correctValueCount,
+    correctValueCount: credit.correctValueCount,
+    attemptScore: credit.attemptScore,
+    correctDigitCount: credit.correctDigitCount,
+    totalDigitCount: credit.totalDigitCount,
+    digitAccuracyPercent: credit.digitAccuracyPercent,
+    scoringVersion: 2,
     mismatchPositions: [...new Set(mismatchPositions)],
     expectedAnswer: `Values: ${challenge.value}`,
     userAnswer: answer.join(' • '),
     outcome: timedOut ? 'Timed Out' : score.correct ? 'Correct' : 'Incorrect',
   };
+}
+
+function memoryScoreText(record) {
+  const credit = memoryCredit(record);
+  if (!credit) return `${record.outcome} · Credit not recorded`;
+  return `${record.outcome} · ${credit.attemptScore.toFixed(2)}/1.00 · Values ${credit.correctValueCount}/${credit.totalValueCount} · Digits ${credit.totalDigitCount === null ? 'not recorded' : `${credit.correctDigitCount}/${credit.totalDigitCount} (${credit.digitAccuracyPercent}%)`}`;
 }
 
 function populateMemoryFeedback(record, score) {
@@ -1584,6 +1629,10 @@ function populateMemoryFeedback(record, score) {
   const details = [
     ['Values to remember', state.memoryChallenge.value],
     ['Your entries', record.userAnswer || 'No entry'],
+    ['Values correct', `${record.correctValueCount}/${record.valueCount}`],
+    ['Round score', `${record.attemptScore.toFixed(2)}/1.00`],
+    ['Digits correct', `${record.correctDigitCount}/${record.totalDigitCount}`],
+    ['Digit accuracy', `${record.digitAccuracyPercent ?? '—'}%`],
     ['Values per round', `${state.memoryChallenge.valueCount}`],
     ['Digits per value', `${state.memoryChallenge.minimumDigits}–${state.memoryChallenge.maximumDigits}`],
     ['Reading time', `${state.memoryChallenge.readSeconds} seconds`],
@@ -1607,7 +1656,7 @@ function submitMemoryAnswer(timedOut = false) {
     Math.max(0, (Date.now() - (state.deadline - state.memoryChallenge.writeSeconds * 1000)) / 1000),
   );
   stopTimer();
-  const answer = timedOut ? [] : memoryAnswerValues();
+  const answer = memoryAnswerValues();
   const score = scoreMemoryAnswer(state.memoryChallenge, answer);
   const record = recordMemoryAnswer(answer, score, timedOut, elapsedSeconds);
   state.results.push(record);
@@ -3494,6 +3543,16 @@ function makeMetrics(records) {
   const summary = summarizeHistory(records);
   const averageTime = summary.answered ? records.reduce((sum, record) => sum + Number(record.timeUsedSeconds || 0), 0) / summary.answered : 0;
   if (state.game === 'typing') return typingMetrics(records);
+  if (state.game === 'memory') {
+    const credits = records.map(memoryCredit).filter(Boolean);
+    const sum = field => credits.reduce((total, row) => total + (row[field] ?? 0), 0);
+    return [[`${summary.totalPoints.toFixed(2)} / ${summary.scoredAttempts}`, 'Total points'],
+      [`${summary.accuracyPercent}%`, 'Value credit accuracy'],
+      [`${sum('correctValueCount')}/${sum('totalValueCount')}`, 'Fully correct values'],
+      [`${sum('correctDigitCount')}/${sum('totalDigitCount')}`, 'Digits correct'],
+      [`${sum('totalDigitCount') ? (sum('correctDigitCount') / sum('totalDigitCount') * 100).toFixed(2) : '—'}%`, 'Digit accuracy'],
+      [`${summary.correct}`, 'Perfect rounds'], [`${averageTime.toFixed(1)}s`, 'Average time']];
+  }
   if (state.game === 'fraud-inspection') {
     const fraud = summarizeFraudHistory(records);
     return [
@@ -3580,7 +3639,7 @@ function renderHistoryVisuals(summary) {
   });
   accuracyCard.querySelectorAll('[data-chart-data], [data-chart-settings]').forEach((button) => {
     button.onclick = button.dataset.chartData
-      ? () => openChartData('Accuracy by difficulty', makeChartDataTable(['Difficulty', 'Correct', 'Answered', 'Accuracy'], summary.byDifficulty.map((level) => [level.level, level.correct, level.answered, `${level.accuracyPercent}%`])))
+      ? () => openChartData('Accuracy by difficulty', makeChartDataTable(['Difficulty', 'Points / correct', 'Scored attempts', 'Accuracy'], summary.byDifficulty.map((level) => [level.level, level.totalPoints ?? level.correct, level.scoredAttempts ?? level.answered, `${level.accuracyPercent}%`])))
       : () => openChartSettings('accuracy-by-difficulty', 'Accuracy by difficulty');
   });
   refs['history-outcomes-summary'].textContent = summary.answered
@@ -3650,7 +3709,7 @@ function renderHistoryVisuals(summary) {
     track.append(fill);
     const value = document.createElement('span');
     value.className = 'bar-chart-value';
-    value.textContent = `${level.accuracyPercent}% (${level.correct}/${level.answered})`;
+    value.textContent = `${level.accuracyPercent}% (${level.totalPoints !== undefined ? Number(level.totalPoints.toFixed(2)) : level.correct}/${level.scoredAttempts ?? level.answered})`;
     row.append(label, track, value);
     return row;
   }));
@@ -3926,6 +3985,7 @@ function renderProgressMetrics(model) {
     [`${model.attemptsToday}`, 'Attempts today'], [`${model.attemptsPerDay === null ? '—' : model.attemptsPerDay.toFixed(1)}`, 'Attempts per day'],
     [`${model.accuracyPerDay ?? '—'}%`, 'Accuracy per day'], [`${model.speedPerDay === null ? '—' : `${model.speedPerDay.toFixed(1)}s`}`, 'Average speed per day'],
     [`${model.longestCorrectStreak}`, 'Best correct streak'],
+    [`${model.totalPoints.toFixed(2)} / ${model.scoredAttempts}`, 'Points / scored attempts'],
   ]);
 }
 
@@ -4156,7 +4216,7 @@ function openAttemptDetails(records, attemptIds, heading) {
             : record.game === 'error-detection'
               ? [`${record.expectedAnomalyCount} actual errors`, `${record.selectedAnomalyCount} selected`, `${record.missedAnomalyCount} missed`, `${record.falseFlagCount} false positives`, record.puzzleFamily]
               : [`${record.fraudExpectedIssueCount} actual errors`, `${record.fraudCorrectlyIdentifiedCount ?? Math.max(0, record.fraudExpectedIssueCount - record.fraudFalseNegativeCount)} identified`, `${record.fraudFalseNegativeCount} missed`, `${record.fraudFalsePositiveCount} false positives`, (record.fraudExpectedCategories ?? []).join(', ') || 'Clean case'];
-      const details = [...gameDetails, record.expectedAnswer, record.userAnswer].filter((value) => value !== null && value !== undefined && value !== '').join(' · ') || 'No answer detail recorded';
+    const details = [...gameDetails, record.game === 'memory' ? memoryScoreText(record) : '', record.expectedAnswer, record.userAnswer].filter((value) => value !== null && value !== undefined && value !== '').join(' · ') || 'No answer detail recorded';
       const attemptEvidence = errorAnalytics.attemptDetails.get(record.attemptId);
       const rawMistakes = attemptEvidence?.mistakes.length
         ? attemptEvidence.mistakes.map((mistake) => `${mistake.label}${mistake.detail ? ` — ${mistake.detail}` : ''}`).join('; ')
@@ -4825,7 +4885,7 @@ function renderAdvancedErrorAnalysis(records) {
   if (!records.some(row => ['memory', 'cash'].includes(row.game))) return;
   const heading = document.createElement('h4'); heading.textContent = 'Detailed digit and arithmetic analysis'; target.append(heading);
   const note = document.createElement('p'); note.className = 'chart-note';
-  note.textContent = `Digit offsets are compared from the beginning of each value; leading zeros are preserved. Missing digits count as positional errors; extra digits and decimal placement are separate. Blank timeouts and unavailable legacy evidence are excluded (${memory.unavailable} memory, ${cash.unavailable} cash). Dollar-only / cent-only / both are exclusive; likely operator and carry/borrow signatures overlap. Carry/borrow rates use only crossing opportunities. Cash gameplay records subtraction for change and shortfall; addition accuracy requires a saved addition answer. A matching signature suggests a cause but does not prove it.`;
+  note.textContent = `Digit offsets are compared from the beginning of each value; leading zeros are preserved. Missing digits count as positional errors; extra digits and decimal placement are separate. Blank timeouts and unavailable legacy evidence are excluded from detailed comparisons (${memory.unavailable} memory, ${cash.unavailable} cash). Value credit = fully correct values ÷ expected values; digit accuracy is separate. Observed rates estimate mistakes in this sample. Compare memory-load rows while holding digits per value or value count constant; sparse or mixed configurations cannot isolate the effect. Cash explanations can overlap: matching a signature is a possibility, not proof of reasoning. Confirmed step errors compare recorded operands and results only; later correct arithmetic can still propagate an earlier wrong amount. Denomination matches describe possible misreads, including hypothetical $2 and $4 values. Missing intermediate work stays unavailable.`;
   target.append(note);
   const table = (id, label, headers, rows, format) => {
     const section = document.createElement('section'); section.id = id;
@@ -4835,10 +4895,43 @@ function renderAdvancedErrorAnalysis(records) {
   };
   const counts = g => [g.label, `${g.errors} / ${g.opportunities}`, `${g.errorRatePercent}%`, `${g.accuracyPercent}%`];
   if (records.some(r => r.game === 'memory')) {
+    const creditNote = document.createElement('p');
+    creditNote.textContent = `Total points: ${memory.points.toFixed(2)}/${memory.scoredAttempts}. Fully correct values: ${memory.correctValues}/${memory.totalValues}. Digits correct: ${memory.correctDigits}/${memory.totalDigits} (${memory.totalDigits ? (100 * memory.correctDigits / memory.totalDigits).toFixed(2) : '—'}%). Attempts without scoring evidence: ${records.filter(r => r.game === 'memory' && r.isAnswered).length - memory.scoredAttempts}. Outcome and overall error charts count imperfect rounds; accuracy and points give value credit.`;
+    target.append(creditNote);
+    const loadSignals = document.createElement('p'); loadSignals.className = 'chart-note';
+    const axisSignal = (groups, name) => {
+      const observed = groups.filter(g => g.attemptIds.length >= 5).sort((a,b) => Number(a.key)-Number(b.key));
+      if (observed.length < 2) return `${name}: needs at least two loads with five attempts each`;
+      const low = observed[0]; const high = observed.at(-1);
+      const difference = Math.round((high.errorRatePercent - low.errorRatePercent) * 100) / 100;
+      return `${name}: ${low.errorRatePercent}% at ${low.label} (${low.attemptIds.length} attempts) → ${high.errorRatePercent}% at ${high.label} (${high.attemptIds.length} attempts), ${Math.abs(difference)} percentage points ${difference > 0 ? 'higher' : difference < 0 ? 'lower' : 'unchanged'}`;
+    };
+    loadSignals.textContent = `${axisSignal(memory.valueCounts, 'More values')}. ${axisSignal(memory.lengths, 'Longer values')}. These are observed endpoint comparisons; difficulty, timers and the other load dimension may also differ. Use the joint load table below to compare similar settings.`;
+    target.append(loadSignals);
+    table('memory-credit-history', 'Round credit history', ['Timestamp', 'Difficulty', 'Outcome', 'Score', 'Values correct', 'Digits correct', 'Digit accuracy'], records.filter(r => r.game === 'memory' && r.isAnswered), r => {
+      const credit = memoryCredit(r);
+      return [r.timestamp, r.difficulty, r.outcome, credit ? `${credit.attemptScore.toFixed(2)}/1.00` : 'Unavailable', credit ? `${credit.correctValueCount}/${credit.totalValueCount}` : 'Unavailable', credit?.totalDigitCount != null ? `${credit.correctDigitCount}/${credit.totalDigitCount}` : 'Unavailable', credit?.digitAccuracyPercent != null ? `${credit.digitAccuracyPercent}%` : 'Unavailable'];
+    });
     const highlights = document.createElement('p');
     highlights.textContent = `Most missed position: ${memory.mostMissed ? `${memory.mostMissed.label} (${memory.mostMissed.errorRatePercent}%)` : 'needs five opportunities per position'}. Most accurate: ${memory.mostAccurate ? `${memory.mostAccurate.label} (${memory.mostAccurate.accuracyPercent}%)` : 'needs five opportunities per position'}. Missing digits: ${memory.missing}. Extra digits: ${memory.extra}.`;
     target.append(highlights);
     table('memory-position-analysis', 'Digit position accuracy', ['Position', 'Errors / digits', 'Error rate', 'Accuracy'], memory.positions, counts);
+    table('memory-value-position-analysis', 'Value position accuracy', ['Value position', 'Wrong / values', 'Error rate', 'Accuracy'], memory.valuePositions, counts);
+    table('memory-load-analysis', 'Difficulty and memory load comparison', ['Difficulty | Values | Digits per value | Total digits', 'Wrong / values', 'Error rate', 'Accuracy', 'Attempts'], memory.loads, g => [...counts(g), g.attemptIds.length]);
+    const digitCount = Math.max(0, ...memory.positions.map(g => Number(g.key)));
+    const valueCount = Math.max(0, ...memory.valuePositions.map(g => Number(g.key)));
+    const cells = new Map(memory.cells.map(g => [g.key, g]));
+    table('memory-value-digit-heatmap', 'Value position × digit position heatmap', ['Value ↓ / Digit →', ...Array.from({ length: digitCount }, (_, i) => String(i + 1))], Array.from({ length: valueCount }, (_, i) => i + 1), value => [value, ...Array.from({ length: digitCount }, (_, i) => {
+      const cell = cells.get(`${value}:${i + 1}`);
+      return cell ? `${cell.errorRatePercent}% (${cell.errors}/${cell.opportunities})` : 'No observations';
+    })]);
+    target.querySelectorAll('#memory-value-digit-heatmap tbody tr').forEach((tr, index) => [...tr.cells].slice(1).forEach((cell, digit) => {
+      const observed = cells.get(`${index + 1}:${digit + 1}`);
+      if (!observed) return;
+      cell.classList.add('digit-heat-cell', observed.errors ? 'digit-confused' : 'digit-match');
+      cell.style.setProperty('--heat-opacity', String(.12 + observed.errorRatePercent / 100 * .68));
+      cell.title = `${observed.attemptIds.length} attempts; ${observed.errors}/${observed.opportunities} expected digits incorrect`;
+    }));
     table('memory-length-analysis', 'Number length comparison', ['Length', 'Wrong / values', 'Error rate', 'Accuracy'], memory.lengths, counts);
     table('memory-region-analysis', 'First, middle and last digits', ['Region', 'Errors / digits', 'Error rate', 'Accuracy'], memory.regions, counts);
     table('memory-digit-confusion', 'Digit confusion heatmap (0–9)', ['Expected ↓ / Entered →', ...Array.from({length: 10}, (_, i) => String(i))], memory.confusion.map((cells, expected) => ({cells, expected})), row => [row.expected, ...row.cells]);
@@ -4850,15 +4943,21 @@ function renderAdvancedErrorAnalysis(records) {
       cell.title = `Expected ${expected}, entered ${entered}: ${count} ${expected === entered ? 'correct digits' : 'substitutions'}`;
     }));
     const legend = document.createElement('p'); legend.className = 'chart-note'; legend.textContent = 'Cell counts: diagonal = correctly recalled digits; other cells = substitutions. Missing/extra digits have no digit pair and are excluded. Darker cells indicate higher counts.'; heatmap.append(legend);
-    table('memory-digit-details', 'Raw digit comparison history', ['Timestamp', 'Difficulty', 'Value #', 'Expected', 'Entered', 'Wrong positions', 'Missing', 'Extra', 'Decimal mismatch'], memory.details, r => [r.timestamp, r.difficulty, r.sequence, r.expected, r.entered, r.wrongPositions.join(', ') || 'None', r.missing, r.extra, r.decimalError ? 'Yes' : 'No']);
+    const confused = memory.confusion.flatMap((cells, from) => cells.map((count, to) => ({ from, to, count }))).filter(g => g.from !== g.to && g.count).sort((a,b) => b.count-a.count);
+    table('memory-common-digit-confusion', 'Commonly confused digits', ['Expected', 'Entered', 'Substitutions'], confused, g => [g.from, g.to, g.count]);
+    table('memory-digit-details', 'Raw digit comparison history', ['Timestamp', 'Difficulty', 'Value #', 'Expected', 'Entered', 'Wrong positions', 'Expected → entered digits', 'Adjacent swap pattern', 'Missing', 'Extra', 'Decimal mismatch'], memory.details, r => [r.timestamp, r.difficulty, r.sequence, r.expected, r.entered, r.wrongPositions.join(', ') || 'All digits correct', r.digitPairs.filter(p => !p.correct).map(p => `Position ${p.position}: ${p.expected} → ${p.entered}`).join('; ') || 'All match', r.swaps.join(', ') || 'None', r.missing, r.extra, r.decimalError ? 'Yes' : 'No']);
   }
   if (records.some(r => r.game === 'cash')) {
+    table('cash-stage-analysis', 'Calculation stage evidence', ['Stage / evidence', 'Errors or matching possibilities', 'Attempts'], cash.stages, g => [g.label, g.errors, g.attemptIds.length]);
+    table('cash-cause-analysis', 'Likely causes and recorded discrepancies', ['Cause / evidence', 'Matching attempts'], cash.causes, g => [g.label, g.attemptIds.length]);
+    table('cash-denomination-confusion', 'Possible bill and coin confusion', ['Denominations', 'Matching attempts'], [...cash.billConfusion, ...cash.coinConfusion], g => [g.label, g.attemptIds.length]);
+    table('cash-step-details', 'Recorded intermediate arithmetic', ['Timestamp', 'Step', 'Operation', 'Operands', 'Expected', 'Entered', 'Result', 'Evidence'], cash.details.flatMap(r => r.steps.map(step => ({ ...step, timestamp: r.timestamp }))), step => [step.timestamp, step.stage, step.operation, `${formatMoney(step.leftCents)} / ${formatMoney(step.rightCents)}`, formatMoney(step.expectedCents), formatMoney(step.enteredCents), step.wrong ? 'Incorrect' : 'Correct on these operands', step.evidence]);
     table('cash-arithmetic-categories', 'Arithmetic mistake frequencies', ['Type', 'Errors / opportunities', 'Error rate', 'Accuracy'], cash.categories, counts);
     table('cash-operation-analysis', 'Addition and subtraction results', ['Operation', 'Wrong / answers', 'Error rate', 'Accuracy'], cash.operations, counts);
     table('cash-cent-operation-analysis', 'Cent errors by operation', ['Operation', 'Wrong cents / answers', 'Error rate', 'Accuracy'], cash.centOperations, counts);
-    table('cash-arithmetic-details', 'Raw arithmetic comparison history', ['Timestamp', 'Difficulty', 'Transaction', 'Operation', 'Operands', 'Expected', 'Entered', 'Difference', 'Component', 'Likely opposite', 'Likely cents opposite', 'Likely carry/borrow'], cash.details,
+    table('cash-arithmetic-details', 'Raw arithmetic comparison history', ['Timestamp', 'Difficulty', 'Transaction', 'Operation', 'Operands', 'Expected', 'Entered', 'Difference', 'Component', 'Likely opposite', 'Likely cents opposite', 'Likely carry/borrow', 'Calculation stage and possible mistakes'], cash.details,
       r => [r.timestamp, r.difficulty, r.transaction, r.operation, r.operation === 'unavailable' ? 'Unavailable' : `${formatMoney(r.left)} ${r.operation === 'addition' ? '+' : '−'} ${formatMoney(r.right)}`, formatMoney(r.expected), formatMoney(r.entered), `${r.difference < 0 ? '−' : '+'}${formatMoney(Math.abs(r.difference))}`, r.component,
-        ...[r.operatorConfusion, r.centOperatorConfusion, r.carryBorrow].map(v => v === null ? 'Unavailable' : v ? 'Yes' : 'No')]);
+        ...[r.operatorConfusion, r.centOperatorConfusion, r.carryBorrow].map(v => v === null ? 'Unavailable' : v ? 'Yes' : 'No'), r.possibilities.map(p => `${p.evidence}: ${p.stage} — ${p.description}`).join('; ') || (r.magnitude ? 'Cause unavailable; no supported signature matched' : 'Amount correct')]);
   }
   const chartGrid = document.createElement('div'); chartGrid.className = 'advanced-error-charts';
   const positionTrends = charts.filter(spec => /^memory-position-\d+-time$/.test(spec.id));
@@ -4910,11 +5009,11 @@ function renderHistoryInsights(records, errorAnalytics = buildErrorAnalytics(rec
   const summary = document.createElement('p');
   summary.className = 'chart-note';
   const rate = report.rate;
-  summary.textContent = `${rate.label}: ${rate.value === null ? 'no matching attempts' : `${rate.value}% (${rate.correct}/${rate.count}; 95% Wilson interval ${rate.interval[0]}–${rate.interval[1]}%)`}. ${report.notAnswered} not answered; ${rate.missing} lack a selected field; ${report.missingTime} lack response time.`;
+  summary.textContent = `${rate.label}: ${rate.value === null ? 'no matching attempts' : `${rate.value}% (${Number(rate.correct.toFixed(2))}/${rate.count}${rate.interval ? `; 95% Wilson interval ${rate.interval[0]}–${rate.interval[1]}%` : ' points; memory value credit'})`}. ${report.notAnswered} not answered; ${rate.missing} lack a selected field; ${report.missingTime} lack response time.`;
   root.append(summary);
   const speed = document.createElement('p');
   speed.className = 'chart-note';
-  speed.textContent = `Speed: ${report.speed.map((point) => `${point.label} ${point.value === null ? 'no data' : `${point.value}% (${point.correct}/${point.count})`}`).join(' · ')}. `
+  speed.textContent = `Speed: ${report.speed.map((point) => `${point.label} ${point.value === null ? 'no data' : `${point.value}% (${Number(point.correct.toFixed(2))}/${point.count})`}`).join(' · ')}. `
     + `Correct by: ${report.correctBy.map((point) => `${point.seconds}s ${point.value ?? '—'}%`).join(' · ')}.`;
   root.append(speed);
   if (historyView.filters.game !== 'all') {
@@ -4939,10 +5038,10 @@ function renderHistoryInsights(records, errorAnalytics = buildErrorAnalytics(rec
     groups.forEach((group) => {
       const item = document.createElement('li');
       const direction = group.gapPoints >= 0 ? 'higher' : 'lower';
-      item.textContent = `${group.label}: ${group.value}% correct (${group.correct} of ${group.count} attempts). `
+      item.textContent = `${group.label}: ${group.value}% accuracy (${Number(group.correct.toFixed(2))} of ${group.count} ${group.measure === 'mean' ? 'points' : 'attempts'}). `
         + `That is ${Math.abs(group.gapPoints)} percentage points ${direction} than the ${group.baselinePercent}% result `
         + `for the same difficulty and mode (${group.comparableCount} comparable attempts). `
-        + `The estimated 95% range for this accuracy is ${group.interval[0]}–${group.interval[1]}% (Wilson interval). ${group.evidence}.`;
+        + `${group.interval ? `The estimated 95% range for this accuracy is ${group.interval[0]}–${group.interval[1]}% (Wilson interval). ` : 'Uses value credit. '}${group.evidence}.`;
       list.append(item);
     });
     const detailedSkills = title === 'Strengths' ? errorAnalytics.strengths : errorAnalytics.weaknesses;
@@ -5171,7 +5270,7 @@ function renderHistoryRows(records, analytics = buildErrorAnalytics(records, { c
     row.addEventListener('click', open);
     row.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); } });
     const cells = [new Date(record.timestamp).toLocaleString(), `${record.gameName}${record.sessionMode ? ` · ${record.sessionMode}` : ''}`,
-      record.difficulty ?? 'Not recorded', record.outcome, record.responseTimeSeconds === null ? 'Not recorded' : `${record.responseTimeSeconds.toFixed(1)}s`, record.expectedAnswer ?? 'Not recorded'];
+      record.difficulty ?? 'Not recorded', record.outcome, record.responseTimeSeconds === null ? 'Not recorded' : `${record.responseTimeSeconds.toFixed(1)}s`, [record.expectedAnswer ?? 'Not recorded', record.game === 'memory' ? memoryScoreText(record) : ''].filter(Boolean).join(' · ')];
     const detail = analytics.attemptDetails.get(record.attemptId);
     const numericErrors = analytics.numeric.responses.filter((response) => response.attemptId === record.attemptId);
     cells.push(detail?.mistakes.length ? detail.mistakes.map((mistake) => mistake.label).join('; ')

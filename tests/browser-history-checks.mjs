@@ -28,7 +28,7 @@ export async function checkHistory(browser, base) {
           assert.match(await page.locator('#history-outcome-legend').textContent(), /Not answered:/);
           if (game === 'memory' && phase === 'next') {
             assert.match(await page.locator('#history-outcomes-summary').textContent(), /1 of 2 correct/);
-            assert.match(await page.locator('#history-accuracy-chart').textContent(), /50% \(1\/2\)/);
+            assert.match(await page.locator('#history-accuracy-chart').textContent(), /100% \(1\/1\)/, 'unfinished memory checkpoints have no scored attempt');
           }
         }
         if (game === 'memory' && phase === 'next') {
