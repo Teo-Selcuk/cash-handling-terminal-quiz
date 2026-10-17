@@ -811,6 +811,14 @@ button.chess-square:focus-visible { outline: 3px solid #111; outline-offset: -4p
 }
 
 .choice-card[hidden] { display: none !important; }
+/* Setup: every game card shares one width and one row height. Rows size to the
+   tallest card, so long descriptions wrap inside without changing card sizes. */
+.game-choice-grid { grid-auto-rows: 1fr; }
+.game-choice-grid > .choice-card { box-sizing: border-box; min-width: 0; height: 100%; min-height: 7.5rem; }
+.game-choice-grid > .choice-card > span { min-width: 0; align-content: start; }
+.game-choice-grid > .choice-card small { overflow-wrap: anywhere; }
+.choice-card:has(input:checked) { box-shadow: inset 0 0 0 0.0625rem var(--brand); }
+@media (min-width: 72rem) { .game-choice-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 #fraud-setup-options[hidden], #fraud-custom-options[hidden] { display: none !important; }
 #fraud-setup-options { display: grid; gap: 1rem; }
 .fraud-category-settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr)); gap: 0.5rem; max-height: 17rem; overflow: auto; padding: 0.25rem; }

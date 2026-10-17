@@ -17,6 +17,7 @@ import { checkFraudInspection } from './browser-fraud-inspection-checks.mjs';
 import { checkHoldTraining } from './browser-hold-training-checks.mjs';
 import { checkChartFormatting } from './browser-chart-format-checks.mjs';
 import { checkChess } from './browser-chess-checks.mjs';
+import { checkRound2 } from './browser-round2-checks.mjs';
 import { checkOverload } from './browser-overload-checks.mjs';
 import { checkFirebase, checkGuestAccess, withApprovedProfiles } from './browser-firebase-checks.mjs';
 const { chromium } = createRequire(import.meta.url)('playwright');
@@ -62,7 +63,9 @@ try {
     };
   });
   const base = process.env.QUIZ_LIVE_URL || `http://127.0.0.1:${server.address().port}/`;
-  if (process.env.QUIZ_FOCUSED === 'fair-credit') {
+  if (process.env.QUIZ_FOCUSED === 'round2') {
+    await checkRound2(browser, base);
+  } else if (process.env.QUIZ_FOCUSED === 'fair-credit') {
     await checkFairCredit(browser, base);
   } else if (process.env.QUIZ_FOCUSED === 'firebase') {
     await checkFirebase(browser, base);
@@ -74,6 +77,7 @@ try {
     await checkTyping(browser, base);
   } else if (process.env.QUIZ_FOCUSED === 'chess') {
     await checkChess(browser, base);
+  await checkRound2(browser, base);
   } else if (process.env.QUIZ_FOCUSED === 'progress') {
     await checkChartFormatting(browser, base);
     await checkProgress(browser, base);
