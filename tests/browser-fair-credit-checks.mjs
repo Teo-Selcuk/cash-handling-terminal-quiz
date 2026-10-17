@@ -50,7 +50,7 @@ export async function checkFairCredit(browser, base) {
       await page.setViewportSize({ width, height: 900 });
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `analytics fit ${width}px`);
     }
-    for (const [button, size] of [['Minimize All Tables', 'minimized'], ['Maximize All Tables', 'expanded'], ['Reset Tables to Default', 'normal']]) {
+    for (const [button, size] of [['Minimize All Tables', 'minimized'], ['Expand All Tables', 'expanded'], ['Reset Tables to Default', 'normal']]) {
       await page.getByRole('button', { name: button, exact: true }).click();
       assert.ok((await page.locator('#advanced-error-analytics .history-table-container').evaluateAll(nodes => nodes.map(n => n.dataset.tableSize))).every(s => s === size));
     }

@@ -1188,3 +1188,16 @@ body.chess-arena #chess-screen {
   .bar-chart-row .bar-chart-value { grid-area: value; }
   .bar-chart-row .bar-chart-track { grid-area: track; }
 }
+
+/* "What this shows" info toggles for charts and tables. */
+.explanation { margin: 0.5rem 0 0; color: var(--ink); font-size: 0.875rem; }
+.explanation > summary { display: inline-flex; align-items: center; gap: 0.4rem; min-height: 2.25rem; cursor: pointer; color: var(--brand); font-weight: 700; list-style: none; }
+.explanation > summary::-webkit-details-marker { display: none; }
+.explanation-icon { display: inline-grid; place-items: center; width: 1.15rem; height: 1.15rem; border: 0.125rem solid currentColor; border-radius: 50%; font-size: 0.75rem; font-style: italic; font-weight: 800; line-height: 1; }
+.explanation[open] { padding: 0.5rem 0.75rem 0.75rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-quiet); }
+.explanation p { margin: 0.25rem 0 0.5rem; }
+.explanation dl { display: grid; grid-template-columns: minmax(6rem, max-content) minmax(0, 1fr); gap: 0.25rem 0.75rem; margin: 0; }
+.explanation dt { font-weight: 750; }
+.explanation dd { margin: 0; color: var(--muted); }
+.history-table-container > .explanation { margin: 0.25rem 0 0.5rem; }
+@media (max-width: 36rem) { .explanation dl { grid-template-columns: minmax(0, 1fr); } .explanation dd { margin-bottom: 0.35rem; } }

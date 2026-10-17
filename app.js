@@ -1,14 +1,15 @@
 import { accountStorage as localStorage, initializeAccounts } from './firebase-accounts.mjs?v=20261004-private';
 import { canPlayGame } from './account-access.mjs';
 import { analyzeCashMistakes } from './cash-mistakes.mjs?v=20261011-fair-credit';
-import { enhanceHistoryTables } from './history-tables.mjs?v=20261008-advanced-errors';
+import { enhanceHistoryTables } from './history-tables.mjs?v=20261017-round2';
+import { chartExplanation, summaryChartExplanation, createExplanation } from './history-explanations.mjs?v=20261017-round2';
 import { createOverloadUI } from './overload-ui.mjs?v=20261003-accounts';
 import { summarizeOverload, overloadRecommendation } from './overload-analytics.mjs?v=20261003-accounts';
 import { decideCheck, scoreHoldDecision, ITEM_TYPES, ITEM_REASONS, ACTIONS, HOLD_TYPES, availabilityText } from './check-holds.mjs?v=20261003-accounts';
 import { renderHoldTraining, readHoldAnswer } from './hold-training-ui.mjs?v=20261003-accounts';
 import { TYPING_PRESETS, resolveTypingSettings, createTypingPrompt, scoreTyping, summarizeTyping } from './typing-core.mjs?v=20261002-typing';
 import { PATTERN_GAME_NAMES } from './pattern-games.mjs';
-import { createChessUI } from './chess-ui.mjs?v=20261008-advanced-errors';
+import { createChessUI } from './chess-ui.mjs?v=20261017-round2';
 import { ChessStore } from './chess-storage.mjs';
 import { createDistractionSamples } from './distraction-sounds.mjs';
 import {
@@ -3638,6 +3639,15 @@ function renderSummary() {
   renderPracticeRecommendations(document.getElementById('summary-recommendations'), state.game, state.difficulty);
 }
 
+const openChartExplanations = new Set();
+function chartExplanationToggle(id, explanation) {
+  const note = createExplanation(explanation);
+  note.dataset.explains = id;
+  note.open = openChartExplanations.has(id);
+  note.addEventListener('toggle', () => { if (note.open) openChartExplanations.add(id); else openChartExplanations.delete(id); });
+  return note;
+}
+
 function accuracyLevelText(level) {
   if (!level.answered) return 'No attempts';
   return level.totalPoints !== undefined
@@ -3650,6 +3660,9 @@ function renderHistoryVisuals(summary) {
   const accuracyCard = refs['history-accuracy-chart'].closest('.visual-card');
   applyChartAppearance(outcomeCard, 'outcomes');
   applyChartAppearance(accuracyCard, 'accuracy-by-difficulty');
+  for (const [card, id] of [[outcomeCard, 'outcomes'], [accuracyCard, 'accuracy-by-difficulty']]) {
+    if (!card.querySelector(':scope > .explanation')) card.querySelector('.summary-chart-actions').after(chartExplanationToggle(id, summaryChartExplanation(id)));
+  }
   const palette = chartSettings('outcomes').palette;
   outcomeCard.querySelectorAll('[data-chart-data], [data-chart-settings]').forEach((button) => {
     button.onclick = button.dataset.chartData
@@ -4343,7 +4356,7 @@ function renderChartCard(spec, records) {
   control('Appearance', () => openChartSettings(spec.id, spec.title), false, false);
   control(view.expanded ? 'Restore size' : 'Maximize', () => { view.expanded = !view.expanded; });
   heading.append(title, controls);
-  card.append(heading);
+  card.append(heading, chartExplanationToggle(spec.id, chartExplanation(spec)));
   const status = document.createElement('p');
   status.className = 'chart-note chart-hover';
   status.textContent = view.notice ?? `${spec.attemptIds.length} eligible filtered attempt${spec.attemptIds.length === 1 ? '' : 's'}.`;

@@ -20,7 +20,7 @@ export async function checkHistoryLayout(browser, base) {
         const sizes = () => page.locator('#history-screen .history-table-container').evaluateAll(nodes => nodes.map(n => n.dataset.tableSize));
         await page.getByRole('button', { name: 'Minimize All Tables', exact: true }).click();
         assert.ok((await sizes()).every(size => size === 'minimized'));
-        await page.getByRole('button', { name: 'Maximize All Tables', exact: true }).click();
+        await page.getByRole('button', { name: 'Expand All Tables', exact: true }).click();
         assert.ok((await sizes()).every(size => size === 'expanded'));
         await page.getByRole('button', { name: 'Reset Tables to Default', exact: true }).click();
         assert.ok((await sizes()).every(size => size === 'normal'));

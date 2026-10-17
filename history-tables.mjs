@@ -1,12 +1,18 @@
 // Shared presentation for tables and chess history lists; gameplay storage is untouched.
+import { tableExplanation, createExplanation } from './history-explanations.mjs?v=20261017-round2';
 const sizes = new Map();
+const openExplanations = new Set();
+const LIST_EXPLANATIONS = {
+  'chess-games': { what: 'Your saved chess games. Each card is one game: the result, the computer level, the clock, and your move times.', terms: [['Result', 'Win, draw, or loss for you.'], ['Late moves', 'Moves made with little time left on your clock.']] },
+  'chess-lessons': { what: 'Your lesson tries. Each card is one lesson: whether you solved it and how many hints you used.', terms: [['Hints', 'How many times you asked for help.']] },
+};
 const setters = new WeakMap();
 function globalControls(root) {
   const page = root.closest('dialog, .screen');
   if (!page || page.querySelector(':scope > .global-table-controls')) return;
   const toolbar = document.createElement('div'); toolbar.className = 'global-table-controls history-table-controls';
   toolbar.setAttribute('aria-label', 'All table sizes');
-  for (const [label, size] of [['Minimize All Tables', 'minimized'], ['Maximize All Tables', 'expanded'], ['Reset Tables to Default', 'normal']]) {
+  for (const [label, size] of [['Minimize All Tables', 'minimized'], ['Expand All Tables', 'expanded'], ['Reset Tables to Default', 'normal']]) {
     const button = document.createElement('button'); button.type = 'button'; button.className = 'text-button'; button.textContent = label;
     button.addEventListener('click', () => {
       for (const shell of page.querySelectorAll('.history-table-container')) setters.get(shell)?.(size);
@@ -48,7 +54,7 @@ export function enhanceHistoryTables(root) {
       const section = table.closest('section, article, dialog');
       const label = table.querySelector('caption')?.textContent || section?.querySelector('h3, h4, h2')?.textContent || 'History details';
       const key = table.querySelector('tbody[id]')?.id || viewport.parentElement.id || `${section?.id || section?.dataset.chartId || label}:table`;
-      enhanceHistoryList(viewport, key, label);
+      enhanceHistoryList(viewport, key, label, tableExplanation(label, [...table.querySelectorAll('thead th')].map((th) => th.textContent)));
     }
     const shell = viewport.parentElement;
     shell.querySelector('.history-table-count').textContent = `${table.tBodies[0]?.rows.length ?? 0} rows · ${shell.dataset.tableSize} view`;
@@ -56,7 +62,7 @@ export function enhanceHistoryTables(root) {
   }
 }
 
-export function enhanceHistoryList(viewport, key, label) {
+export function enhanceHistoryList(viewport, key, label, explanation = LIST_EXPLANATIONS[key] ?? tableExplanation(label)) {
   globalControls(viewport);
   if (viewport.classList.contains('history-table-viewport')) {
     viewport.parentElement.querySelector('.history-table-count').textContent = `${rowCount(viewport)} rows · ${viewport.parentElement.dataset.tableSize} view`;
@@ -89,7 +95,10 @@ export function enhanceHistoryList(viewport, key, label) {
     button.setAttribute('aria-controls', viewport.id); button.addEventListener('click', () => setSize(value));
     toolbar.append(button); buttons.push([button, value]);
   }
-  shell.prepend(toolbar);
+  const note = createExplanation(explanation, 'What this table shows');
+  note.open = openExplanations.has(key);
+  note.addEventListener('toggle', () => { if (note.open) openExplanations.add(key); else openExplanations.delete(key); });
+  shell.prepend(toolbar, note);
   setters.set(shell, setSize);
   setSize(sizes.get(key) ?? 'normal');
   if (!observed.has(viewport)) { observed.add(viewport); observer?.observe(viewport); }
