@@ -94,6 +94,15 @@
             </div>
           </fieldset>
 
+          <section id="speed-goals-setup" class="speed-goals" aria-labelledby="speed-goals-setup-heading" hidden>
+            <h3 id="speed-goals-setup-heading">Speed goals</h3>
+            <div class="speed-goals-body"></div>
+          </section>
+          <label id="progressive-level-row" class="progressive-level-row" for="progressive-level" hidden>
+            <span><strong>Progressive level</strong><small>Each level adds more items, less time, or harder-to-spot problems. Higher levels open as you pass speed goals.</small></span>
+            <select id="progressive-level" name="progressiveLevel"><option value="">Off (use the difficulty above)</option></select>
+          </label>
+
           <section class="practice-section" aria-labelledby="setup-practice-heading">
             <h3 id="setup-practice-heading">Practice recommendations</h3>
             <div id="setup-recommendations"></div>
@@ -686,6 +695,10 @@
           <button type="button" data-history-game="overload" aria-pressed="false">Multitasker</button>
           <button type="button" data-history-game="chess" aria-pressed="false">Chess</button>
         </nav>
+        <section id="speed-goals-history" class="speed-goals" aria-labelledby="speed-goals-history-heading" hidden>
+          <h3 id="speed-goals-history-heading">Speed goals</h3>
+          <div class="speed-goals-body"></div>
+        </section>
         <section id="chess-history" hidden aria-labelledby="chess-history-heading">
           <div class="visual-heading"><h3 id="chess-history-heading">Chess progress</h3><button id="chess-download-csv" class="secondary-button" type="button">Export chess CSV</button></div>
           <p>Saved chess games and lessons on this device. Chess win rates are separate from quiz answer accuracy.</p>

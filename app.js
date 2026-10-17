@@ -3,6 +3,7 @@ import { canPlayGame } from './account-access.mjs';
 import { analyzeCashMistakes } from './cash-mistakes.mjs?v=20261011-fair-credit';
 import { enhanceHistoryTables } from './history-tables.mjs?v=20261017-round2';
 import { chartExplanation, summaryChartExplanation, createExplanation } from './history-explanations.mjs?v=20261017-round2';
+import { goalProgress, availableProgressiveLevels, PROGRESSIVE_LEVELS, fraudProgressiveOverrides, GOAL_SUCCESS_PERCENT, GOAL_MINIMUM_QUESTIONS } from './speed-goals.mjs?v=20261017-round2';
 import { createOverloadUI } from './overload-ui.mjs?v=20261003-accounts';
 import { summarizeOverload, overloadRecommendation } from './overload-analytics.mjs?v=20261003-accounts';
 import { decideCheck, scoreHoldDecision, ITEM_TYPES, ITEM_REASONS, ACTIONS, HOLD_TYPES, availabilityText } from './check-holds.mjs?v=20261003-accounts';
@@ -72,7 +73,7 @@ const refs = Object.fromEntries([
   'cash-builder-purpose', 'cash-builder', 'selected-total', 'builder-status', 'clear-builder', 'quick-cash-entry', 'apply-quick-cash', 'feedback-heading',
   'feedback-kicker', 'feedback-lead', 'feedback-details', 'next-question', 'session-metrics',
   'start-another', 'summary-history', 'open-history', 'back-to-setup', 'history-metrics',
-  'history-outcome-diagram', 'history-outcome-legend', 'history-outcomes-summary', 'history-accuracy-summary', 'history-accuracy-chart',
+  'history-outcome-diagram', 'history-outcome-legend', 'history-outcomes-summary', 'history-accuracy-summary', 'progressive-level', 'progressive-level-row', 'speed-goals-setup', 'speed-goals-history', 'history-accuracy-chart',
   'history-error-analysis', 'history-error-data-label', 'history-error-metrics', 'history-error-highlights', 'history-error-comparison', 'history-error-charts',
   'history-error-category-table', 'history-error-raw-table', 'history-error-combination-table', 'history-error-difficulty-table', 'history-error-numeric-table', 'history-error-distribution', 'error-analysis-sort',
   'history-rows', 'download-csv', 'clear-history', 'message', 'submit-answer', 'theme-toggle',
@@ -513,6 +514,7 @@ function showScreen(name) {
   refs['fraud-feedback'].hidden = name !== 'feedback' || state.game !== 'fraud-inspection';
   for (const screen of screens) refs[`${screen}-screen`].hidden = screen !== name;
   state.activeScreen = name;
+  if (name === 'setup') { renderSpeedGoals(refs['speed-goals-setup'], getHistory(), selectedGame()); renderProgressiveLevels(selectedGame()); }
   const activeScreen = refs[`${name}-screen`];
   if (isCompactViewport()) activeScreen.scrollIntoView({ block: 'start', inline: 'nearest' });
   const roundInProgress = ['typing', 'quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'error-detection-briefing', 'error-detection', 'fraud-inspection'].includes(name);
@@ -578,6 +580,67 @@ function setHistoryDataSource(source) {
   historyView.conditions = [];
   historyView.charts.clear();
   renderHistory();
+}
+
+const GOAL_GAME_NAMES = { cash: 'Cash handling', memory: 'Number memory', task: 'Task simulation', 'error-detection': 'Error detection', 'fraud-inspection': 'Check & ID Fraud Inspection' };
+function renderSpeedGoals(section, history, game) {
+  section.hidden = !GOAL_GAME_NAMES[game];
+  if (section.hidden) return;
+  const body = section.querySelector('.speed-goals-body');
+  const progress = goalProgress(history, game);
+  section.dataset.game = game;
+  const facts = document.createElement('dl');
+  facts.className = 'speed-goal-facts';
+  for (const [term, value] of [
+    ['Current goal', progress.current ? `${progress.current.level}: ${progress.current.seconds}s or faster at ${GOAL_SUCCESS_PERCENT}%+` : 'All goals passed'],
+    ['Best time', progress.bestSeconds === null ? 'No attempts yet' : `${progress.bestSeconds}s per question`],
+    ['Best success rate', progress.bestSuccessPercent === null ? 'No attempts yet' : `${progress.bestSuccessPercent}%`],
+    ['Goals passed', `${progress.passedCount} of ${progress.total}`],
+  ]) {
+    const item = document.createElement('div');
+    const dt = document.createElement('dt'); dt.textContent = term;
+    const dd = document.createElement('dd'); dd.textContent = value;
+    item.append(dt, dd); facts.append(item);
+  }
+  const ladder = document.createElement('ol');
+  ladder.className = 'speed-goal-ladder';
+  ladder.setAttribute('aria-label', `${GOAL_GAME_NAMES[game]} goal ladder`);
+  for (const goal of progress.goals) {
+    const step = document.createElement('li');
+    const status = goal.passed ? 'passed' : goal.unlocked ? 'current' : 'locked';
+    step.dataset.status = status;
+    step.dataset.goal = goal.id;
+    step.textContent = `${goal.level} ${goal.seconds}s`;
+    step.setAttribute('aria-label', `${goal.level} ${goal.seconds} seconds: ${status}`);
+    ladder.append(step);
+  }
+  const note = document.createElement('p');
+  note.className = 'chart-note speed-goal-note';
+  note.textContent = `A round of at least ${GOAL_MINIMUM_QUESTIONS} questions passes a goal when at least ${GOAL_SUCCESS_PERCENT}% of answers are right and the average answer time is at or under the goal. Medium opens after every Easy goal; Hard opens after every Medium goal. Guided practice does not count.${progress.rounds ? ` Based on ${progress.rounds} saved round${progress.rounds === 1 ? '' : 's'}.` : ''}`;
+  body.replaceChildren(facts, ladder, note);
+}
+
+function renderProgressiveLevels(game) {
+  const row = refs['progressive-level-row'];
+  const levels = PROGRESSIVE_LEVELS[game];
+  row.hidden = !levels;
+  const select = refs['progressive-level'];
+  select.disabled = !levels;
+  if (!levels) { select.value = ''; return; }
+  const previous = select.value;
+  const options = [new Option('Off (use the difficulty above)', '')];
+  for (const entry of availableProgressiveLevels(getHistory(), game)) {
+    const option = new Option(`Level ${entry.level} (${entry.base}): ${entry.label}${entry.unlocked ? '' : ' (locked)'}`, String(entry.level));
+    option.disabled = !entry.unlocked;
+    options.push(option);
+  }
+  select.replaceChildren(...options);
+  select.value = options.some((option) => option.value === previous && !option.disabled) ? previous : '';
+}
+
+function selectedProgressiveLevel(game) {
+  const level = Number(refs['progressive-level'].value);
+  return refs['progressive-level-row'].hidden || !level ? null : PROGRESSIVE_LEVELS[game]?.find((entry) => entry.level === level) ?? null;
 }
 
 function historyRecordsForView() {
@@ -819,6 +882,8 @@ function renderPresetEditor() {
 function updateGameSetup() {
   const game = selectedGame();
   chessUI.setupChanged(game);
+  renderSpeedGoals(refs['speed-goals-setup'], getHistory(), game);
+  renderProgressiveLevels(game);
   document.getElementById('overload-setup-options').hidden = game !== 'overload';
   document.querySelectorAll('#overload-setup-options input, #overload-setup-options select').forEach(node => { node.disabled = game !== 'overload'; });
   document.getElementById('typing-setup-options').hidden = game !== 'typing';
@@ -906,6 +971,7 @@ function sessionPreset() {
   if (state.game === 'overload') return overloadUI.settings;
   if (state.game === 'typing') return state.typingSettings;
   if (state.game === 'fraud-inspection') return state.fraudSettings;
+  if (state.game === 'cash' && state.progressiveLevel && state.progressivePreset) return state.progressivePreset;
   return state.practicePlan?.preset ?? presetFor(state.game, state.difficulty);
 }
 
@@ -1411,6 +1477,7 @@ function recordAnswer(answer, score, timedOut, elapsedSeconds) {
     gameType: 'Cash handling',
     sessionMode: state.cashSessionMode === 'guided' ? 'Guided practice' : 'Testing',
     difficulty: state.difficulty,
+    progressiveLevel: state.progressiveLevel ?? null,
     questionNumber: state.questionNumber,
     answerMode: state.customerBillRequestsEnabled ? 'Cash builder + customer requests' : state.cashBuilderEnabled ? 'Cash builder' : 'Normal',
     timeLimitSeconds: state.timeLimitSeconds,
@@ -2460,6 +2527,7 @@ function recordFraudInspectionAttempt(score, timedOut, elapsedSeconds) {
     gameType: 'Check & ID Fraud Inspection',
     sessionMode: state.fraudSettings.runMode,
     difficulty: state.difficulty,
+    progressiveLevel: state.progressiveLevel ?? null,
     questionNumber: state.questionNumber,
     scenario: 'Fictional check and ID inspection',
     outcome: timedOut ? 'Timed Out' : score.correct ? 'Correct' : 'Incorrect',
@@ -5408,6 +5476,7 @@ function renderHistory() {
   document.getElementById('typing-history-panel').hidden = historyView.filters.game !== 'typing';
   document.getElementById('typing-history-details').hidden = historyView.filters.game !== 'typing';
   const chessSelected = historyView.filters.game === 'chess';
+  if (chessSelected) refs['speed-goals-history'].hidden = true;
   refs['history-screen'].classList.toggle('chess-history-selected', chessSelected);
   document.getElementById('chess-history').hidden = !chessSelected;
   const history = historyRecordsForView();
@@ -5419,6 +5488,7 @@ function renderHistory() {
     return;
   }
   const gameOnly = filterHistory(history, { game: historyView.filters.game });
+  renderSpeedGoals(refs['speed-goals-history'], history, historyView.filters.game);
   renderHistoryFilters(gameOnly);
   const records = filterHistory(history, historyView.filters);
   renderTypingHistory(records);
@@ -5665,7 +5735,10 @@ refs['setup-form'].addEventListener('submit', (event) => {
   if (selectedGame() === 'typing') { startTypingSession(); return; }
   prepareDistractionAudio();
   const game = selectedGame();
-  const difficulty = selectedDifficulty();
+  const progressive = selectedProgressiveLevel(game);
+  // A progressive level is saved under its base difficulty so it counts toward that level's goals.
+  const difficulty = progressive?.base ?? selectedDifficulty();
+  state.progressiveLevel = progressive?.level ?? null;
   if (state.practicePlan && (state.practicePlan.game !== game || state.practicePlan.difficulty !== difficulty)) clearPracticePlan();
   state.sessionId = makeSessionId();
   state.game = game;
@@ -5677,9 +5750,9 @@ refs['setup-form'].addEventListener('submit', (event) => {
   state.autoContinue = refs['auto-continue-toggle'].checked;
 
   if (game === 'fraud-inspection') {
-    const runMode = refs['fraud-run-mode'].value;
+    const runMode = progressive ? 'standard' : refs['fraud-run-mode'].value;
     const questionCount = Number(refs['fraud-question-count'].value);
-    const timeLimitSeconds = Number(refs['fraud-time-limit'].value);
+    const timeLimitSeconds = progressive ? progressive.settings.timeLimitSeconds : Number(refs['fraud-time-limit'].value);
     const custom = difficulty === 'Custom';
     const enabledCategories = custom
       ? [...refs['fraud-enabled-categories'].querySelectorAll('input:checked')].map((input) => input.value)
@@ -5735,7 +5808,7 @@ refs['setup-form'].addEventListener('submit', (event) => {
         enabledCategories,
       } : {}),
     };
-    state.fraudSettings = resolveFraudInspectionSettings(difficulty, overrides, runMode);
+    state.fraudSettings = resolveFraudInspectionSettings(difficulty, progressive ? { ...overrides, ...fraudProgressiveOverrides(progressive) } : overrides, runMode);
     if (state.fraudSettings.minimumErrors > state.fraudSettings.enabledCategories.length) {
       setMessage('Lower the minimum issues or enable more issue categories.');
       refs['fraud-minimum-errors'].focus();
@@ -5786,7 +5859,8 @@ refs['setup-form'].addEventListener('submit', (event) => {
   }
 
   const questionCount = Number(refs['question-count'].value);
-  const timeLimitSeconds = Number(refs['time-limit'].value);
+  const timeLimitSeconds = progressive ? progressive.timeLimitSeconds : Number(refs['time-limit'].value);
+  state.progressivePreset = progressive ? resolveCashDifficultyPreset(progressive.base, progressive.preset) : null;
   if (!Number.isInteger(questionCount) || questionCount < 1 || questionCount > 100) {
     setMessage('Choose between 1 and 100 questions.');
     refs['question-count'].focus();
