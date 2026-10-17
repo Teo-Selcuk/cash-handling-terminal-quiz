@@ -1,6 +1,6 @@
 import { enhanceHistoryList } from './history-tables.mjs?v=20261017-round2';
 import { Chess, ChessSession, DEFAULT_POSITION, DIFFICULTIES, normalizeSettings } from './chess-core.mjs';
-import { ChessBoard } from './chess-board.mjs';
+import { ChessBoard } from './chess-board.mjs?v=20261017-round2';
 import { ChessEngine, analyzeMove } from './chess-engine.mjs';
 import { ChessStore, CHESS_KEYS } from './chess-storage.mjs';
 import { CHESS_LESSONS } from './chess-lessons.mjs';
@@ -167,8 +167,16 @@ export function createChessUI({ showScreen, renderChart, showChartData, storage 
     el('analyze').hidden = !(review || session?.result); el('analyze').disabled = busy;
     el('pgn').hidden = !session && !review;
     el('progress').hidden = Boolean(session && !session.result && !review && !lesson);
-    const moves = chess.history();
-    el('moves').replaceChildren(...moves.map((san, i) => make('li', `${Math.floor(i / 2) + 1}${i % 2 ? '…' : '.'} ${san}`)));
+    const moves = review ? review.record.moves.map(move => move.san) : chess.history();
+    const current = review ? review.index - 1 : moves.length - 1;
+    el('moves').replaceChildren(...moves.map((san, i) => {
+      const item = make('li', `${Math.floor(i / 2) + 1}${i % 2 ? '…' : '.'} ${san}`);
+      item.dataset.ply = String(i + 1);
+      if (i === current) item.setAttribute('aria-current', 'step');
+      if (review) { item.tabIndex = 0; item.setAttribute('role', 'button'); item.setAttribute('aria-label', `Go to move ${item.textContent}`); }
+      return item;
+    }));
+    el('moves').querySelector('[aria-current]')?.scrollIntoView({ block: 'nearest' });
     if (session && !lesson && !review) {
       const color = session.player === 'w' ? 'White' : 'Black';
       el('game-label').textContent = `${color} vs ${session.settings.difficulty} · level ${session.settings.skillLevel}/20`;
@@ -278,7 +286,8 @@ export function createChessUI({ showScreen, renderChart, showChartData, storage 
     const score = row?.playedScore;
     const evalText = score ? score.type === 'cp' ? `Evaluation for ${row.color === 'w' ? 'White' : 'Black'}: ${(score.value / 100).toFixed(2)} pawns` : `Forced mate in ${Math.abs(score.value)}${score.value < 0 ? ' against the mover' : ' for the mover'}` : 'Not evaluated';
     el('review-eval').textContent = row ? `${row.category}${row.loss === null ? '' : ` · ${row.loss} centipawns lost`}. ${evalText}. Best line: ${sanLine(move.before, row.pv)}.` : 'No evaluation for this position yet.';
-    el('review-prev').disabled = index === 0; el('review-next').disabled = index === record.moves.length;
+    el('review-prev').disabled = el('review-first').disabled = index === 0; el('review-next').disabled = el('review-last').disabled = index === record.moves.length;
+    el('review-position').textContent = `Move ${index} of ${record.moves.length}`;
     el('analyze').textContent = record.analysis?.status === 'unavailable' ? 'Retry analysis' : record.analysis?.status === 'complete' ? 'Reanalyze game' : 'Analyze game';
   }
   async function analyzeGame() {
@@ -386,7 +395,17 @@ export function createChessUI({ showScreen, renderChart, showChartData, storage 
   el('promotion').addEventListener('click', event => { const piece = event.target.dataset.promotion; if (piece && promotion) { const move = { ...promotion, promotion: piece }; promotion = null; void playMove(move); board.buttons.get(move.to)?.focus(); } });
   el('cancel-promotion').addEventListener('click', () => { promotion = null; selected = null; render(); board.buttons.get(board.focusSquare)?.focus(); });
   el('replay').addEventListener('input', () => { if (review) { review.index = Number(el('replay').value); renderReview(); render(); } });
-  for (const [id, delta] of [['review-prev', -1], ['review-next', 1]]) el(id).addEventListener('click', () => { if (review) { review.index = Math.max(0, Math.min(review.record.moves.length, review.index + delta)); el('replay').value = review.index; renderReview(); render(); } });
+  const stepReview = (target) => { if (!review) return; review.index = Math.max(0, Math.min(review.record.moves.length, target)); el('replay').value = review.index; renderReview(); render(); };
+  for (const [id, delta] of [['review-prev', -1], ['review-next', 1]]) el(id).addEventListener('click', () => { if (review) stepReview(review.index + delta); });
+  el('review-first').addEventListener('click', () => stepReview(0));
+  el('review-last').addEventListener('click', () => { if (review) stepReview(review.record.moves.length); });
+  el('moves').addEventListener('click', event => { const ply = event.target.closest('li')?.dataset.ply; if (review && ply) stepReview(Number(ply)); });
+  el('moves').addEventListener('keydown', event => { const ply = event.target.closest('li')?.dataset.ply; if (review && ply && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); stepReview(Number(ply)); } });
+  document.addEventListener('keydown', event => {
+    if (!review || el('screen').hidden || event.target.closest?.('input, select, textarea, button, [contenteditable], .chess-board, dialog')) return;
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); stepReview(review.index + (event.key === 'ArrowLeft' ? -1 : 1)); }
+    else if (event.key === 'Home' || event.key === 'End') { event.preventDefault(); stepReview(event.key === 'Home' ? 0 : review.record.moves.length); }
+  });
   el('lessons-toggle').addEventListener('click', () => { el('lessons').hidden = !el('lessons').hidden; listLessons(); });
   el('open-lessons').addEventListener('click', () => { if (session && !session.result) { session.pause(); saveCurrent(); } engine.cancel(); busy = false; lesson = null; review = null; open(); document.getElementById('open-history').disabled = false; listLessons(); el('lessons').hidden = false; render(); status('Choose a lesson to learn a piece, opening, or tactical idea.'); });
   el('demo-next').addEventListener('click', () => {
