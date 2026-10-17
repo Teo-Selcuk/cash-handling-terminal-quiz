@@ -119,7 +119,8 @@ test('speed bands and cumulative thresholds count 5, 10, and 15 second boundarie
   const specs = buildChartSpecs(records, 'cash');
   const bands = specs.find((spec) => spec.id === 'accuracy-by-response-band').series[0].points;
   assert.deepEqual(bands.map((point) => [point.label, point.value, point.count]), [['0–5s', 100, 1], ['>5–10s', 0, 1], ['>10–15s', 100, 1], ['>15s', 0, 1]]);
-  const thresholds = specs.find((spec) => spec.id === 'correct-by-threshold').series[0].points;
+  assert.ok(!specs.some((spec) => ['correct-by-threshold', 'outcomes'].includes(spec.id)), 'duplicate charts removed');
+  const thresholds = buildConditionalReport(records, 'cash').correctBy;
   assert.deepEqual(thresholds.map((point) => [point.correct, point.count, point.value]), [[1, 4, 25], [1, 4, 25], [2, 4, 50]]);
 });
 

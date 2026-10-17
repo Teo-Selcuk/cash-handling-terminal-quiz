@@ -118,7 +118,7 @@ export async function checkSampleHistory(browser, site) {
     assert.ok(chartHueCounts.length > 0 && chartHueCounts.every((count) => count === 1), 'each populated chart has one value hue scale');
     const difficultyHues = await page.locator('#history-accuracy-chart .bar-chart-fill').evaluateAll((bars) => bars.map((bar) => getComputedStyle(bar).backgroundColor));
     assert.ok(new Set(difficultyHues).size > 1, 'difficulty bars show a range of value hues; equal accuracy may share a hue');
-    assert.equal(await page.locator('#history-accuracy-chart .chart-hue-legend').count(), 1, 'difficulty summary has a right-side value hue scale');
+    assert.equal(await page.locator('#history-accuracy-chart .chart-hue-legend').count(), 0, 'difficulty summary has no repeated accuracy scale bar');
     assert.ok(await page.locator('#history-charts .chart-category-legend').count() > 0, 'categorical bars show category swatches');
     const scatter = page.locator('#history-charts .interactive-chart[data-chart-kind="scatter"]').first();
     assert.equal(await scatter.evaluate((card) => getComputedStyle(card).gridColumnEnd), 'auto', 'speed versus accuracy uses the same grid width as other cards');

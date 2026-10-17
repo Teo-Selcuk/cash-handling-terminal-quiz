@@ -22,7 +22,7 @@ import { PRACTICE_GAMES, rankPracticeCandidates, recommendPractice, practiceSett
 import {
   buildChartSpecs, buildConditionalReport, buildErrorAnalytics, buildAdvancedErrorAnalytics, buildGameFilters, buildProgressModel, comparePeriods,
   filterHistory, recommendNextChallenge, progressionSegments,
-} from './progress-analytics.mjs?v=20261011-fair-credit';
+} from './progress-analytics.mjs?v=20261017-round2';
 import { generateSampleHistory, generateSampleChessHistory } from './sample-history.mjs?v=20261008-advanced-errors';
 import {
   DENOMINATIONS,
@@ -53,7 +53,7 @@ import {
   scoreErrorDetectionAttempt,
   summarizeHistory,
   toCsv,
-} from './quiz-core.mjs?v=20261011-fair-credit';
+} from './quiz-core.mjs?v=20261017-round2';
 
 await initializeAccounts();
 const HISTORY_KEY = 'cash-handling-terminal-quiz-history-v1';
@@ -71,7 +71,7 @@ const refs = Object.fromEntries([
   'cash-builder-purpose', 'cash-builder', 'selected-total', 'builder-status', 'clear-builder', 'quick-cash-entry', 'apply-quick-cash', 'feedback-heading',
   'feedback-kicker', 'feedback-lead', 'feedback-details', 'next-question', 'session-metrics',
   'start-another', 'summary-history', 'open-history', 'back-to-setup', 'history-metrics',
-  'history-outcome-diagram', 'history-outcome-legend', 'history-outcomes-summary', 'history-accuracy-chart',
+  'history-outcome-diagram', 'history-outcome-legend', 'history-outcomes-summary', 'history-accuracy-summary', 'history-accuracy-chart',
   'history-error-analysis', 'history-error-data-label', 'history-error-metrics', 'history-error-highlights', 'history-error-comparison', 'history-error-charts',
   'history-error-category-table', 'history-error-raw-table', 'history-error-combination-table', 'history-error-difficulty-table', 'history-error-numeric-table', 'history-error-distribution', 'error-analysis-sort',
   'history-rows', 'download-csv', 'clear-history', 'message', 'submit-answer', 'theme-toggle',
@@ -80,7 +80,7 @@ const refs = Object.fromEntries([
   'history-charts', 'history-insights', 'history-comparison', 'history-recommendations', 'previous-challenges', 'history-attempt-summary',
   'attempt-detail-dialog', 'attempt-detail-summary', 'attempt-detail-content', 'close-attempt-detail',
   'chart-data-dialog', 'chart-data-heading', 'chart-data-content', 'close-chart-data',
-  'chart-settings-dialog', 'chart-settings-heading', 'chart-settings-form', 'chart-settings-scope', 'chart-settings-palette', 'chart-settings-label-color', 'chart-settings-custom-color', 'chart-settings-color-picker', 'chart-settings-random-color', 'chart-settings-bold', 'chart-settings-label-background', 'chart-settings-background-color', 'chart-settings-reset-target', 'close-chart-settings', 'reset-chart-settings',
+  'chart-settings-dialog', 'chart-settings-heading', 'chart-settings-form', 'chart-settings-scope', 'chart-settings-palette', 'chart-settings-label-color', 'chart-settings-custom-color', 'chart-settings-color-picker', 'chart-settings-random-color', 'chart-settings-bold', 'chart-settings-label-background', 'chart-settings-background-color', 'chart-settings-label-size', 'chart-settings-label-font', 'chart-settings-reset-target', 'close-chart-settings', 'reset-chart-settings',
   'memory-question-count', 'memory-read-progress', 'memory-read-timer', 'memory-number', 'memory-read-hint', 'memory-answer-now',
   'memory-answer-form', 'memory-answer-list', 'memory-answer-progress', 'memory-answer-timer', 'memory-answer-heading', 'summary-heading',
   'task-question-count', 'task-briefing-progress', 'task-briefing-timer', 'task-briefing-heading', 'task-briefing-title', 'task-instruction-list', 'task-start-demo',
@@ -103,7 +103,9 @@ const refs = Object.fromEntries([
 
 const savedPresetState = loadPresetState();
 const historyView = { filters: { game: 'all' }, activeRange: 'all', charts: new Map(), conditions: [], dataSource: 'real', sampleRecords: null, errorSort: 'error-rate' };
-const defaultChartAppearance = Object.freeze({ palette: 'current', labelColor: 'auto', customColor: '#176b83', bold: true, labelBackground: false, backgroundColor: '#17383a' });
+const defaultChartAppearance = Object.freeze({ palette: 'current', labelColor: 'auto', customColor: '#176b83', bold: true, labelBackground: false, backgroundColor: '#17383a', labelSize: 'normal', labelFont: 'theme' });
+const chartLabelSizes = Object.freeze({ small: 0.875, normal: 1, large: 1.2, 'extra-large': 1.4 });
+const chartLabelFonts = Object.freeze({ theme: 'inherit', serif: 'Georgia, "Times New Roman", serif', mono: 'ui-monospace, "Cascadia Mono", Consolas, monospace', rounded: '"Trebuchet MS", "Segoe UI", sans-serif' });
 const chartPalettes = Object.freeze({
   ocean: [200, 180, 145], violet: [270, 310, 345], sunset: [8, 30, 52], teal: [185, 155, 115],
 });
@@ -125,11 +127,19 @@ function chartSettings(id) {
     bold: candidate.bold !== false,
     labelBackground: candidate.labelBackground === true,
     backgroundColor: /^#[0-9a-f]{6}$/i.test(candidate.backgroundColor) ? candidate.backgroundColor : defaultChartAppearance.backgroundColor,
+    labelSize: chartLabelSizes[candidate.labelSize] ? candidate.labelSize : 'normal',
+    labelFont: chartLabelFonts[candidate.labelFont] ? candidate.labelFont : 'theme',
   };
 }
 function applyChartAppearance(element, id) {
   const settings = chartSettings(id);
-  element.style.setProperty('--chart-label-color', settings.labelColor === 'custom' ? settings.customColor : chartLabelColors[settings.labelColor]);
+  const labelColor = settings.labelColor === 'custom' ? settings.customColor : chartLabelColors[settings.labelColor];
+  element.style.setProperty('--chart-label-color', labelColor);
+  // Automatic keeps muted axis text; any chosen color applies to every chart label.
+  if (settings.labelColor === 'auto') element.style.removeProperty('--chart-text-color');
+  else element.style.setProperty('--chart-text-color', labelColor);
+  element.style.setProperty('--chart-label-scale', String(chartLabelSizes[settings.labelSize]));
+  element.style.setProperty('--chart-label-font', chartLabelFonts[settings.labelFont]);
   element.style.setProperty('--chart-label-weight', settings.bold ? '750' : '400');
   element.style.setProperty('--chart-label-background', settings.labelBackground ? settings.backgroundColor : 'transparent');
 }
@@ -143,7 +153,7 @@ function saveChartAppearance() {
 function openChartSettings(id, title) {
   editingChartId = id;
   refs['chart-settings-heading'].textContent = `${title} appearance`;
-  refs['chart-settings-scope'].value = 'chart';
+  refs['chart-settings-scope'].value = 'all';
   refs['chart-settings-reset-target'].value = 'all';
   const settings = chartSettings(id);
   refs['chart-settings-palette'].value = settings.palette;
@@ -153,6 +163,8 @@ function openChartSettings(id, title) {
   refs['chart-settings-bold'].checked = settings.bold;
   refs['chart-settings-label-background'].checked = settings.labelBackground;
   refs['chart-settings-background-color'].value = settings.backgroundColor;
+  refs['chart-settings-label-size'].value = settings.labelSize;
+  refs['chart-settings-label-font'].value = settings.labelFont;
   refs['chart-settings-dialog'].showModal();
 }
 function makeChartDataTable(headers, rows) {
@@ -3626,6 +3638,13 @@ function renderSummary() {
   renderPracticeRecommendations(document.getElementById('summary-recommendations'), state.game, state.difficulty);
 }
 
+function accuracyLevelText(level) {
+  if (!level.answered) return 'No attempts';
+  return level.totalPoints !== undefined
+    ? `${level.accuracyPercent}% (${Number(level.totalPoints.toFixed(2))} of ${level.scoredAttempts} points)`
+    : `${level.accuracyPercent}% (${level.correct} of ${level.answered} correct)`;
+}
+
 function renderHistoryVisuals(summary) {
   const outcomeCard = refs['history-outcome-diagram'].closest('.visual-card');
   const accuracyCard = refs['history-accuracy-chart'].closest('.visual-card');
@@ -3650,7 +3669,7 @@ function renderHistoryVisuals(summary) {
   if (summary.answered === 0) {
     const empty = document.createElement('p');
     empty.className = 'chart-empty';
-    empty.textContent = 'Complete a question to populate this diagram.';
+    empty.textContent = 'No attempts yet.';
     refs['history-outcome-diagram'].append(empty);
   } else {
     for (const [index, outcome] of summary.outcomes.entries()) {
@@ -3675,6 +3694,18 @@ function renderHistoryVisuals(summary) {
     return item;
   }));
 
+  const levels = summary.byDifficulty.filter((level) => level.answered > 0);
+  const pointLevels = levels.filter((level) => level.totalPoints !== undefined);
+  refs['history-accuracy-summary'].textContent = !summary.answered ? 'No answers yet' : pointLevels.length
+    ? `${Number(pointLevels.reduce((sum, level) => sum + level.totalPoints, 0).toFixed(2))} of ${pointLevels.reduce((sum, level) => sum + level.scoredAttempts, 0)} points, all levels`
+    : `${levels.reduce((sum, level) => sum + level.correct, 0)} of ${levels.reduce((sum, level) => sum + level.answered, 0)} correct, all levels`;
+  if (!summary.answered) {
+    const empty = document.createElement('p');
+    empty.className = 'chart-empty';
+    empty.textContent = 'No attempts yet.';
+    refs['history-accuracy-chart'].replaceChildren(empty);
+    return;
+  }
   const accuracyAxis = document.createElement('div');
   accuracyAxis.className = 'bar-chart-axis';
   const category = document.createElement('span');
@@ -3690,10 +3721,10 @@ function renderHistoryVisuals(summary) {
   const axisTitle = document.createElement('span');
   axisTitle.className = 'bar-chart-axis-title';
   axisTitle.textContent = 'Accuracy (%)';
-  accuracyAxis.append(category, scale);
+  accuracyAxis.append(category, scale, document.createElement('span'));
   const plot = document.createElement('div');
   plot.className = 'summary-chart-plot';
-  plot.append(axisTitle, accuracyAxis, ...summary.byDifficulty.map((level) => {
+  plot.append(axisTitle, accuracyAxis, ...summary.byDifficulty.filter((level) => level.answered > 0 || ['Easy', 'Medium', 'Hard'].includes(level.level)).map((level) => {
     const row = document.createElement('div');
     row.className = 'bar-chart-row';
     const label = document.createElement('span');
@@ -3709,14 +3740,14 @@ function renderHistoryVisuals(summary) {
     track.append(fill);
     const value = document.createElement('span');
     value.className = 'bar-chart-value';
-    value.textContent = `${level.accuracyPercent}% (${level.totalPoints !== undefined ? Number(level.totalPoints.toFixed(2)) : level.correct}/${level.scoredAttempts ?? level.answered})`;
+    value.textContent = accuracyLevelText(level);
+    row.dataset.level = level.level;
     row.append(label, track, value);
     return row;
   }));
   const layout = document.createElement('div');
   layout.className = 'chart-plot-layout summary-chart-layout';
   layout.append(plot);
-  if (summary.byDifficulty.length) layout.append(renderChartHueLegend({ id: 'accuracy-by-difficulty', axisLabel: 'Accuracy (%)' }, summary.byDifficulty.map((level) => ({ value: level.accuracyPercent })), 'accuracy'));
   refs['history-accuracy-chart'].replaceChildren(layout);
 }
 
@@ -5962,6 +5993,8 @@ refs['chart-settings-form'].addEventListener('submit', (event) => {
     bold: refs['chart-settings-bold'].checked,
     labelBackground: refs['chart-settings-label-background'].checked,
     backgroundColor: refs['chart-settings-background-color'].value,
+    labelSize: refs['chart-settings-label-size'].value,
+    labelFont: refs['chart-settings-label-font'].value,
   };
   if (refs['chart-settings-scope'].value === 'all') chartAppearance = { all: settings, charts: {} };
   else chartAppearance.charts[editingChartId] = settings;

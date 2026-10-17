@@ -1515,8 +1515,9 @@ export function summarizeHistory(records) {
       { key: 'timedOut', label: 'Timed out', count: timedOut, percent: percent(timedOut) },
       { key: 'notAnswered', label: 'Not answered', count: notAnswered, percent: percent(notAnswered) },
     ],
-    byDifficulty: ['Easy', 'Medium', 'Hard'].map((level) => {
-      const recordsForLevel = history.filter((record) => record?.difficulty === level);
+    // Every attempt lands in exactly one level row, so the rows add up to the header total.
+    byDifficulty: [...new Set(['Easy', 'Medium', 'Hard', ...history.map((record) => record?.difficulty || 'Not recorded')])].map((level) => {
+      const recordsForLevel = history.filter((record) => (record?.difficulty || 'Not recorded') === level);
       const correctForLevel = recordsForLevel.filter((record) => record?.outcome === 'Correct').length;
       return {
         level,

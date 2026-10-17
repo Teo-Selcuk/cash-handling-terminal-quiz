@@ -2,7 +2,7 @@
 // never represented as easier, faster, or more complete than they were recorded.
 import { TASKS as OVERLOAD_TASKS } from './overload-core.mjs?v=20261003-accounts';
 import { overloadChartSpecs, overloadRecommendation } from './overload-analytics.mjs?v=20261003-accounts';
-import { memoryCredit, historyCredit, creditSummary } from './quiz-core.mjs?v=20261011-fair-credit';
+import { memoryCredit, historyCredit, creditSummary } from './quiz-core.mjs?v=20261017-round2';
 import { analyzeCashMistakes } from './cash-mistakes.mjs?v=20261011-fair-credit';
 
 const ANSWERED_OUTCOMES = new Set(['Correct', 'Incorrect', 'Timed Out']);
@@ -1511,18 +1511,14 @@ export function buildChartSpecs(history, game = 'all') {
   const daily = model.daily;
   const timed = records.filter((record) => record.isAnswered && record.responseTimeSeconds !== null);
   const speedPoints = SPEED_BANDS.map((label) => ratePoint(label, timed.filter((row) => speedBand(row.responseTimeSeconds) === label))).filter((point) => point.count);
-  const thresholdPoints = [5, 10, 15].map((seconds) => {
-    const point = creditByTime(`By ${seconds}s`, timed, seconds);
-    return point;
-  }).filter((point) => point.count);
+  // Answer outcomes and "correct by 5/10/15s" are shown once elsewhere on the page
+  // (outcome diagram and performance report), so they are not repeated as charts.
   const specs = [
     chart('accuracy-over-time', 'Accuracy over time', daily.map((row) => ({ key: row.day, label: row.day, value: row.accuracyPercent, count: row.scoredAttempts, measure: records.some(r => r.game === 'memory') ? 'mean' : 'rate', attemptIds: row.attemptIds, detail: row })), { kind: 'line' }),
     chart('response-time-over-time', 'Response time over time', daily.map((row) => ({ key: row.day, label: row.day, value: row.averageResponseTimeSeconds, count: row.eligibleResponseAttempts, attemptIds: row.attemptIds, detail: row })), { kind: 'line', metric: 'time' }),
     chart('attempts-per-day', 'Attempts per day', daily.map((row) => ({ key: row.day, label: row.day, value: row.attempts, count: row.attempts, attemptIds: row.attemptIds, detail: row })), { metric: 'attempts' }),
-    chart('outcomes', 'Correct, incorrect, and timed out', groupedPoints(records, (record) => record.outcome, 'attempts'), { metric: 'attempts' }),
     chart('speed-vs-accuracy', 'Speed versus accuracy', groupedPoints(records, (record) => record.difficulty).map((point) => ({ ...point, x: point.detail.averageResponseTimeSeconds, y: point.value })), { kind: 'scatter' }),
     chart('accuracy-by-response-band', 'Accuracy by response time', speedPoints),
-    chart('correct-by-threshold', 'Correct by 5, 10, and 15 seconds', thresholdPoints),
     chart('performance-distribution', 'Response-time distribution', groupedPoints(records.filter((record) => record.responseTimeSeconds !== null), (record) => band(record.responseTimeSeconds, [[5, '0–5s'], [10, '6–10s'], [20, '11–20s'], [40, '21–40s']], 's'), 'attempts'), { metric: 'attempts' }),
     chart('best-vs-recent', 'First attempts versus recent attempts', [aggregatePoint('first', 'First 20', records.slice(0, 20)), aggregatePoint('recent', 'Recent 20', records.slice(-20))]),
   ];
