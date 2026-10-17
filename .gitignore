@@ -21,3 +21,6 @@ playwright-report/
 firebase-debug.log
 firestore-debug.log
 ui-debug.log
+
+# Local browser crash logs
+debug.log
