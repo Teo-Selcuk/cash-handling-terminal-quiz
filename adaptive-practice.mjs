@@ -1,9 +1,9 @@
 import {
   ERROR_DETECTION_PUZZLE_FAMILIES, formatMoney, resolveCashDifficultyPreset,
   resolveMemoryDifficultyPreset, resolveTaskDifficultyPreset, resolveErrorDetectionDifficultyPreset,
-} from './quiz-core.mjs?v=20260908-practice';
+} from './quiz-core.mjs?v=20261017-round2';
 import { PATTERN_GAME_NAMES } from './pattern-games.mjs';
-import { overloadRecommendation, summarizeOverload } from './overload-analytics.mjs';
+import { overloadRecommendation, summarizeOverload } from './overload-analytics.mjs?v=20261003-accounts';
 
 export const PRACTICE_GAMES = Object.freeze({ cash: 'Cash handling', memory: 'Number memory', task: 'Task simulation', 'error-detection': 'Error detection' });
 const resolvers = { cash: resolveCashDifficultyPreset, memory: resolveMemoryDifficultyPreset, task: resolveTaskDifficultyPreset, 'error-detection': resolveErrorDetectionDifficultyPreset };

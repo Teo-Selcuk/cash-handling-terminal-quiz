@@ -87,6 +87,19 @@ export async function initializeAccounts(){
   window.addEventListener('online',()=>{if(db)void flush();});
   window.addEventListener('offline',()=>{if(accountStorage.uid)status('Offline · saved on this device');});
   window.addEventListener('storage',event=>{if(event.key?.startsWith('cash-trainer-account-cache-v1:')&&event.key.endsWith(':'+accountStorage.uid)){accountStorage.refresh();for(const key of SYNC_KEYS)changed(key);scheduleSave();}});
+  // The app starts from the account remembered on this device; the network check below runs in the background so a
+  // slow Firebase connection never delays the first screen. A different real account triggers one reload.
+  accountStorage.activate(rememberedUid());
+  void connectAccounts();
+}
+const LAST_UID_KEY='cash-trainer-last-uid-v1',RELOAD_GUARD_KEY='cash-trainer-uid-reload-v1';
+function rememberedUid(){
+  try{const uid=window.localStorage.getItem(LAST_UID_KEY);return uid&&isApprovedUid(uid)?uid:null;}catch{return null;}
+}
+function rememberUid(uid){
+  try{if(uid)window.localStorage.setItem(LAST_UID_KEY,uid);else window.localStorage.removeItem(LAST_UID_KEY);}catch{}
+}
+async function connectAccounts(){
   try{
     const imports=Promise.all([
       import('https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js'),
@@ -98,7 +111,14 @@ export async function initializeAccounts(){
     db=sdk.initializeFirestore(app,{localCache:sdk.persistentLocalCache({tabManager:sdk.persistentMultipleTabManager()})});
     await auth.authStateReady();
     if(auth.currentUser&&!isApprovedUid(auth.currentUser.uid))await sdk.signOut(auth);
-    accountStorage.activate(auth.currentUser?.uid??null);
+    const uid=auth.currentUser?.uid??null;
+    rememberUid(uid);
+    if(uid!==accountStorage.uid){
+      let guarded=false;
+      try{guarded=window.sessionStorage.getItem(RELOAD_GUARD_KEY)===String(uid);window.sessionStorage.setItem(RELOAD_GUARD_KEY,String(uid));}catch{}
+      if(!guarded){location.reload();return;}
+      accountStorage.activate(uid);
+    }
     $('form').hidden=Boolean(auth.currentUser);$('signout').hidden=!auth.currentUser;
     $('user').textContent=auth.currentUser?.email??'Guest · saved on this device';
     $('form').inert=false;
@@ -106,7 +126,7 @@ export async function initializeAccounts(){
     else status('Sign in to sync across devices');
     sdk.onAuthStateChanged(auth,user=>{
       if(user&&!isApprovedUid(user.uid)){void sdk.signOut(auth);return;}
-      if(initialized&&(user?.uid??null)!==accountStorage.uid){unsubscribers.forEach(stop=>stop());clearTimeout(retryTimer);location.reload();}
+      if(initialized&&(user?.uid??null)!==accountStorage.uid){rememberUid(user?.uid??null);unsubscribers.forEach(stop=>stop());clearTimeout(retryTimer);location.reload();}
     });
     initialized=true;
   }catch(error){status('Accounts unavailable · device saves active');$('error').textContent=humanError(error);$('form').inert=true;}

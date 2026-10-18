@@ -237,7 +237,7 @@ export function normalizeHistoryRecord(record, index = 0) {
 }
 
 /** Match the existing checkpoint behavior: a submitted answer replaces its checkpoint. */
-export function deduplicateHistory(history) {
+function deduplicateHistoryUncached(history) {
   const unique = new Map();
   (Array.isArray(history) ? history : []).forEach((record, index) => {
     const normalized = normalizeHistoryRecord(record, index);
@@ -308,7 +308,7 @@ function gameMatches(record, filters) {
 }
 
 /** Apply all common and game-specific filters as one intersection. */
-export function filterHistory(history, filters = {}) {
+function filterHistoryUncached(history, filters = {}) {
   let records = deduplicateHistory(history);
   const game = filters.game ?? 'all';
   const start = filters.startDate ?? filters.dateRange?.start;
@@ -339,7 +339,7 @@ const commonFields = (records) => [
 ];
 const rangeField = (id, label, unit, records, key) => ({ id, label, type: 'range', unit, available: countAvailable(records, key) });
 const facetField = (id, label, records, getter) => ({ id, label, type: 'facet', options: unique(records.flatMap((record) => getter(record) ?? [])) });
-function unique(values) { return [...new Set(values.filter(known).map(String))].sort((left, right) => left.localeCompare(right, undefined, { numeric: true })); }
+function unique(values) { return [...new Set(values.filter(known).map(String))].sort((left, right) => NUMERIC_COLLATOR.compare(left, right)); }
 function countAvailable(records, key) { return records.filter((record) => record[key] !== null && record[key] !== undefined).length; }
 
 /** Describe the controls supported by actual fields of the selected game. */
@@ -401,7 +401,7 @@ export function buildGameFilters(history, game = 'all') {
 function modelRows(records) { return Array.isArray(records) && records.every((record) => typeof record?.hasRecorded === 'function') ? records : deduplicateHistory(records); }
 
 /** Build consistent cards, daily trends, streaks, and comparison inputs from records. */
-export function buildProgressModel(history) {
+function buildProgressModelUncached(history) {
   const records = modelRows(history);
   const answered = records.filter((record) => record.isAnswered);
   const correct = answered.filter((record) => record.isCorrect);
@@ -521,6 +521,62 @@ function numericErrorResponse({ record, game, label, expectedValue, submittedVal
   };
 }
 
+const NUMERIC_COLLATOR = new Intl.Collator(undefined, { numeric: true });
+
+// Analytics are pure functions of the saved attempts and the other arguments, and one History render asks for the same
+// result many times (error table, charts, comparison, recommendation). Cache the last few results of each.
+const memoCaches = [];
+export function clearAnalyticsCache() { for (const cache of memoCaches) cache.clear(); }
+
+// A record's identity is a hash of its full content, computed once per record object, so equal saved data hits the
+// cache even when the history was parsed again, and an edited record never reuses a stale result.
+const recordHashes = new WeakMap();
+let uncacheableRecords = 0;
+
+function recordHash(record) {
+  if (record === null || typeof record !== 'object') return String(record);
+  let hash = recordHashes.get(record);
+  if (hash !== undefined) return hash;
+  try {
+    const text = JSON.stringify(record);
+    let value = 2166136261;
+    for (let index = 0; index < text.length; index += 1) value = Math.imul(value ^ text.charCodeAt(index), 16777619);
+    hash = `${text.length.toString(36)}.${(value >>> 0).toString(36)}`;
+  } catch {
+    uncacheableRecords += 1;
+    hash = `u${uncacheableRecords}`;
+  }
+  recordHashes.set(record, hash);
+  return hash;
+}
+
+function recordsFingerprint(records) {
+  if (!Array.isArray(records)) return '-';
+  let text = String(records.length);
+  for (const record of records) text += `|${recordHash(record)}`;
+  return text;
+}
+
+function memoizeByRecords(compute, { copy = false, limit = 12, recordArgs = [] } = {}) {
+  const cache = new Map();
+  memoCaches.push(cache);
+  return (history, ...rest) => {
+    const options = rest.map((arg, index) => (recordArgs.includes(index) ? undefined : arg));
+    const extra = recordArgs.map((index) => (rest[index] === null || rest[index] === undefined ? String(rest[index]) : recordsFingerprint(rest[index])));
+    const key = recordsFingerprint(history) + JSON.stringify([options, extra]);
+    let value;
+    if (cache.has(key)) {
+      value = cache.get(key);
+      cache.delete(key);
+    } else {
+      value = compute(history, ...rest);
+    }
+    cache.set(key, value);
+    if (cache.size > limit) cache.delete(cache.keys().next().value);
+    return copy ? value.slice() : value;
+  };
+}
+
 function newErrorGroups() { return new Map(); }
 
 function addErrorOpportunity(groups, { key, label, game, error, record, kind = 'category', percentageError = null, falseNegative = false, falsePositive = false }) {
@@ -549,12 +605,12 @@ function finishErrorGroups(groups, minimumOpportunities, sortBy) {
     };
   });
   const compare = (left, right) => {
-    if (sortBy === 'errors') return right.errors - left.errors || right.opportunities - left.opportunities || left.label.localeCompare(right.label, undefined, { numeric: true });
-    if (sortBy === 'attempts') return right.attemptCount - left.attemptCount || left.label.localeCompare(right.label, undefined, { numeric: true });
-    if (sortBy === 'lowest') return left.errorRatePercent - right.errorRatePercent || right.opportunities - left.opportunities || left.label.localeCompare(right.label, undefined, { numeric: true });
+    if (sortBy === 'errors') return right.errors - left.errors || right.opportunities - left.opportunities || NUMERIC_COLLATOR.compare(left.label, right.label);
+    if (sortBy === 'attempts') return right.attemptCount - left.attemptCount || NUMERIC_COLLATOR.compare(left.label, right.label);
+    if (sortBy === 'lowest') return left.errorRatePercent - right.errorRatePercent || right.opportunities - left.opportunities || NUMERIC_COLLATOR.compare(left.label, right.label);
     if (sortBy === 'magnitude') return (right.meanPercentageError ?? -1) - (left.meanPercentageError ?? -1) || right.opportunities - left.opportunities;
-    if (sortBy === 'alphabetical') return left.label.localeCompare(right.label, undefined, { numeric: true });
-    return right.errorRatePercent - left.errorRatePercent || right.opportunities - left.opportunities || left.label.localeCompare(right.label, undefined, { numeric: true });
+    if (sortBy === 'alphabetical') return NUMERIC_COLLATOR.compare(left.label, right.label);
+    return right.errorRatePercent - left.errorRatePercent || right.opportunities - left.opportunities || NUMERIC_COLLATOR.compare(left.label, right.label);
   };
   return rows.sort(compare);
 }
@@ -994,7 +1050,7 @@ function addInputCombinationEvidence(groups, record, add) {
  * Analyze completed attempts from the already-filtered history set. The caller
  * may pass an explicitly matched earlier set for the change-over-time comparison.
  */
-export function buildErrorAnalytics(history, { previousRecords = [], comparisonCurrentRecords = null, minimumOpportunities = 5, sortBy = 'error-rate', comparisonDisabled = false } = {}) {
+function buildErrorAnalyticsUncached(history, { previousRecords = [], comparisonCurrentRecords = null, minimumOpportunities = 5, sortBy = 'error-rate', comparisonDisabled = false } = {}) {
   const records = modelRows(history);
   const completed = records.filter((record) => ANSWERED_OUTCOMES.has(record.outcome));
   const summary = summarizeErrorOutcomes(records);
@@ -1170,7 +1226,7 @@ function groupedPoints(records, getKey, metric = 'accuracy') {
       groups.get(label).push(record);
     });
   });
-  return [...groups.entries()].map(([label, rows]) => aggregatePoint(label, label, rows, metric)).sort((left, right) => left.label.localeCompare(right.label, undefined, { numeric: true }));
+  return [...groups.entries()].map(([label, rows]) => aggregatePoint(label, label, rows, metric)).sort((left, right) => NUMERIC_COLLATOR.compare(left.label, right.label));
 }
 
 function groupedMeanPoints(records, getKey, getValue) {
@@ -1185,7 +1241,7 @@ function groupedMeanPoints(records, getKey, getValue) {
     groups.get(label).values.push(value);
   }
   return [...groups.entries()].map(([label, group]) => ({ ...aggregatePoint(label, label, group.rows), value: average(group.values), measure: 'mean' }))
-    .sort((left, right) => left.label.localeCompare(right.label, undefined, { numeric: true }));
+    .sort((left, right) => NUMERIC_COLLATOR.compare(left.label, right.label));
 }
 
 export function progressionSegments(points) {
@@ -1208,7 +1264,7 @@ function chart(id, title, points, options = {}) {
 
 /** Positional comparisons use string offsets, not inferred insertion alignment.
  * Arithmetic signatures describe plausible mistakes, never a proven cause. */
-export function buildAdvancedErrorAnalytics(history) {
+function buildAdvancedErrorAnalyticsUncached(history) {
   const memory = { positions: [], lengths: [], regions: [], details: [], confusion: Array.from({ length: 10 }, () => Array(10).fill(0)), missing: 0, extra: 0, unavailable: 0,
     valuePositions: [], cells: [], loads: [], valueCounts: [], totalLoads: [], correctValues: 0, totalValues: 0, correctDigits: 0, totalDigits: 0, points: 0, scoredAttempts: 0 };
   const cash = { details: [], categories: [], operations: [], centOperations: [], difficulties: [], transactions: [], magnitude: [], unavailable: 0,
@@ -1451,7 +1507,7 @@ export function buildConditionalReport(history, game = 'all', selectedIds = []) 
       groups.get(id).rows.push(row);
     }
   }
-  const choices = [...groups.values()].sort((a, b) => a.game.localeCompare(b.game) || a.label.localeCompare(b.label, undefined, { numeric: true }));
+  const choices = [...groups.values()].sort((a, b) => a.game.localeCompare(b.game) || NUMERIC_COLLATOR.compare(a.label, b.label));
   const selected = [...new Set(selectedIds)].slice(0, 2).map((id) => groups.get(id)).filter(Boolean);
   const base = selected.length ? records.filter((row) => row.game === selected[0].game) : records;
   const matched = selected.length ? base.filter((row) => selected.every((group) => group.rows.includes(row))) : base;
@@ -1729,4 +1785,15 @@ export function recommendNextChallenge(history, options = {}) {
     speedSlowdownPercent: weakness.speedSlowdownPercent, attemptIds: weakness.attemptIds, reason: description,
     previousChallenges: recovered, recoveredCurrent: Boolean(currentRecovered), challenge: candidate ?? true,
   };
+}
+
+export const deduplicateHistory = memoizeByRecords(deduplicateHistoryUncached, { copy: true });
+export const filterHistory = memoizeByRecords(filterHistoryUncached, { copy: true });
+export const buildProgressModel = memoizeByRecords(buildProgressModelUncached);
+export const buildAdvancedErrorAnalytics = memoizeByRecords(buildAdvancedErrorAnalyticsUncached);
+
+const buildErrorAnalyticsCached = memoizeByRecords((history, previousRecords, comparisonCurrentRecords, options) => buildErrorAnalyticsUncached(history, { ...options, previousRecords, comparisonCurrentRecords }), { recordArgs: [0, 1] });
+export function buildErrorAnalytics(history, options = {}) {
+  const { previousRecords = [], comparisonCurrentRecords = null, ...rest } = options;
+  return buildErrorAnalyticsCached(history, previousRecords, comparisonCurrentRecords, rest);
 }

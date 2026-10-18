@@ -8,6 +8,41 @@
     <title>Cash, Memory &amp; Detail Trainer</title>
     <link rel="icon" href="data:,">
     <link rel="stylesheet" href="style.css?v=20261017-round2">
+    <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+    <!-- Start every startup module download at once instead of discovering imports one level at a time. -->
+    <link rel="modulepreload" href="app.js?v=20261017-perf">
+    <link rel="modulepreload" href="firebase-accounts.mjs?v=20261017-perf">
+    <link rel="modulepreload" href="account-data.mjs">
+    <link rel="modulepreload" href="firebase-config.mjs">
+    <link rel="modulepreload" href="account-access.mjs">
+    <link rel="modulepreload" href="cash-mistakes.mjs?v=20261011-fair-credit">
+    <link rel="modulepreload" href="history-tables.mjs?v=20261017-round2">
+    <link rel="modulepreload" href="history-explanations.mjs?v=20261017-round2">
+    <link rel="modulepreload" href="speed-goals.mjs?v=20261017-perf">
+    <link rel="modulepreload" href="progress-analytics.mjs?v=20261017-perf">
+    <link rel="modulepreload" href="overload-core.mjs?v=20261003-accounts">
+    <link rel="modulepreload" href="overload-analytics.mjs?v=20261003-accounts">
+    <link rel="modulepreload" href="quiz-core.mjs?v=20261017-round2">
+    <link rel="modulepreload" href="pattern-games.mjs">
+    <link rel="modulepreload" href="overload-ui.mjs?v=20261003-accounts">
+    <link rel="modulepreload" href="check-holds.mjs?v=20261003-accounts">
+    <link rel="modulepreload" href="hold-training-ui.mjs?v=20261003-accounts">
+    <link rel="modulepreload" href="typing-core.mjs?v=20261002-typing">
+    <link rel="modulepreload" href="chess-ui.mjs?v=20261017-chess">
+    <link rel="modulepreload" href="chess-core.mjs">
+    <link rel="modulepreload" href="assets/chess/chess.mjs">
+    <link rel="modulepreload" href="chess-board.mjs?v=20261017-round2">
+    <link rel="modulepreload" href="chess-engine.mjs">
+    <link rel="modulepreload" href="chess-analytics.mjs">
+    <link rel="modulepreload" href="chess-storage.mjs">
+    <link rel="modulepreload" href="chess-lessons.mjs">
+    <link rel="modulepreload" href="distraction-sounds.mjs">
+    <link rel="modulepreload" href="fraud-inspection.mjs?v=20261003-accounts">
+    <link rel="modulepreload" href="adaptive-practice.mjs?v=20261017-perf">
+    <link rel="modulepreload" href="sample-history.mjs?v=20261008-advanced-errors">
+    <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js">
+    <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js">
+    <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js">
   </head>
   <body>
     <main class="app-shell">
@@ -929,6 +964,6 @@
     </dialog>
 
     <footer>Browser edition. The original PowerShell quiz remains in this repository.</footer>
-    <script type="module" src="app.js?v=20261017-round2"></script>
+    <script type="module" src="app.js?v=20261017-perf"></script>
   </body>
 </html>

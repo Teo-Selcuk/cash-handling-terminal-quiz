@@ -16,6 +16,11 @@ replaces `AGENTS.md`; keep every agent rule here so there is one source of truth
   `speed-goals.mjs`.
 - When a module changes, bump its `?v=` cache-bust query where it is imported,
   and bump `style.css?v=` / `app.js?v=` in `index.html`.
+- Startup speed: `index.html` lists a `modulepreload` link for every module `app.js` loads (plus the Firebase SDK).
+  A module must be imported under one `?v=` URL everywhere. Regenerate the links with
+  `collectModuleGraph` from `scripts/module-graph.mjs`; `tests/performance.test.mjs` fails when they drift.
+  The first screen must never wait on the Firebase network (`firebase-accounts.mjs` connects in the background).
+  Analytics in `progress-analytics.mjs` are cached by record content; keep them pure.
 - New top-level modules must also be copied in `.github/workflows/deploy-pages.yml`
   and allowed in the static server list in `tests/browser-smoke.mjs`.
 

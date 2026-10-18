@@ -1,9 +1,9 @@
-import { accountStorage as localStorage, initializeAccounts } from './firebase-accounts.mjs?v=20261004-private';
+import { accountStorage as localStorage, initializeAccounts } from './firebase-accounts.mjs?v=20261017-perf';
 import { canPlayGame } from './account-access.mjs';
 import { analyzeCashMistakes } from './cash-mistakes.mjs?v=20261011-fair-credit';
 import { enhanceHistoryTables } from './history-tables.mjs?v=20261017-round2';
 import { chartExplanation, summaryChartExplanation, createExplanation } from './history-explanations.mjs?v=20261017-round2';
-import { goalProgress, availableProgressiveLevels, PROGRESSIVE_LEVELS, fraudProgressiveOverrides, GOAL_SUCCESS_PERCENT, GOAL_MINIMUM_QUESTIONS } from './speed-goals.mjs?v=20261017-round2';
+import { goalProgress, availableProgressiveLevels, PROGRESSIVE_LEVELS, fraudProgressiveOverrides, GOAL_SUCCESS_PERCENT, GOAL_MINIMUM_QUESTIONS } from './speed-goals.mjs?v=20261017-perf';
 import { createOverloadUI } from './overload-ui.mjs?v=20261003-accounts';
 import { summarizeOverload, overloadRecommendation } from './overload-analytics.mjs?v=20261003-accounts';
 import { decideCheck, scoreHoldDecision, ITEM_TYPES, ITEM_REASONS, ACTIONS, HOLD_TYPES, availabilityText } from './check-holds.mjs?v=20261003-accounts';
@@ -20,11 +20,11 @@ import {
   scoreFraudInspectionAttempt,
   summarizeFraudHistory,
 } from './fraud-inspection.mjs?v=20261003-accounts';
-import { PRACTICE_GAMES, rankPracticeCandidates, recommendPractice, practiceSettings } from './adaptive-practice.mjs?v=20261003-accounts';
+import { PRACTICE_GAMES, rankPracticeCandidates, recommendPractice, practiceSettings } from './adaptive-practice.mjs?v=20261017-perf';
 import {
   buildChartSpecs, buildConditionalReport, buildErrorAnalytics, buildAdvancedErrorAnalytics, buildGameFilters, buildProgressModel, comparePeriods,
   filterHistory, recommendNextChallenge, progressionSegments,
-} from './progress-analytics.mjs?v=20261017-round2';
+} from './progress-analytics.mjs?v=20261017-perf';
 import { generateSampleHistory, generateSampleChessHistory } from './sample-history.mjs?v=20261008-advanced-errors';
 import {
   DENOMINATIONS,
@@ -6273,3 +6273,4 @@ refs['setup-form'].inert=false;
 document.querySelector('.header-actions').inert=false;
 document.getElementById('qralarm-connection').inert=false;
 document.documentElement.dataset.appReady='true';
+performance.mark?.('app-ready');

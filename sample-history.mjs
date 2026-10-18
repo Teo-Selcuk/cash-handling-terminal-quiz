@@ -1,5 +1,5 @@
-import { createTypingPrompt, scoreTyping } from './typing-core.mjs';
-import { sampleOverloadRecord } from './overload-analytics.mjs';
+import { createTypingPrompt, scoreTyping } from './typing-core.mjs?v=20261002-typing';
+import { sampleOverloadRecord } from './overload-analytics.mjs?v=20261003-accounts';
 import { ChessSession } from './chess-core.mjs';
 import { CHESS_LESSONS } from './chess-lessons.mjs';
 const DAY_MS = 86400000;
