@@ -77,7 +77,6 @@ try {
     await checkTyping(browser, base);
   } else if (process.env.QUIZ_FOCUSED === 'chess') {
     await checkChess(browser, base);
-  await checkRound2(browser, base);
   } else if (process.env.QUIZ_FOCUSED === 'progress') {
     await checkChartFormatting(browser, base);
     await checkProgress(browser, base);
@@ -104,6 +103,7 @@ try {
   if(process.env.QUIZ_EMULATORS==='1')await withApprovedProfiles(browser,base,async()=>{await checkFraudInspection(browser,base);await checkHoldTraining(browser,base);});
   await checkChartFormatting(browser, base);
   await checkChess(browser, base);
+  await checkRound2(browser, base);
   }
   await checkAutoContinue(browser, base);
   await checkTimeouts(browser, base);
