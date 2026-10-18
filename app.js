@@ -1,9 +1,9 @@
-import { accountStorage as localStorage, initializeAccounts } from './firebase-accounts.mjs?v=20261017-perf';
+import { accountStorage as localStorage, initializeAccounts } from './firebase-accounts.mjs?v=20261018-window';
 import { canPlayGame } from './account-access.mjs';
 import { analyzeCashMistakes } from './cash-mistakes.mjs?v=20261011-fair-credit';
 import { enhanceHistoryTables } from './history-tables.mjs?v=20261017-round2';
 import { chartExplanation, summaryChartExplanation, createExplanation } from './history-explanations.mjs?v=20261017-round2';
-import { goalProgress, availableProgressiveLevels, PROGRESSIVE_LEVELS, fraudProgressiveOverrides, GOAL_SUCCESS_PERCENT, GOAL_MINIMUM_QUESTIONS } from './speed-goals.mjs?v=20261017-perf';
+import { goalProgress, availableProgressiveLevels, PROGRESSIVE_LEVELS, fraudProgressiveOverrides, GOAL_SETTINGS_KEY, GOAL_WINDOW_LIMITS, GOAL_SUCCESS_LIMITS, resolveGoalSettings } from './speed-goals.mjs?v=20261018-window';
 import { createOverloadUI } from './overload-ui.mjs?v=20261003-accounts';
 import { summarizeOverload, overloadRecommendation } from './overload-analytics.mjs?v=20261003-accounts';
 import { decideCheck, scoreHoldDecision, ITEM_TYPES, ITEM_REASONS, ACTIONS, HOLD_TYPES, availabilityText } from './check-holds.mjs?v=20261003-accounts';
@@ -587,14 +587,15 @@ function renderSpeedGoals(section, history, game) {
   section.hidden = !GOAL_GAME_NAMES[game];
   if (section.hidden) return;
   const body = section.querySelector('.speed-goals-body');
-  const progress = goalProgress(history, game);
+  const progress = goalProgress(history, game, readGoalSettings());
   section.dataset.game = game;
   const facts = document.createElement('dl');
   facts.className = 'speed-goal-facts';
   for (const [term, value] of [
-    ['Current goal', progress.current ? `${progress.current.level}: ${progress.current.seconds}s or faster at ${GOAL_SUCCESS_PERCENT}%+` : 'All goals passed'],
+    ['Current goal', progress.current ? `${progress.current.level}: ${progress.current.seconds}s or faster at ${progress.settings.successPercent}%+` : 'All goals passed'],
     ['Best time', progress.bestSeconds === null ? 'No attempts yet' : `${progress.bestSeconds}s per question`],
     ['Best success rate', progress.bestSuccessPercent === null ? 'No attempts yet' : `${progress.bestSuccessPercent}%`],
+    ['Latest run', latestRunText(progress)],
     ['Goals passed', `${progress.passedCount} of ${progress.total}`],
   ]) {
     const item = document.createElement('div');
@@ -616,8 +617,72 @@ function renderSpeedGoals(section, history, game) {
   }
   const note = document.createElement('p');
   note.className = 'chart-note speed-goal-note';
-  note.textContent = `A round of at least ${GOAL_MINIMUM_QUESTIONS} questions passes a goal when at least ${GOAL_SUCCESS_PERCENT}% of answers are right and the average answer time is at or under the goal. Medium opens after every Easy goal; Hard opens after every Medium goal. Guided practice does not count.${progress.rounds ? ` Based on ${progress.rounds} saved round${progress.rounds === 1 ? '' : 's'}.` : ''}`;
-  body.replaceChildren(facts, ladder, note);
+  note.textContent = `A goal passes on any ${progress.settings.window} attempts in a row at the same difficulty when at least ${progress.settings.successPercent}% of answers are right and the average answer time is at or under the goal. The run can span several rounds and can start at any attempt. Medium opens after every Easy goal; Hard opens after every Medium goal. Guided practice does not count.`;
+  body.replaceChildren(facts, ladder, note, goalSettingsForm(game, progress));
+}
+
+function readGoalSettings() {
+  try { return JSON.parse(localStorage.getItem(GOAL_SETTINGS_KEY) ?? '{}') ?? {}; } catch { return {}; }
+}
+
+function latestRunText(progress) {
+  const { size, latest, attempts } = progress.window;
+  if (!latest) return 'No attempts yet';
+  const seconds = latest.averageSeconds === null ? 'no timing' : `${Math.round(latest.averageSeconds * 100) / 100}s`;
+  const count = latest.questions < size ? `${attempts} of ${size} attempts` : `last ${size} attempts`;
+  return `${Math.round(latest.successPercent * 10) / 10}% · ${seconds} · ${count}`;
+}
+
+function refreshSpeedGoals() {
+  renderSpeedGoals(refs['speed-goals-setup'], getHistory(), selectedGame());
+  renderProgressiveLevels(selectedGame());
+  if (state.activeScreen === 'history') renderSpeedGoals(refs['speed-goals-history'], getHistory(), historyView.filters.game);
+}
+
+function goalSettingsForm(game, progress) {
+  const details = document.createElement('details');
+  details.className = 'speed-goal-settings';
+  const summary = document.createElement('summary');
+  summary.textContent = `Goal settings for ${GOAL_GAME_NAMES[game]}`;
+  const fields = document.createElement('div');
+  fields.className = 'speed-goal-settings-fields';
+  const field = (id, label, hint, value, { min, max }) => {
+    const wrap = document.createElement('label');
+    wrap.htmlFor = `goal-${id}-${game}`;
+    const text = document.createElement('span');
+    text.textContent = label;
+    const input = document.createElement('input');
+    Object.assign(input, { type: 'number', id: `goal-${id}-${game}`, min, max, step: 1, value });
+    input.dataset.goalSetting = id;
+    const small = document.createElement('small');
+    small.textContent = hint;
+    wrap.append(text, input, small);
+    return wrap;
+  };
+  fields.append(
+    field('window', 'Attempts in a row', `${GOAL_WINDOW_LIMITS.min}–${GOAL_WINDOW_LIMITS.max}. Default ${resolveGoalSettings(game).window}.`, progress.settings.window, GOAL_WINDOW_LIMITS),
+    field('successPercent', 'Success rate needed (%)', `${GOAL_SUCCESS_LIMITS.min}–${GOAL_SUCCESS_LIMITS.max}. Default ${resolveGoalSettings(game).successPercent}.`, progress.settings.successPercent, GOAL_SUCCESS_LIMITS),
+  );
+  const reset = document.createElement('button');
+  reset.type = 'button';
+  reset.className = 'secondary-button';
+  reset.textContent = 'Reset to defaults';
+  reset.dataset.goalSetting = 'reset';
+  details.append(summary, fields, reset);
+  const save = (patch) => {
+    const saved = readGoalSettings();
+    const next = { ...saved };
+    if (patch) next[game] = resolveGoalSettings(game, { ...(saved[game] ?? {}), ...patch }); else delete next[game];
+    localStorage.setItem(GOAL_SETTINGS_KEY, JSON.stringify(next));
+    refreshSpeedGoals();
+    for (const section of [refs['speed-goals-setup'], refs['speed-goals-history']]) section.querySelector('.speed-goal-settings')?.setAttribute('open', '');
+  };
+  details.addEventListener('change', (event) => {
+    const input = event.target.closest('input[data-goal-setting]');
+    if (input) save({ [input.dataset.goalSetting]: input.value });
+  });
+  reset.addEventListener('click', () => save(null));
+  return details;
 }
 
 function renderProgressiveLevels(game) {
@@ -629,7 +694,7 @@ function renderProgressiveLevels(game) {
   if (!levels) { select.value = ''; return; }
   const previous = select.value;
   const options = [new Option('Off (use the difficulty above)', '')];
-  for (const entry of availableProgressiveLevels(getHistory(), game)) {
+  for (const entry of availableProgressiveLevels(getHistory(), game, readGoalSettings())) {
     const option = new Option(`Level ${entry.level} (${entry.base}): ${entry.label}${entry.unlocked ? '' : ' (locked)'}`, String(entry.level));
     option.disabled = !entry.unlocked;
     options.push(option);

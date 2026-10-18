@@ -1,4 +1,4 @@
-import { AccountStorage, shouldReplace, SYNC_KEYS } from './account-data.mjs';
+import { AccountStorage, shouldReplace, SYNC_KEYS } from './account-data.mjs?v=20261018-window';
 import { firebaseConfig } from './firebase-config.mjs';
 import { isApprovedUid } from './account-access.mjs';
 

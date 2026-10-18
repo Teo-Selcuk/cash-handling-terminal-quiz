@@ -1,9 +1,26 @@
 // Per-game speed goals and progressive levels. Goal progress is derived from the
 // saved attempt history, so it persists wherever that history persists.
-import { normalizeHistoryRecord } from './progress-analytics.mjs?v=20261017-perf';
+import { normalizeHistoryRecord, deduplicateHistory } from './progress-analytics.mjs?v=20261017-perf';
 
 export const GOAL_SUCCESS_PERCENT = 90;
 export const GOAL_MINIMUM_QUESTIONS = 5;
+// A goal passes on any run of consecutive attempts (one difficulty, one game) as long as the run is this long.
+// Cash handling asks for a longer run than the other games. Both numbers can be changed per game in the app.
+export const DEFAULT_GOAL_WINDOW = Object.freeze({ cash: 150, memory: 80, task: 80, 'error-detection': 80, 'fraud-inspection': 80 });
+export const GOAL_WINDOW_LIMITS = Object.freeze({ min: 5, max: 1000 });
+export const GOAL_SUCCESS_LIMITS = Object.freeze({ min: 50, max: 100 });
+export const GOAL_SETTINGS_KEY = 'cash-handling-terminal-quiz-goal-settings-v1';
+
+/** Clean one game's saved goal settings: whole attempt count and success percent inside the allowed range. */
+export function resolveGoalSettings(game, saved = {}) {
+  const clamp = (value, { min, max }, fallback) => (Number.isFinite(Number(value)) && value !== '' && value !== null ? Math.min(max, Math.max(min, Math.round(Number(value)))) : fallback);
+  const source = saved?.[game] ?? saved ?? {};
+  return {
+    window: clamp(source.window, GOAL_WINDOW_LIMITS, DEFAULT_GOAL_WINDOW[game] ?? 80),
+    successPercent: clamp(source.successPercent, GOAL_SUCCESS_LIMITS, GOAL_SUCCESS_PERCENT),
+  };
+}
+
 export const GOAL_GAMES = Object.freeze(['cash', 'memory', 'task', 'error-detection', 'fraud-inspection']);
 
 // Seconds per question to reach at >= 90% success. Hard times are provisional
@@ -13,21 +30,27 @@ export const GOAL_LADDER = Object.freeze({
   Medium: Object.freeze([15, 12, 10, 7.5, 5]),
   Hard: Object.freeze([20, 15, 12, 10, 7.5]),
 });
+// Cash handling goes one step further on Hard.
+const GAME_LADDER = Object.freeze({ cash: Object.freeze({ ...GOAL_LADDER, Hard: Object.freeze([20, 15, 12, 10, 7.5, 5]) }) });
 const LEVELS = Object.freeze(['Easy', 'Medium', 'Hard']);
 
 export function goalsForGame(game) {
   if (!GOAL_GAMES.includes(game)) return [];
-  return LEVELS.flatMap((level) => GOAL_LADDER[level].map((seconds, index) => ({
-    id: `${game}:${level}:${seconds}`, game, level, seconds, step: index + 1, steps: GOAL_LADDER[level].length,
+  const ladder = GAME_LADDER[game] ?? GOAL_LADDER;
+  return LEVELS.flatMap((level) => ladder[level].map((seconds, index) => ({
+    id: `${game}:${level}:${seconds}`, game, level, seconds, step: index + 1, steps: ladder[level].length,
   })));
 }
 
 const round2 = (value) => Math.round(value * 100) / 100;
 
-/** A round passes when success >= 90% and average seconds <= the goal (both inclusive). */
-export function meetsGoal(round, goal) {
-  if (!round || round.questions < GOAL_MINIMUM_QUESTIONS || round.averageSeconds === null) return false;
-  return round.level === goal.level && round2(round.successPercent) >= GOAL_SUCCESS_PERCENT && round2(round.averageSeconds) <= goal.seconds;
+/**
+ * A run of attempts passes when it is long enough, success >= the required percent and average seconds <= the goal
+ * (both inclusive). `settings.window` is the run length; without it any run of at least one attempt counts.
+ */
+export function meetsGoal(run, goal, { window = 1, successPercent = GOAL_SUCCESS_PERCENT } = {}) {
+  if (!run || run.questions < window || run.averageSeconds === null) return false;
+  return run.level === goal.level && round2(run.successPercent) >= successPercent && round2(run.averageSeconds) <= goal.seconds;
 }
 
 /** Group saved attempts into completed timed rounds for one game, oldest first. */
@@ -55,21 +78,50 @@ export function roundsFromHistory(history, game) {
 }
 
 /**
- * Walk rounds in time order. A round can pass the current goal and any later
- * goals of the same level it also meets; a level opens only after the previous
- * level's goals all pass.
+ * Walk attempts in time order. After each attempt, the latest `window` attempts of that difficulty form a run. A run
+ * can pass the current goal and any later goals of the same level it also meets; a level opens only after the
+ * previous level's goals all pass.
  */
-export function goalProgress(history, game) {
+export function goalProgress(history, game, savedSettings = {}) {
   const goals = goalsForGame(game);
   const rounds = roundsFromHistory(history, game);
+  const settings = resolveGoalSettings(game, savedSettings);
   const passed = new Map();
   let current = 0;
-  for (const round of rounds) {
-    while (current < goals.length && meetsGoal(round, goals[current])) {
-      passed.set(goals[current].id, round.id);
+  // Per difficulty: running totals so every run is measured in constant time.
+  const levels = Object.fromEntries(LEVELS.map((level) => [level, { count: 0, correct: [0], seconds: [0], timed: [0] }]));
+  const runAt = (level, size) => {
+    const track = levels[level];
+    const from = track.count - size;
+    const timed = track.timed[track.count] - track.timed[from];
+    return {
+      level, questions: size, correct: track.correct[track.count] - track.correct[from],
+      successPercent: ((track.correct[track.count] - track.correct[from]) / size) * 100,
+      averageSeconds: timed ? (track.seconds[track.count] - track.seconds[from]) / timed : null,
+    };
+  };
+  const rows = deduplicateHistory(Array.isArray(history) ? history : []).filter((row) => row.game === game && row.session && LEVELS.includes(row.difficulty) && !/guided/i.test(row.sessionMode ?? ''));
+  for (const row of rows) {
+    const track = levels[row.difficulty];
+    const timed = row.isAnswered && row.responseTimeSeconds !== null;
+    track.correct.push(track.correct[track.count] + (row.isCorrect ? 1 : 0));
+    track.seconds.push(track.seconds[track.count] + (timed ? row.responseTimeSeconds : 0));
+    track.timed.push(track.timed[track.count] + (timed ? 1 : 0));
+    track.count += 1;
+    if (track.count < settings.window) continue;
+    const run = runAt(row.difficulty, settings.window);
+    while (current < goals.length && meetsGoal(run, goals[current], settings)) {
+      passed.set(goals[current].id, row.session);
       current += 1;
     }
   }
+  const currentLevel = goals[current]?.level ?? null;
+  const track = currentLevel ? levels[currentLevel] : null;
+  const latestSize = track ? Math.min(track.count, settings.window) : 0;
+  const window = {
+    size: settings.window, successPercentRequired: settings.successPercent, level: currentLevel,
+    attempts: track?.count ?? 0, latest: latestSize ? runAt(currentLevel, latestSize) : null,
+  };
   const levelOpen = (level) => goals.filter((goal) => LEVELS.indexOf(goal.level) < LEVELS.indexOf(level)).every((goal) => passed.has(goal.id));
   const scored = rounds.filter((round) => round.questions >= GOAL_MINIMUM_QUESTIONS);
   const timedRounds = scored.filter((round) => round.averageSeconds !== null);
@@ -84,6 +136,8 @@ export function goalProgress(history, game) {
     bestSuccessPercent: scored.length ? round2(Math.max(...scored.map((round) => round.successPercent))) : null,
     latest: scored.at(-1) ?? null,
     rounds: scored.length,
+    window,
+    settings,
   };
 }
 
@@ -117,9 +171,9 @@ export function progressiveDifficulty(game, entry) {
 }
 
 /** Levels the player may choose: a level opens when its base difficulty is open in the goal ladder. */
-export function availableProgressiveLevels(history, game) {
+export function availableProgressiveLevels(history, game, savedSettings = {}) {
   const levels = PROGRESSIVE_LEVELS[game] ?? [];
-  const open = new Set(goalProgress(history, game).unlockedLevels);
+  const open = new Set(goalProgress(history, game, savedSettings).unlockedLevels);
   return levels.map((entry) => ({ ...entry, unlocked: open.has(entry.base) }));
 }
 

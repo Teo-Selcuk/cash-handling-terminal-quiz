@@ -5,7 +5,7 @@ export const SYNC_KEYS = [
   'cash-handling-terminal-quiz-chart-appearance-v1', 'cash-handling-terminal-quiz-typing-presets-v1',
   'cash-handling-chess-games-v1', 'cash-handling-chess-lessons-v1',
   'cash-handling-chess-current-v1', 'cash-handling-chess-settings-v1',
-  'cash-handling-multitasker-settings-v1',
+  'cash-handling-multitasker-settings-v1', 'cash-handling-terminal-quiz-goal-settings-v1',
 ];
 const lists = new Set([SYNC_KEYS[0], 'cash-handling-chess-games-v1', 'cash-handling-chess-lessons-v1']);
 const cacheKey = uid => `cash-trainer-account-cache-v1:${uid}`;

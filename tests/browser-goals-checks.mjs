@@ -38,7 +38,13 @@ export async function checkGoals(browser, base) {
     await page.locator('#setup-form:not([inert])').waitFor();
     await page.locator('input[name="game"][value="cash"]').check({ force: true });
     assert.ok(await page.locator('#speed-goals-setup').isVisible(), 'goals visible on setup');
-    assert.match(await page.locator('#speed-goals-setup').textContent(), /Easy: 10s or faster at 90%\+.*No attempts yet.*0 of 13/s);
+    assert.match(await page.locator('#speed-goals-setup').textContent(), /any 150 attempts in a row/, 'cash defaults to 150 attempts');
+    // The test rounds are 5 questions, so use a 5-attempt run through the visible setting.
+    await page.locator('#speed-goals-setup summary').click();
+    await page.locator('#goal-window-cash').fill('5');
+    await page.locator('#goal-window-cash').dispatchEvent('change');
+    assert.match(await page.locator('#speed-goals-setup').textContent(), /any 5 attempts in a row/, 'attempt count can be changed');
+    assert.match(await page.locator('#speed-goals-setup').textContent(), /Easy: 10s or faster at 90%\+.*No attempts yet.*0 of 14/s);
     const levelOptions = await page.locator('#progressive-level option').evaluateAll((options) => options.map((o) => [o.value, o.disabled]));
     assert.deepEqual(levelOptions.map(([, disabled]) => disabled), [false, false, false, true, true, true, true], 'Medium and Hard levels start locked');
 
