@@ -1,6 +1,8 @@
 // Shared presentation for tables and chess history lists; gameplay storage is untouched.
-import { tableExplanation, createExplanation } from './history-explanations.mjs?v=20261017-round2';
+import { tableExplanation, createExplanation } from './history-explanations.mjs?v=20261018-explain';
 const sizes = new Map();
+// Tables start minimized so History pages stay short; the toolbar opens them.
+const DEFAULT_SIZE = 'minimized';
 const openExplanations = new Set();
 const LIST_EXPLANATIONS = {
   'chess-games': { what: 'Your saved chess games. Each card is one game: the result, the computer level, the clock, and your move times.', terms: [['Result', 'Win, draw, or loss for you.'], ['Late moves', 'Moves made with little time left on your clock.']] },
@@ -12,7 +14,7 @@ function globalControls(root) {
   if (!page || page.querySelector(':scope > .global-table-controls')) return;
   const toolbar = document.createElement('div'); toolbar.className = 'global-table-controls history-table-controls';
   toolbar.setAttribute('aria-label', 'All table sizes');
-  for (const [label, size] of [['Minimize All Tables', 'minimized'], ['Expand All Tables', 'expanded'], ['Reset Tables to Default', 'normal']]) {
+  for (const [label, size] of [['Minimize All Tables', 'minimized'], ['Expand All Tables', 'expanded'], ['Reset Tables to Default', DEFAULT_SIZE]]) {
     const button = document.createElement('button'); button.type = 'button'; button.className = 'text-button'; button.textContent = label;
     button.addEventListener('click', () => {
       for (const shell of page.querySelectorAll('.history-table-container')) setters.get(shell)?.(size);
@@ -100,6 +102,6 @@ export function enhanceHistoryList(viewport, key, label, explanation = LIST_EXPL
   note.addEventListener('toggle', () => { if (note.open) openExplanations.add(key); else openExplanations.delete(key); });
   shell.prepend(toolbar, note);
   setters.set(shell, setSize);
-  setSize(sizes.get(key) ?? 'normal');
+  setSize(sizes.get(key) ?? DEFAULT_SIZE);
   if (!observed.has(viewport)) { observed.add(viewport); observer?.observe(viewport); }
 }

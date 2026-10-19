@@ -1,8 +1,8 @@
 import { accountStorage as localStorage, initializeAccounts } from './firebase-accounts.mjs?v=20261018-window';
 import { canPlayGame } from './account-access.mjs';
 import { analyzeCashMistakes } from './cash-mistakes.mjs?v=20261011-fair-credit';
-import { enhanceHistoryTables } from './history-tables.mjs?v=20261017-round2';
-import { chartExplanation, summaryChartExplanation, createExplanation } from './history-explanations.mjs?v=20261017-round2';
+import { enhanceHistoryTables } from './history-tables.mjs?v=20261018-explain';
+import { chartExplanation, summaryChartExplanation, createExplanation } from './history-explanations.mjs?v=20261018-explain';
 import { goalProgress, availableProgressiveLevels, PROGRESSIVE_LEVELS, fraudProgressiveOverrides, GOAL_SETTINGS_KEY, GOAL_WINDOW_LIMITS, GOAL_SUCCESS_LIMITS, resolveGoalSettings } from './speed-goals.mjs?v=20261018-window';
 import { createOverloadUI } from './overload-ui.mjs?v=20261003-accounts';
 import { summarizeOverload, overloadRecommendation } from './overload-analytics.mjs?v=20261003-accounts';
@@ -10,7 +10,7 @@ import { decideCheck, scoreHoldDecision, ITEM_TYPES, ITEM_REASONS, ACTIONS, HOLD
 import { renderHoldTraining, readHoldAnswer } from './hold-training-ui.mjs?v=20261003-accounts';
 import { TYPING_PRESETS, resolveTypingSettings, createTypingPrompt, scoreTyping, summarizeTyping } from './typing-core.mjs?v=20261002-typing';
 import { PATTERN_GAME_NAMES } from './pattern-games.mjs';
-import { createChessUI } from './chess-ui.mjs?v=20261017-chess';
+import { createChessUI } from './chess-ui.mjs?v=20261018-explain';
 import { ChessStore } from './chess-storage.mjs';
 import { createDistractionSamples } from './distraction-sounds.mjs';
 import {
@@ -3794,7 +3794,8 @@ function renderHistoryVisuals(summary) {
   applyChartAppearance(outcomeCard, 'outcomes');
   applyChartAppearance(accuracyCard, 'accuracy-by-difficulty');
   for (const [card, id] of [[outcomeCard, 'outcomes'], [accuracyCard, 'accuracy-by-difficulty']]) {
-    if (!card.querySelector(':scope > .explanation')) card.querySelector('.summary-chart-actions').after(chartExplanationToggle(id, summaryChartExplanation(id)));
+    card.querySelector(':scope > .explanation')?.remove();
+    card.querySelector('.summary-chart-actions').after(chartExplanationToggle(id, summaryChartExplanation(id, summary)));
   }
   const palette = chartSettings('outcomes').palette;
   outcomeCard.querySelectorAll('[data-chart-data], [data-chart-settings]').forEach((button) => {

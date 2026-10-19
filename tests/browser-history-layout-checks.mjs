@@ -23,7 +23,7 @@ export async function checkHistoryLayout(browser, base) {
         await page.getByRole('button', { name: 'Expand All Tables', exact: true }).click();
         assert.ok((await sizes()).every(size => size === 'expanded'));
         await page.getByRole('button', { name: 'Reset Tables to Default', exact: true }).click();
-        assert.ok((await sizes()).every(size => size === 'normal'));
+        assert.ok((await sizes()).every(size => size === 'minimized'));
         if (game === 'memory' && source === 'real') {
           const expected = buildAdvancedErrorAnalytics(real.filter(r => r.game === 'memory'));
           const rows = await page.locator('#memory-position-analysis tbody tr').allTextContents();

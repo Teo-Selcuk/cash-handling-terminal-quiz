@@ -1200,6 +1200,9 @@ body.chess-arena #chess-screen {
 .explanation dt { font-weight: 750; }
 .explanation dd { margin: 0; color: var(--muted); }
 .history-table-container > .explanation { margin: 0.25rem 0 0.5rem; }
+.explanation .explanation-reading-title { margin: 0.75rem 0 0.25rem; font-weight: 750; }
+.explanation-reading { margin: 0; padding-left: 1.25rem; }
+.explanation-reading li { margin: 0.2rem 0; }
 @media (max-width: 36rem) { .explanation dl { grid-template-columns: minmax(0, 1fr); } .explanation dd { margin-bottom: 0.35rem; } }
 
 /* Speed goals: per-game ladder on setup and History. */
