@@ -3,7 +3,7 @@ import { canPlayGame } from './account-access.mjs';
 import { analyzeCashMistakes } from './cash-mistakes.mjs?v=20261011-fair-credit';
 import { enhanceHistoryTables } from './history-tables.mjs?v=20261018-explain';
 import { chartExplanation, summaryChartExplanation, createExplanation } from './history-explanations.mjs?v=20261018-explain';
-import { goalProgress, availableProgressiveLevels, PROGRESSIVE_LEVELS, fraudProgressiveOverrides, GOAL_SETTINGS_KEY, GOAL_WINDOW_LIMITS, GOAL_SUCCESS_LIMITS, resolveGoalSettings } from './speed-goals.mjs?v=20261018-window';
+import { goalProgress, availableProgressiveLevels, PROGRESSIVE_LEVELS, fraudProgressiveOverrides, GOAL_SETTINGS_KEY, GOAL_WINDOW_LIMITS, GOAL_SUCCESS_LIMITS, resolveGoalSettings } from './speed-goals.mjs?v=20261018-goals';
 import { createOverloadUI } from './overload-ui.mjs?v=20261003-accounts';
 import { summarizeOverload, overloadRecommendation } from './overload-analytics.mjs?v=20261003-accounts';
 import { decideCheck, scoreHoldDecision, ITEM_TYPES, ITEM_REASONS, ACTIONS, HOLD_TYPES, availabilityText } from './check-holds.mjs?v=20261003-accounts';
@@ -582,7 +582,13 @@ function setHistoryDataSource(source) {
   renderHistory();
 }
 
-const GOAL_GAME_NAMES = { cash: 'Cash handling', memory: 'Number memory', task: 'Task simulation', 'error-detection': 'Error detection', 'fraud-inspection': 'Check & ID Fraud Inspection' };
+const GOAL_GAME_NAMES = { cash: 'Cash handling', memory: 'Number memory', task: 'Task simulation', 'error-detection': 'Error detection', 'fraud-inspection': 'Check & ID Fraud Inspection', typing: 'Typing speed', overload: 'Multitasker' };
+// Goal targets in each game's unit: seconds per answer, seconds per action, or words per minute.
+const goalTargetText = (target, unit) => unit === 'WPM' ? `${target} WPM or faster` : `${target}s or faster`;
+const GOAL_RULE_TEXT = {
+  typing: (s) => `A goal passes on any ${s.window} typing tests in a row at the same difficulty when the average character accuracy is at least ${s.successPercent}% and the average speed is at or above the goal in words per minute.`,
+  overload: (s) => `A goal passes on any ${s.window} Multitasker runs in a row at the same difficulty when the average action accuracy is at least ${s.successPercent}% and the average action response time is at or under the goal.`,
+};
 function renderSpeedGoals(section, history, game) {
   section.hidden = !GOAL_GAME_NAMES[game];
   if (section.hidden) return;
@@ -592,8 +598,8 @@ function renderSpeedGoals(section, history, game) {
   const facts = document.createElement('dl');
   facts.className = 'speed-goal-facts';
   for (const [term, value] of [
-    ['Current goal', progress.current ? `${progress.current.level}: ${progress.current.seconds}s or faster at ${progress.settings.successPercent}%+` : 'All goals passed'],
-    ['Best time', progress.bestSeconds === null ? 'No attempts yet' : `${progress.bestSeconds}s per question`],
+    ['Current goal', progress.current ? `${progress.current.level}: ${goalTargetText(progress.current.target, progress.unit)} at ${progress.settings.successPercent}%+` : 'All goals passed'],
+    [progress.unit === 'WPM' ? 'Best speed' : 'Best time', progress.bestSpeed === null ? 'No attempts yet' : progress.unit === 'WPM' ? `${progress.bestSpeed} WPM` : `${progress.bestSpeed}s per ${game === 'overload' ? 'action' : 'question'}`],
     ['Best success rate', progress.bestSuccessPercent === null ? 'No attempts yet' : `${progress.bestSuccessPercent}%`],
     ['Latest run', latestRunText(progress)],
     ['Goals passed', `${progress.passedCount} of ${progress.total}`],
@@ -611,13 +617,13 @@ function renderSpeedGoals(section, history, game) {
     const status = goal.passed ? 'passed' : goal.unlocked ? 'current' : 'locked';
     step.dataset.status = status;
     step.dataset.goal = goal.id;
-    step.textContent = `${goal.level} ${goal.seconds}s`;
-    step.setAttribute('aria-label', `${goal.level} ${goal.seconds} seconds: ${status}`);
+    step.textContent = `${goal.level} ${goal.target}${goal.unit === 'WPM' ? ' WPM' : 's'}`;
+    step.setAttribute('aria-label', `${goal.level} ${goal.target} ${goal.unit === 'WPM' ? 'words per minute' : 'seconds'}: ${status}`);
     ladder.append(step);
   }
   const note = document.createElement('p');
   note.className = 'chart-note speed-goal-note';
-  note.textContent = `A goal passes on any ${progress.settings.window} attempts in a row at the same difficulty when at least ${progress.settings.successPercent}% of answers are right and the average answer time is at or under the goal. The run can span several rounds and can start at any attempt. Medium opens after every Easy goal; Hard opens after every Medium goal. Guided practice does not count.`;
+  note.textContent = `${GOAL_RULE_TEXT[game]?.(progress.settings) ?? `A goal passes on any ${progress.settings.window} attempts in a row at the same difficulty when at least ${progress.settings.successPercent}% of answers are right and the average answer time is at or under the goal.`} The run can span several rounds and can start at any attempt. Medium opens after every Easy goal; Hard opens after every Medium goal. Guided practice does not count.`;
   body.replaceChildren(facts, ladder, note, goalSettingsForm(game, progress));
 }
 
@@ -628,8 +634,10 @@ function readGoalSettings() {
 function latestRunText(progress) {
   const { size, latest, attempts } = progress.window;
   if (!latest) return 'No attempts yet';
-  const seconds = latest.averageSeconds === null ? 'no timing' : `${Math.round(latest.averageSeconds * 100) / 100}s`;
-  const count = latest.questions < size ? `${attempts} of ${size} attempts` : `last ${size} attempts`;
+  const speed = latest.averageSpeed ?? latest.averageSeconds ?? null;
+  const seconds = speed === null ? 'no timing' : `${Math.round(speed * 100) / 100}${progress.unit === 'WPM' ? ' WPM' : 's'}`;
+  const name = progress.attemptName ?? 'attempts';
+  const count = latest.questions < size ? `${attempts} of ${size} ${name}` : `last ${size} ${name}`;
   return `${Math.round(latest.successPercent * 10) / 10}% · ${seconds} · ${count}`;
 }
 
@@ -660,7 +668,7 @@ function goalSettingsForm(game, progress) {
     return wrap;
   };
   fields.append(
-    field('window', 'Attempts in a row', `${GOAL_WINDOW_LIMITS.min}–${GOAL_WINDOW_LIMITS.max}. Default ${resolveGoalSettings(game).window}.`, progress.settings.window, GOAL_WINDOW_LIMITS),
+    field('window', `${(progress.attemptName ?? 'attempts').replace(/^./, (c) => c.toUpperCase())} in a row`, `${GOAL_WINDOW_LIMITS.min}–${GOAL_WINDOW_LIMITS.max}. Default ${resolveGoalSettings(game).window}.`, progress.settings.window, GOAL_WINDOW_LIMITS),
     field('successPercent', 'Success rate needed (%)', `${GOAL_SUCCESS_LIMITS.min}–${GOAL_SUCCESS_LIMITS.max}. Default ${resolveGoalSettings(game).successPercent}.`, progress.settings.successPercent, GOAL_SUCCESS_LIMITS),
   );
   const reset = document.createElement('button');

@@ -22,7 +22,7 @@ const goal = (game, level, seconds) => goalsForGame(game).find((item) => item.le
 test('goal ladder matches the agreed times', () => {
   assert.deepEqual(GOAL_LADDER.Easy, [10, 7.5, 5]);
   assert.deepEqual(GOAL_LADDER.Medium, [15, 12, 10, 7.5, 5]);
-  assert.deepEqual(goalsForGame('typing'), [], 'untimed-goal games have no ladder');
+  assert.deepEqual(goalsForGame('chess'), [], 'chess has no speed goal ladder');
 });
 
 test('Easy 10s at 90% passes and unlocks 7.5s', () => {
@@ -110,8 +110,9 @@ test('progressive levels open with the goal ladder', () => {
 // ---- Rolling attempt window: any N consecutive attempts, across rounds ----
 import { DEFAULT_GOAL_WINDOW, resolveGoalSettings, GOAL_WINDOW_LIMITS } from '../speed-goals.mjs';
 
-test('defaults: cash needs 150 consecutive attempts, every other timed game 80', () => {
-  assert.deepEqual(DEFAULT_GOAL_WINDOW, { cash: 150, memory: 80, task: 80, 'error-detection': 80, 'fraud-inspection': 80 });
+test('defaults: cash needs 150 consecutive attempts, every other timed game 80, typing and Multitasker 10', () => {
+  assert.deepEqual(DEFAULT_GOAL_WINDOW, { cash: 150, memory: 80, task: 80, 'error-detection': 80, 'fraud-inspection': 80, typing: 10, overload: 10 });
+  for (const game of ['typing', 'overload']) assert.equal(goalProgress([], game).settings.window, 10);
   assert.equal(goalProgress([], 'cash').settings.window, 150);
   for (const game of ['memory', 'task', 'error-detection', 'fraud-inspection']) assert.equal(goalProgress([], game).settings.window, 80);
 });
@@ -187,4 +188,29 @@ test('progressive levels follow the configured run length', () => {
   const history = round('Easy', 4, 10, 10);
   assert.equal(availableProgressiveLevels(history, 'cash', { window: 10 })[2].unlocked, true);
   assert.equal(availableProgressiveLevels(history, 'cash')[2].unlocked, false, 'default 150-attempt run is not met yet');
+});
+
+// ---- Typing (words per minute) and Multitasker (seconds per action) ----
+function typingTests(level, wpm, accuracyPercent, count) {
+  return Array.from({ length: count }, (_, index) => ({ ...round(level, 30, 1, 1, 'typing')[0], wpm, accuracyPercent, attemptId: `t-${clock}-${index}` }));
+}
+function overloadRuns(level, overloadAverageResponse, overloadAccuracy, count) {
+  return Array.from({ length: count }, () => ({ ...round(level, 60, 1, 1, 'overload')[0], sessionMode: 'standard', overloadAverageResponse, overloadAccuracy }));
+}
+
+test('typing goals are words per minute: faster passes, higher is better, character accuracy is the success rate', () => {
+  assert.deepEqual(goalsForGame('typing').filter((item) => item.level === 'Easy').map((item) => [item.target, item.unit, item.better]), [[25, 'WPM', 'higher'], [30, 'WPM', 'higher'], [35, 'WPM', 'higher']]);
+  const passed = goalProgress(typingTests('Easy', 30, 95, 10), 'typing');
+  assert.equal(passed.passedCount, 2, '30 WPM passes the 25 and 30 WPM goals (exact limit passes)');
+  assert.equal(passed.bestSpeed, 30);
+  assert.equal(goalProgress(typingTests('Easy', 30, 89, 10), 'typing').passedCount, 0, 'below 90% character accuracy fails');
+  assert.equal(goalProgress(typingTests('Easy', 30, 95, 9), 'typing').passedCount, 0, 'needs 10 tests by default');
+  assert.equal(goalProgress(typingTests('Easy', 30, 95, 5), 'typing', { typing: { window: 5 } }).passedCount, 2, 'test count is a setting');
+});
+
+test('Multitasker goals are seconds per action at an action accuracy', () => {
+  assert.deepEqual(goalsForGame('overload').filter((item) => item.level === 'Easy').map((item) => item.target), [4, 3.5, 3]);
+  assert.equal(goalProgress(overloadRuns('Easy', 3.5, 92, 10), 'overload').passedCount, 2);
+  assert.equal(goalProgress(overloadRuns('Easy', 3.5, 85, 10), 'overload').passedCount, 0);
+  assert.equal(goalProgress(overloadRuns('Easy', 3.5, 85, 10), 'overload', { overload: { successPercent: 80 } }).passedCount, 2, 'success rate is a setting');
 });

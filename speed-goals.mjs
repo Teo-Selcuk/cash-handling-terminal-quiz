@@ -6,7 +6,8 @@ export const GOAL_SUCCESS_PERCENT = 90;
 export const GOAL_MINIMUM_QUESTIONS = 5;
 // A goal passes on any run of consecutive attempts (one difficulty, one game) as long as the run is this long.
 // Cash handling asks for a longer run than the other games. Both numbers can be changed per game in the app.
-export const DEFAULT_GOAL_WINDOW = Object.freeze({ cash: 150, memory: 80, task: 80, 'error-detection': 80, 'fraud-inspection': 80 });
+// Typing counts tests and Multitasker counts runs, so their runs are shorter.
+export const DEFAULT_GOAL_WINDOW = Object.freeze({ cash: 150, memory: 80, task: 80, 'error-detection': 80, 'fraud-inspection': 80, typing: 10, overload: 10 });
 export const GOAL_WINDOW_LIMITS = Object.freeze({ min: 5, max: 1000 });
 export const GOAL_SUCCESS_LIMITS = Object.freeze({ min: 50, max: 100 });
 export const GOAL_SETTINGS_KEY = 'cash-handling-terminal-quiz-goal-settings-v1';
@@ -21,7 +22,30 @@ export function resolveGoalSettings(game, saved = {}) {
   };
 }
 
-export const GOAL_GAMES = Object.freeze(['cash', 'memory', 'task', 'error-detection', 'fraud-inspection']);
+export const GOAL_GAMES = Object.freeze(['cash', 'memory', 'task', 'error-detection', 'fraud-inspection', 'typing', 'overload']);
+
+const finite = (value) => (Number.isFinite(Number(value)) && value !== null && value !== '' ? Number(value) : null);
+// How each game scores one attempt for goals. success: 0-100 for that attempt. speed: the timed measure, or null.
+// Typing goals are words per minute (higher is better) at a character accuracy; Multitasker goals are the
+// average action response time at an action accuracy. Every other game uses right answers and answer time.
+const ANSWER_METRIC = Object.freeze({
+  unit: 's', better: 'lower', minimumQuestions: GOAL_MINIMUM_QUESTIONS, attemptName: 'attempts',
+  success: (row) => (row.isCorrect ? 100 : 0),
+  speed: (row) => (row.isAnswered && row.responseTimeSeconds !== null ? row.responseTimeSeconds : null),
+});
+export const GOAL_METRICS = Object.freeze({
+  typing: Object.freeze({
+    unit: 'WPM', better: 'higher', minimumQuestions: 1, attemptName: 'tests',
+    success: (row) => finite(row.accuracyPercent) ?? (row.isCorrect ? 100 : 0),
+    speed: (row) => (row.isAnswered ? finite(row.wpm) : null),
+  }),
+  overload: Object.freeze({
+    unit: 's', better: 'lower', minimumQuestions: 1, attemptName: 'runs',
+    success: (row) => finite(row.overloadAccuracy) ?? (row.isCorrect ? 100 : 0),
+    speed: (row) => finite(row.overloadAverageResponse),
+  }),
+});
+export const goalMetric = (game) => GOAL_METRICS[game] ?? ANSWER_METRIC;
 
 // Seconds per question to reach at >= 90% success. Hard times are provisional
 // until confirmed by the product owner.
@@ -30,31 +54,44 @@ export const GOAL_LADDER = Object.freeze({
   Medium: Object.freeze([15, 12, 10, 7.5, 5]),
   Hard: Object.freeze([20, 15, 12, 10, 7.5]),
 });
-// Cash handling goes one step further on Hard.
-const GAME_LADDER = Object.freeze({ cash: Object.freeze({ ...GOAL_LADDER, Hard: Object.freeze([20, 15, 12, 10, 7.5, 5]) }) });
+// Cash handling goes one step further on Hard. Typing steps are words per minute;
+// Multitasker steps are seconds per action.
+const GAME_LADDER = Object.freeze({
+  cash: Object.freeze({ ...GOAL_LADDER, Hard: Object.freeze([20, 15, 12, 10, 7.5, 5]) }),
+  typing: Object.freeze({ Easy: Object.freeze([25, 30, 35]), Medium: Object.freeze([30, 40, 50]), Hard: Object.freeze([40, 50, 60, 70]) }),
+  overload: Object.freeze({ Easy: Object.freeze([4, 3.5, 3]), Medium: Object.freeze([3.5, 3, 2.5]), Hard: Object.freeze([3, 2.5, 2]) }),
+});
 const LEVELS = Object.freeze(['Easy', 'Medium', 'Hard']);
 
 export function goalsForGame(game) {
   if (!GOAL_GAMES.includes(game)) return [];
   const ladder = GAME_LADDER[game] ?? GOAL_LADDER;
-  return LEVELS.flatMap((level) => ladder[level].map((seconds, index) => ({
-    id: `${game}:${level}:${seconds}`, game, level, seconds, step: index + 1, steps: ladder[level].length,
+  const { unit, better } = goalMetric(game);
+  // `seconds` stays on time goals for older callers; `target` is the goal in the game's own unit.
+  return LEVELS.flatMap((level) => ladder[level].map((target, index) => ({
+    id: `${game}:${level}:${target}`, game, level, target, unit, better, ...(unit === 's' ? { seconds: target } : {}),
+    step: index + 1, steps: ladder[level].length,
   })));
 }
 
 const round2 = (value) => Math.round(value * 100) / 100;
 
 /**
- * A run of attempts passes when it is long enough, success >= the required percent and average seconds <= the goal
- * (both inclusive). `settings.window` is the run length; without it any run of at least one attempt counts.
+ * A run of attempts passes when it is long enough, success >= the required percent and its average speed reaches
+ * the goal: seconds <= the goal, or words per minute >= the goal (all inclusive). `settings.window` is the run
+ * length; without it any run of at least one attempt counts.
  */
 export function meetsGoal(run, goal, { window = 1, successPercent = GOAL_SUCCESS_PERCENT } = {}) {
-  if (!run || run.questions < window || run.averageSeconds === null) return false;
-  return run.level === goal.level && round2(run.successPercent) >= successPercent && round2(run.averageSeconds) <= goal.seconds;
+  const speed = run?.averageSpeed ?? run?.averageSeconds ?? null;
+  if (!run || run.questions < window || speed === null) return false;
+  const target = goal.target ?? goal.seconds;
+  const fast = goal.better === 'higher' ? round2(speed) >= target : round2(speed) <= target;
+  return run.level === goal.level && round2(run.successPercent) >= successPercent && fast;
 }
 
 /** Group saved attempts into completed timed rounds for one game, oldest first. */
 export function roundsFromHistory(history, game) {
+  const metric = goalMetric(game);
   const sessions = new Map();
   (Array.isArray(history) ? history : []).forEach((record, index) => {
     const row = normalizeHistoryRecord(record, index);
@@ -65,13 +102,14 @@ export function roundsFromHistory(history, game) {
     sessions.set(row.session, session);
   });
   return [...sessions.values()].map((session) => {
-    const timed = session.rows.filter((row) => row.isAnswered && row.responseTimeSeconds !== null);
+    const speeds = session.rows.map(metric.speed).filter((value) => value !== null);
     const correct = session.rows.filter((row) => row.isCorrect).length;
+    const averageSpeed = speeds.length ? speeds.reduce((sum, value) => sum + value, 0) / speeds.length : null;
     return {
       id: session.id, level: session.level, progressiveLevel: session.progressiveLevel,
       questions: session.rows.length, correct,
-      successPercent: session.rows.length ? (correct / session.rows.length) * 100 : 0,
-      averageSeconds: timed.length ? timed.reduce((sum, row) => sum + row.responseTimeSeconds, 0) / timed.length : null,
+      successPercent: session.rows.length ? session.rows.reduce((sum, row) => sum + metric.success(row), 0) / session.rows.length : 0,
+      averageSpeed, averageSeconds: metric.unit === 's' ? averageSpeed : null,
       timestampMs: Math.max(...session.rows.map((row) => row.timestampMs ?? 0)),
     };
   }).sort((a, b) => a.timestampMs - b.timestampMs);
@@ -86,26 +124,30 @@ export function goalProgress(history, game, savedSettings = {}) {
   const goals = goalsForGame(game);
   const rounds = roundsFromHistory(history, game);
   const settings = resolveGoalSettings(game, savedSettings);
+  const metric = goalMetric(game);
   const passed = new Map();
   let current = 0;
   // Per difficulty: running totals so every run is measured in constant time.
-  const levels = Object.fromEntries(LEVELS.map((level) => [level, { count: 0, correct: [0], seconds: [0], timed: [0] }]));
+  const levels = Object.fromEntries(LEVELS.map((level) => [level, { count: 0, correct: [0], success: [0], seconds: [0], timed: [0] }]));
   const runAt = (level, size) => {
     const track = levels[level];
     const from = track.count - size;
     const timed = track.timed[track.count] - track.timed[from];
+    const averageSpeed = timed ? (track.seconds[track.count] - track.seconds[from]) / timed : null;
     return {
       level, questions: size, correct: track.correct[track.count] - track.correct[from],
-      successPercent: ((track.correct[track.count] - track.correct[from]) / size) * 100,
-      averageSeconds: timed ? (track.seconds[track.count] - track.seconds[from]) / timed : null,
+      successPercent: (track.success[track.count] - track.success[from]) / size,
+      averageSpeed, averageSeconds: metric.unit === 's' ? averageSpeed : null,
     };
   };
   const rows = deduplicateHistory(Array.isArray(history) ? history : []).filter((row) => row.game === game && row.session && LEVELS.includes(row.difficulty) && !/guided/i.test(row.sessionMode ?? ''));
   for (const row of rows) {
     const track = levels[row.difficulty];
-    const timed = row.isAnswered && row.responseTimeSeconds !== null;
+    const speed = metric.speed(row);
+    const timed = speed !== null;
     track.correct.push(track.correct[track.count] + (row.isCorrect ? 1 : 0));
-    track.seconds.push(track.seconds[track.count] + (timed ? row.responseTimeSeconds : 0));
+    track.success.push(track.success[track.count] + metric.success(row));
+    track.seconds.push(track.seconds[track.count] + (timed ? speed : 0));
     track.timed.push(track.timed[track.count] + (timed ? 1 : 0));
     track.count += 1;
     if (track.count < settings.window) continue;
@@ -123,8 +165,9 @@ export function goalProgress(history, game, savedSettings = {}) {
     attempts: track?.count ?? 0, latest: latestSize ? runAt(currentLevel, latestSize) : null,
   };
   const levelOpen = (level) => goals.filter((goal) => LEVELS.indexOf(goal.level) < LEVELS.indexOf(level)).every((goal) => passed.has(goal.id));
-  const scored = rounds.filter((round) => round.questions >= GOAL_MINIMUM_QUESTIONS);
-  const timedRounds = scored.filter((round) => round.averageSeconds !== null);
+  const scored = rounds.filter((round) => round.questions >= metric.minimumQuestions);
+  const timedRounds = scored.filter((round) => round.averageSpeed !== null);
+  const speeds = timedRounds.map((round) => round.averageSpeed);
   return {
     game,
     goals: goals.map((goal) => ({ ...goal, passed: passed.has(goal.id), unlocked: passed.has(goal.id) || goal === goals[current] })),
@@ -132,7 +175,9 @@ export function goalProgress(history, game, savedSettings = {}) {
     passedCount: passed.size,
     total: goals.length,
     unlockedLevels: LEVELS.filter(levelOpen),
-    bestSeconds: timedRounds.length ? round2(Math.min(...timedRounds.map((round) => round.averageSeconds))) : null,
+    unit: metric.unit, better: metric.better, attemptName: metric.attemptName,
+    bestSpeed: speeds.length ? round2(metric.better === 'higher' ? Math.max(...speeds) : Math.min(...speeds)) : null,
+    bestSeconds: speeds.length && metric.unit === 's' ? round2(Math.min(...speeds)) : null,
     bestSuccessPercent: scored.length ? round2(Math.max(...scored.map((round) => round.successPercent))) : null,
     latest: scored.at(-1) ?? null,
     rounds: scored.length,
