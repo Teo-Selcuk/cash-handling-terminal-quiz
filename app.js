@@ -1,4 +1,4 @@
-import { accountStorage as localStorage, initializeAccounts } from './firebase-accounts.mjs?v=20261018-window';
+import { accountStorage as localStorage, initializeAccounts } from './firebase-accounts.mjs?v=20261019-livesync';
 import { canPlayGame } from './account-access.mjs';
 import { analyzeCashMistakes } from './cash-mistakes.mjs?v=20261011-fair-credit';
 import { enhanceHistoryTables } from './history-tables.mjs?v=20261018-explain';

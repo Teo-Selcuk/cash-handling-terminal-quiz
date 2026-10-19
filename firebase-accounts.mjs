@@ -2,7 +2,7 @@ import { AccountStorage, shouldReplace, SYNC_KEYS } from './account-data.mjs?v=2
 import { firebaseConfig } from './firebase-config.mjs';
 import { isApprovedUid } from './account-access.mjs';
 
-let sdk,auth,db,initialized=false,saving=false,retryTimer,loaded=false,unsubscribers=[];
+let sdk,auth,db,initialized=false,saving=false,retryTimer,slowTimer,loaded=false,unsubscribers=[];
 const $=id=>document.getElementById('account-'+id);
 const changedKeys=new Set();let changeTimer;
 const changed=key=>{changedKeys.add(key);clearTimeout(changeTimer);changeTimer=setTimeout(()=>{const keys=[...changedKeys];changedKeys.clear();for(const key of keys)window.dispatchEvent(new StorageEvent('storage',{key}));},80);};
@@ -31,32 +31,39 @@ function decode(data){return {key:data.key,value:JSON.parse(data.payload),delete
 function encode(entry){return {schema:1,key:entry.key,payload:JSON.stringify(entry.value),deleted:entry.deleted,modifiedAt:entry.modifiedAt,deviceId:entry.deviceId};}
 function collectionName(key){return [SYNC_KEYS[0],'cash-handling-chess-games-v1','cash-handling-chess-lessons-v1'].includes(key)?'gameHistory':'settings';}
 function scheduleSave(){clearTimeout(retryTimer);retryTimer=setTimeout(()=>void flush(),300);if(accountStorage.uid)status(navigator.onLine?'Syncing':'Offline · saved on this device');}
+const withTimeout=(promise,ms)=>Promise.race([promise,new Promise((_,reject)=>setTimeout(()=>reject({code:'unavailable'}),ms))]);
+async function syncEntry(uid,id,entry){
+  const ref=sdk.doc(db,'users',uid,collectionName(entry.key),id);
+  const result=await withTimeout(sdk.runTransaction(db,async transaction=>{
+    const existing=await transaction.get(ref);
+    const remote=existing.exists()?decode(existing.data()):null;
+    if(remote&&!shouldReplace(remote,entry))return remote;
+    transaction.set(ref,encode(entry));return null;
+  }),12000);
+  if(auth.currentUser?.uid!==uid)return;
+  if(result)accountStorage.merge(id,result);
+  else accountStorage.acknowledge(id,entry);
+}
 async function flush(){
   if(saving||!db||!accountStorage.uid)return;
   if(!navigator.onLine){status('Offline · saved on this device');return;}
   saving=true;const uid=accountStorage.uid;let failed=false;
   try{
     accountStorage.refresh();
-    for(const [id,entry] of accountStorage.pending()){
+    const queue=accountStorage.pending();
+    if(queue.length)status('Syncing');
+    for(let i=0;i<queue.length;i+=8){
       if(auth.currentUser?.uid!==uid)break;
-      status('Syncing');
-      const ref=sdk.doc(db,'users',uid,collectionName(entry.key),id);
-      const result=await sdk.runTransaction(db,async transaction=>{
-        const existing=await transaction.get(ref);
-        const remote=existing.exists()?decode(existing.data()):null;
-        if(remote&&!shouldReplace(remote,entry))return remote;
-        transaction.set(ref,encode(entry));return null;
-      });
-      if(auth.currentUser?.uid!==uid)break;
-      if(result)accountStorage.merge(id,result);
-      else accountStorage.acknowledge(id,entry);
+      await Promise.all(queue.slice(i,i+8).map(([id,entry])=>syncEntry(uid,id,entry)));
     }
+    $('error').textContent='';
     status(accountStorage.pending().length?'Syncing':loaded?'Saved':'Loading account…');
-  }catch(error){failed=true;status(navigator.onLine?'Sync error · saved on this device':'Offline · saved on this device');$('error').textContent=humanError(error);}
-  finally{saving=false;if(accountStorage.pending().length){clearTimeout(retryTimer);retryTimer=setTimeout(()=>void flush(),failed?15000:300);}}
+  }catch(error){failed=true;status(navigator.onLine?'Sync problem · saved on this device, retrying':'Offline · saved on this device');$('error').textContent=humanError(error);}
+  finally{saving=false;if(accountStorage.uid===uid&&accountStorage.pending().length){clearTimeout(retryTimer);retryTimer=setTimeout(()=>void flush(),failed?15000:300);}}
 }
 function subscribe(uid){
-  let ready=new Set();
+  let ready=new Set();loaded=false;
+  clearTimeout(slowTimer);slowTimer=setTimeout(()=>{if(!loaded&&accountStorage.uid===uid&&navigator.onLine)status('Sync problem · saved on this device, still trying');},8000);
   for(const kind of ['gameHistory','settings']){
     unsubscribers.push(sdk.onSnapshot(sdk.collection(db,'users',uid,kind),{includeMetadataChanges:true},snapshot=>{
       if(auth.currentUser?.uid!==uid)return;
@@ -64,9 +71,9 @@ function subscribe(uid){
       catch{status('Sync error · unreadable cloud record');return;}
       if(!snapshot.metadata.fromCache){ready.add(kind);loaded=ready.size===2;}
       $('import').disabled=!loaded;
-      if(loaded){$('error').textContent='';void flush();}
+      if(loaded){clearTimeout(slowTimer);$('error').textContent='';void flush();}
       else status(navigator.onLine?'Loading account…':'Offline · saved on this device');
-    },error=>{status('Sync error');$('error').textContent=humanError(error);}));
+    },error=>{status('Sync problem · saved on this device');$('error').textContent=humanError(error);}));
   }
 }
 async function action(operation){
@@ -92,12 +99,23 @@ export async function initializeAccounts(){
   accountStorage.activate(rememberedUid());
   void connectAccounts();
 }
-const LAST_UID_KEY='cash-trainer-last-uid-v1',RELOAD_GUARD_KEY='cash-trainer-uid-reload-v1';
+const LAST_UID_KEY='cash-trainer-last-uid-v1';
 function rememberedUid(){
   try{const uid=window.localStorage.getItem(LAST_UID_KEY);return uid&&isApprovedUid(uid)?uid:null;}catch{return null;}
 }
 function rememberUid(uid){
   try{if(uid)window.localStorage.setItem(LAST_UID_KEY,uid);else window.localStorage.removeItem(LAST_UID_KEY);}catch{}
+}
+// Sign in, sign out and account switches happen in place: no page reload, the app keeps working.
+function applyUser(user){
+  const uid=user?.uid??null;
+  unsubscribers.forEach(stop=>stop());unsubscribers=[];clearTimeout(retryTimer);clearTimeout(slowTimer);
+  rememberUid(uid);loaded=false;
+  if(uid!==accountStorage.uid){accountStorage.activate(uid);for(const key of SYNC_KEYS)changed(key);}
+  $('form').hidden=Boolean(user);$('signout').hidden=!user;$('user').textContent=user?.email??'Guest · saved on this device';
+  $('form').inert=false;$('error').textContent='';
+  if(user){status('Syncing in the background…');$('import').hidden=!accountStorage.guestDataAvailable();$('import').disabled=true;subscribe(uid);void flush();}
+  else{$('import').hidden=true;status('Sign in to sync across devices');}
 }
 async function connectAccounts(){
   try{
@@ -111,23 +129,11 @@ async function connectAccounts(){
     db=sdk.initializeFirestore(app,{localCache:sdk.persistentLocalCache({tabManager:sdk.persistentMultipleTabManager()})});
     await auth.authStateReady();
     if(auth.currentUser&&!isApprovedUid(auth.currentUser.uid))await sdk.signOut(auth);
-    const uid=auth.currentUser?.uid??null;
-    rememberUid(uid);
-    if(uid!==accountStorage.uid){
-      let guarded=false;
-      try{guarded=window.sessionStorage.getItem(RELOAD_GUARD_KEY)===String(uid);window.sessionStorage.setItem(RELOAD_GUARD_KEY,String(uid));}catch{}
-      if(!guarded){location.reload();return;}
-      accountStorage.activate(uid);
-    }
-    $('form').hidden=Boolean(auth.currentUser);$('signout').hidden=!auth.currentUser;
-    $('user').textContent=auth.currentUser?.email??'Guest · saved on this device';
-    $('form').inert=false;
-    if(auth.currentUser){status('Loading account…');$('import').hidden=!accountStorage.guestDataAvailable();$('import').disabled=true;subscribe(auth.currentUser.uid);void flush();}
-    else status('Sign in to sync across devices');
+    applyUser(auth.currentUser);
     sdk.onAuthStateChanged(auth,user=>{
       if(user&&!isApprovedUid(user.uid)){void sdk.signOut(auth);return;}
-      if(initialized&&(user?.uid??null)!==accountStorage.uid){rememberUid(user?.uid??null);unsubscribers.forEach(stop=>stop());clearTimeout(retryTimer);location.reload();}
+      if(initialized&&(user?.uid??null)!==accountStorage.uid)applyUser(user);
     });
     initialized=true;
-  }catch(error){status('Accounts unavailable · device saves active');$('error').textContent=humanError(error);$('form').inert=true;}
+  }catch(error){status('Sync problem · you can keep playing, saved on this device');$('error').textContent=humanError(error);$('form').inert=true;if(!db)setTimeout(()=>void connectAccounts(),20000);}
 }
