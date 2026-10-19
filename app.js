@@ -137,9 +137,7 @@ function applyChartAppearance(element, id) {
   const settings = chartSettings(id);
   const labelColor = settings.labelColor === 'custom' ? settings.customColor : chartLabelColors[settings.labelColor];
   element.style.setProperty('--chart-label-color', labelColor);
-  // Automatic keeps muted axis text; any chosen color applies to every chart label.
-  if (settings.labelColor === 'auto') element.style.removeProperty('--chart-text-color');
-  else element.style.setProperty('--chart-text-color', labelColor);
+  // Label color recolors data value labels only; axis text and legends stay theme-static.
   element.style.setProperty('--chart-label-scale', String(chartLabelSizes[settings.labelSize]));
   element.style.setProperty('--chart-label-font', chartLabelFonts[settings.labelFont]);
   element.style.setProperty('--chart-label-weight', settings.bold ? '750' : '400');

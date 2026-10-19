@@ -38,23 +38,35 @@ export async function checkHistoryLabels(browser, base) {
       assert.ok(!ids.includes('outcomes') && !ids.includes('correct-by-threshold'), `${game}: removed charts stay removed`);
     }
     await page.locator('#history-game-tabs button[data-history-game="cash"]').click();
-    await page.locator('[data-chart-settings="accuracy-by-difficulty"]').click();
-    assert.equal(await page.locator('#chart-settings-scope').inputValue(), 'all', 'Appearance applies to all charts by default');
-    await page.locator('#chart-settings-label-color').selectOption('custom');
-    await page.locator('#chart-settings-color-picker').fill('#ffffff');
-    await page.locator('#chart-settings-label-size').selectOption('large');
-    await page.locator('#chart-settings-label-font').selectOption('mono');
-    await page.locator('#chart-settings-form [type="submit"]').click();
-    const labels = await page.evaluate(() => {
-      const html = [...document.querySelectorAll('.visual-card .bar-chart-label, .visual-card .bar-chart-value, .visual-card .bar-chart-axis span, .visual-card .bar-chart-axis-title, .visual-card .chart-legend li span:last-child')];
-      const svg = [...document.querySelectorAll('#history-charts .analytics-svg text')];
-      return [...html.map((el) => ({ kind: 'html', color: getComputedStyle(el).color, font: getComputedStyle(el).fontFamily, text: el.textContent })),
-        ...svg.map((el) => ({ kind: 'svg', color: getComputedStyle(el).fill, font: getComputedStyle(el).fontFamily, text: el.textContent }))].filter((l) => l.text.trim());
+    const readLabels = () => page.evaluate(() => {
+      const isData = (el) => el.matches('.bar-chart-value, .chart-value-label');
+      const els = [...document.querySelectorAll('#history-charts .visual-card .bar-chart-label, #history-charts .visual-card .bar-chart-value, #history-charts .visual-card .bar-chart-axis span, #history-charts .visual-card .bar-chart-axis-title, #history-charts .visual-card .chart-legend, #history-charts .visual-card .chart-category-legend li, #history-charts .visual-card .chart-hue-title, #history-charts .visual-card .chart-hue-ticks, #history-charts .analytics-svg text')];
+      return els.filter((el) => el.textContent.trim()).map((el) => {
+        const style = getComputedStyle(el);
+        return { data: isData(el), color: el instanceof SVGElement ? style.fill : style.color, font: style.fontFamily, text: el.textContent.trim(), key: el.className.baseVal ?? el.className };
+      });
     });
-    assert.ok(labels.length > 20);
-    const notWhite = labels.filter((l) => l.color !== 'rgb(255, 255, 255)');
-    assert.deepEqual(notWhite.slice(0, 5), [], 'every chart label follows the chosen white label color');
-    assert.ok(labels.every((l) => /monospace|Consolas|Cascadia/i.test(l.font)), 'every chart label follows the chosen font');
+    for (const theme of ['dark', 'light']) {
+      await page.evaluate((value) => { document.documentElement.dataset.theme = value; }, theme);
+      const before = (await readLabels()).filter((l) => !l.data).map((l) => l.color);
+      await page.locator('[data-chart-settings="accuracy-by-difficulty"]').click();
+      assert.equal(await page.locator('#chart-settings-scope').inputValue(), 'all', 'Appearance applies to all charts by default');
+      await page.locator('#chart-settings-label-color').selectOption('custom');
+      await page.locator('#chart-settings-color-picker').fill('#ff00ff');
+      await page.locator('#chart-settings-label-font').selectOption('mono');
+      await page.locator('#chart-settings-form [type="submit"]').click();
+      const labels = await readLabels();
+      const data = labels.filter((l) => l.data);
+      const staticLabels = labels.filter((l) => !l.data);
+      assert.ok(labels.length > 20, `${theme}: charts render labels`);
+      assert.ok(data.length > 0 && data.every((l) => l.color === 'rgb(255, 0, 255)'), `${theme}: data labels follow the chosen color`);
+      assert.deepEqual(staticLabels.filter((l) => l.color === 'rgb(255, 0, 255)').slice(0, 5), [], `${theme}: axis, legend, and title text ignore the data label color`);
+      assert.deepEqual(staticLabels.map((l) => l.color), before, `${theme}: static text colors unchanged by data label color`);
+      assert.ok(labels.every((l) => /monospace|Consolas|Cascadia/i.test(l.font)), `${theme}: font still applies to every chart label`);
+    }
+    await page.locator('[data-chart-settings="accuracy-by-difficulty"]').click();
+    await page.locator('#chart-settings-label-size').selectOption('large');
+    await page.locator('#chart-settings-form [type="submit"]').click();
     const size = await page.locator('#history-accuracy-chart .bar-chart-label').first().evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
     assert.ok(size > 17, 'label size setting enlarges labels');
     await page.locator('#history-accuracy-chart').screenshot({ path: (process.env.TEMP || '/tmp') + '/accuracy-by-difficulty.png' });
