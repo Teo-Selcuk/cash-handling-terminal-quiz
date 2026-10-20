@@ -1,4 +1,4 @@
-import { accountStorage as localStorage, initializeAccounts } from './firebase-accounts.mjs?v=20261019-livesync';
+import { accountStorage as localStorage, initializeAccounts } from './firebase-accounts.mjs?v=20261020-fast';
 import { canPlayGame } from './account-access.mjs';
 import { analyzeCashMistakes } from './cash-mistakes.mjs?v=20261011-fair-credit';
 import { enhanceHistoryTables } from './history-tables.mjs?v=20261018-explain';
@@ -950,11 +950,15 @@ function renderPresetEditor() {
   refs['preset-task-demo-speed'].value = String(preset.demoStepMilliseconds / 1000);
 }
 
+// Startup draws the setup controls first; the history-based goal panels follow right after the first paint.
+let setupInsightsReady = false;
 function updateGameSetup() {
   const game = selectedGame();
   chessUI.setupChanged(game);
-  renderSpeedGoals(refs['speed-goals-setup'], getHistory(), game);
-  renderProgressiveLevels(game);
+  if (setupInsightsReady) {
+    renderSpeedGoals(refs['speed-goals-setup'], getHistory(), game);
+    renderProgressiveLevels(game);
+  }
   document.getElementById('overload-setup-options').hidden = game !== 'overload';
   document.querySelectorAll('#overload-setup-options input, #overload-setup-options select').forEach(node => { node.disabled = game !== 'overload'; });
   document.getElementById('typing-setup-options').hidden = game !== 'typing';
@@ -6337,12 +6341,30 @@ function requireGameAccess(game) {
   return false;
 }
 const fraudChoice=document.querySelector('input[name="game"][value="fraud-inspection"]');
-fraudChoice.disabled=!canPlayGame('fraud-inspection',localStorage.uid);
-fraudChoice.closest('label').classList.toggle('game-locked',fraudChoice.disabled);
-document.getElementById('fraud-access-note').hidden=!fraudChoice.disabled;
+function updateGameAccess(){
+  fraudChoice.disabled=!canPlayGame('fraud-inspection',localStorage.uid);
+  fraudChoice.closest('label').classList.toggle('game-locked',fraudChoice.disabled);
+  document.getElementById('fraud-access-note').hidden=!fraudChoice.disabled;
+  if(fraudChoice.disabled&&fraudChoice.checked){document.querySelector('input[name="game"][value="cash"]').checked=true;updateGameSetup();}
+}
+updateGameAccess();
+// Sign-in and sign-out switch accounts without a reload, so game access follows the account live.
+window.addEventListener('account-change',()=>{updateGameAccess();if(state.activeScreen==='setup')updateGameSetup();});
 document.getElementById('fraud-signin').addEventListener('click',()=>requireGameAccess('fraud-inspection'));
 refs['setup-form'].inert=false;
 document.querySelector('.header-actions').inert=false;
 document.getElementById('qralarm-connection').inert=false;
 document.documentElement.dataset.appReady='true';
 performance.mark?.('app-ready');
+{
+  const showSetupInsights=()=>{
+    if(setupInsightsReady)return;
+    setupInsightsReady=true;
+    const game=selectedGame();
+    renderSpeedGoals(refs['speed-goals-setup'],getHistory(),game);
+    renderProgressiveLevels(game);
+  };
+  // Hidden tabs skip animation frames, so a timer backs up the after-paint callback.
+  requestAnimationFrame(()=>setTimeout(showSetupInsights,0));
+  setTimeout(showSetupInsights,400);
+}

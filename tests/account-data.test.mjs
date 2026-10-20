@@ -39,3 +39,22 @@ test('completed cloud attempt wins over a newer in-progress checkpoint',()=>{
   cache.merge(id,{...entry,modifiedAt:entry.modifiedAt-100,value:record,pending:false});
   assert.equal(JSON.parse(cache.getItem(history))[0].outcome,'Correct');assert.equal(cache.pending().length,0);
 });
+test('a burst of cloud records is merged without re-reading or re-writing the whole cache each time',()=>{
+  const map=new Map();let writes=0,reads=0;
+  const device={getItem:k=>{if(k.startsWith('cash-trainer-account-cache-v1:'))reads++;return map.get(k)??null;},setItem:(k,v)=>{if(k.startsWith('cash-trainer-account-cache-v1:'))writes++;map.set(k,v);},removeItem:k=>map.delete(k)};
+  const cache=new AccountStorage(device);cache.activate('A');reads=0;
+  for(let i=0;i<200;i++)cache.merge(documentId(history,`s${i}:1`),{key:history,value:{...record,sessionId:`s${i}`},deleted:false,modifiedAt:i+1,deviceId:'d'});
+  assert.equal(JSON.parse(cache.getItem(history)).length,200);
+  assert.equal(reads,0,'own writes are not re-parsed');assert.equal(writes,0,'merges are written once, after the burst');
+  cache.persist();assert.equal(writes,1);
+  const other=new AccountStorage(device);other.activate('A');assert.equal(JSON.parse(other.getItem(history)).length,200);
+});
+test('full browser storage never throws into the game; values stay readable for this visit',()=>{
+  const map=new Map();let errors=0;
+  const device={getItem:k=>map.get(k)??null,setItem:(k,v)=>{if(k===history||k.startsWith('cash-trainer-account-cache-v1:'))throw Object.assign(new Error('full'),{name:'QuotaExceededError'});map.set(k,v);},removeItem:k=>map.delete(k)};
+  const cache=new AccountStorage(device,{onStorageError:()=>errors++});
+  assert.doesNotThrow(()=>cache.setItem(history,JSON.stringify([record])));
+  assert.deepEqual(JSON.parse(cache.getItem(history)),[record]);
+  cache.activate('A');assert.doesNotThrow(()=>cache.setItem(history,JSON.stringify([record])));
+  assert.deepEqual(JSON.parse(cache.getItem(history)),[record]);assert.equal(errors,1);
+});

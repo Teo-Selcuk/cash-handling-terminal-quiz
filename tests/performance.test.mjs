@@ -38,7 +38,8 @@ test('the first screen does not wait for the Firebase network', () => {
   assert.doesNotMatch(body, /authStateReady|import\('https:/, 'initializeAccounts must not await the SDK or auth');
   assert.match(body, /void connectAccounts\(\)/);
   assert.match(body, /accountStorage\.activate\(rememberedUid\(\)\)/);
-  assert.match(source, /location\.reload\(\)/, 'a different real account still reloads once');
+  assert.doesNotMatch(source, /location\.reload\(\)/, 'signing in or out switches accounts in place, without a reload');
+  assert.match(body, /requestIdleCallback/, 'Firebase starts after the first screen is drawn');
 });
 
 test('repeated error analytics for the same attempts come from the cache', () => {

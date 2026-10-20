@@ -1,13 +1,19 @@
-import { AccountStorage, shouldReplace, SYNC_KEYS } from './account-data.mjs?v=20261018-window';
+import { AccountStorage, shouldReplace, SYNC_KEYS } from './account-data.mjs?v=20261020-fast';
 import { firebaseConfig } from './firebase-config.mjs';
 import { isApprovedUid } from './account-access.mjs';
 
-let sdk,auth,db,initialized=false,saving=false,retryTimer,slowTimer,loaded=false,unsubscribers=[];
+let sdk,auth,db,initialized=false,connecting=false,reconnectTimer,saving=false,retryTimer,slowTimer,loaded=false,unsubscribers=[];
 const $=id=>document.getElementById('account-'+id);
 const changedKeys=new Set();let changeTimer;
 const changed=key=>{changedKeys.add(key);clearTimeout(changeTimer);changeTimer=setTimeout(()=>{const keys=[...changedKeys];changedKeys.clear();for(const key of keys)window.dispatchEvent(new StorageEvent('storage',{key}));},80);};
-export const accountStorage=new AccountStorage(window.localStorage,{onWrite:()=>scheduleSave(),onChange:changed});
-function status(text){$('status').textContent=text;}
+// Storage may be blocked (private mode) or full; the app then keeps working from memory.
+const deviceStorage=(()=>{try{return window.localStorage;}catch{const map=new Map();return {getItem:k=>map.get(k)??null,setItem:(k,v)=>map.set(k,String(v)),removeItem:k=>map.delete(k)};}})();
+export const accountStorage=new AccountStorage(deviceStorage,{onWrite:()=>scheduleSave(),onChange:changed,onStorageError:storageFull});
+function storageFull(){
+  const text=accountStorage.uid?'This device’s browser storage is full. New progress is kept for this visit and synced to your account when the cloud connects.':'This device’s browser storage is full. New progress is kept for this visit only; sign in to keep it in your account.';
+  queueMicrotask(()=>{const node=$('error');if(node)node.textContent=text;});
+}
+function status(text){const node=$('status');if(node)node.textContent=text;}
 function humanError(error){
   const messages={
     'auth/invalid-credential':'Email or password is incorrect.', 'auth/invalid-email':'Enter a valid email address.',
@@ -90,14 +96,18 @@ export async function initializeAccounts(){
   $('show-password').addEventListener('click',()=>{const show=$('password').type==='password';$('password').type=show?'text':'password';$('show-password').textContent=show?'Hide':'Show';$('show-password').setAttribute('aria-pressed',String(show));$('show-password').setAttribute('aria-label',show?'Hide password':'Show password');});
   $('signout').addEventListener('click',()=>void action(()=>sdk.signOut(auth)));
   $('import').addEventListener('click',()=>{try{accountStorage.migrateGuest();$('import').hidden=true;status('Syncing imported device history…');}catch(error){$('error').textContent=error.message;}});
-  $('retry').addEventListener('click',()=>{if(db){$('error').textContent='';void flush();}else location.reload();});
+  $('retry').addEventListener('click',()=>{$('error').textContent='';if(initialized)void flush();else if(!connecting)void connectAccounts();});
   window.addEventListener('online',()=>{if(db)void flush();});
   window.addEventListener('offline',()=>{if(accountStorage.uid)status('Offline · saved on this device');});
   window.addEventListener('storage',event=>{if(event.key?.startsWith('cash-trainer-account-cache-v1:')&&event.key.endsWith(':'+accountStorage.uid)){accountStorage.refresh();for(const key of SYNC_KEYS)changed(key);scheduleSave();}});
   // The app starts from the account remembered on this device; the network check below runs in the background so a
   // slow Firebase connection never delays the first screen. A different real account triggers one reload.
   accountStorage.activate(rememberedUid());
-  void connectAccounts();
+  status(accountStorage.uid?'Saved on this device · connecting…':'Saved on this device');
+  // Start Firebase after the first screen is drawn and idle, so its download and setup never block taps.
+  const start=()=>void connectAccounts();
+  const later=()=>('requestIdleCallback' in window?requestIdleCallback(start,{timeout:1500}):setTimeout(start,200));
+  if(document.readyState==='complete')later();else window.addEventListener('load',later,{once:true});
 }
 const LAST_UID_KEY='cash-trainer-last-uid-v1';
 function rememberedUid(){
@@ -111,23 +121,26 @@ function applyUser(user){
   const uid=user?.uid??null;
   unsubscribers.forEach(stop=>stop());unsubscribers=[];clearTimeout(retryTimer);clearTimeout(slowTimer);
   rememberUid(uid);loaded=false;
-  if(uid!==accountStorage.uid){accountStorage.activate(uid);for(const key of SYNC_KEYS)changed(key);}
+  if(uid!==accountStorage.uid){accountStorage.activate(uid);for(const key of SYNC_KEYS)changed(key);window.dispatchEvent(new CustomEvent('account-change',{detail:{uid}}));}
   $('form').hidden=Boolean(user);$('signout').hidden=!user;$('user').textContent=user?.email??'Guest · saved on this device';
   $('form').inert=false;$('error').textContent='';
   if(user){status('Syncing in the background…');$('import').hidden=!accountStorage.guestDataAvailable();$('import').disabled=true;subscribe(uid);void flush();}
   else{$('import').hidden=true;status('Sign in to sync across devices');}
 }
 async function connectAccounts(){
+  if(initialized||connecting)return;
+  connecting=true;
   try{
     const imports=Promise.all([
       import('https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js'),
       import('https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js'),
       import('https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js'),
     ]);
-    const modules=await Promise.race([imports,new Promise((_,reject)=>setTimeout(()=>reject(new Error('SDK unavailable')),10000))]);
-    sdk=Object.assign({},...modules);const app=sdk.initializeApp(firebaseConfig);auth=sdk.getAuth(app);
-    db=sdk.initializeFirestore(app,{localCache:sdk.persistentLocalCache({tabManager:sdk.persistentMultipleTabManager()})});
-    await auth.authStateReady();
+    const modules=await Promise.race([imports,new Promise((_,reject)=>setTimeout(()=>reject({code:'unavailable'}),10000))]);
+    sdk=Object.assign({},...modules);const app=sdk.getApps().length?sdk.getApp():sdk.initializeApp(firebaseConfig);auth=sdk.getAuth(app);
+    try{db=sdk.initializeFirestore(app,{localCache:sdk.persistentLocalCache({tabManager:sdk.persistentMultipleTabManager()})});}
+    catch{db=sdk.getFirestore(app);}
+    await Promise.race([auth.authStateReady(),new Promise((_,reject)=>setTimeout(()=>reject({code:'unavailable'}),10000))]);
     if(auth.currentUser&&!isApprovedUid(auth.currentUser.uid))await sdk.signOut(auth);
     applyUser(auth.currentUser);
     sdk.onAuthStateChanged(auth,user=>{
@@ -135,5 +148,6 @@ async function connectAccounts(){
       if(initialized&&(user?.uid??null)!==accountStorage.uid)applyUser(user);
     });
     initialized=true;
-  }catch(error){status('Sync problem · you can keep playing, saved on this device');$('error').textContent=humanError(error);$('form').inert=true;if(!db)setTimeout(()=>void connectAccounts(),20000);}
+  }catch(error){status('Sync problem · you can keep playing, saved on this device');$('error').textContent=humanError(error);$('form').inert=true;clearTimeout(reconnectTimer);reconnectTimer=setTimeout(()=>void connectAccounts(),20000);}
+  finally{connecting=false;}
 }
