@@ -35,10 +35,10 @@ export async function checkSampleHistory(browser, site) {
 
     await page.locator('#history-data-source input[value="sample"]').check();
     await page.locator('#history-sample-banner').waitFor({ state: 'visible' });
-    assert.match(await page.locator('#history-sample-banner').innerText(), /SAMPLE DATA MODE/);
+    assert.match(await page.locator('#history-sample-banner').textContent(), /SAMPLE DATA MODE/);
     assert.equal(Number((await page.locator('#history-metrics .metric strong').first().textContent()).replaceAll(',', '')), 1680);
     assert.match(await page.locator('#history-error-data-label').textContent(), /Based on Sample Data/);
-    assert.match(await page.locator('#history-error-metrics').innerText(), /Overall error rate/);
+    assert.match(await page.locator('#history-error-metrics').textContent(), /Overall error rate/);
     assert.ok(await page.locator('[data-table-source="history-error-category-table"] tbody tr').count() > 1, 'sample mode has game-specific error categories');
     assert.ok(await page.locator('[data-table-source="history-error-raw-table"] tbody tr').count() > 1, 'sample mode has raw-input error rates');
     assert.ok(await page.locator('[data-table-source="history-error-combination-table"] tbody tr').count() > 1, 'sample mode has input-combination rates');
@@ -46,7 +46,7 @@ export async function checkSampleHistory(browser, site) {
     assert.equal(await page.locator('#history-rows tr').count(), 1680, 'all attempts remain available inside the bounded viewport');
     assert.match(await page.locator('#history-attempt-summary').textContent(), /1,680 matching/);
     assert.equal(await page.locator('#clear-history').isDisabled(), true, 'real history clear is disabled in sample mode');
-    assert.match(await page.locator('#history-insights').innerText(), /Based on Sample Data/);
+    assert.match(await page.locator('#history-insights').textContent(), /Based on Sample Data/);
     assert.equal(await page.locator('#history-recommendations button').filter({ hasText: 'Based on Sample Data' }).count(), 0);
     if (await page.locator('#history-recommendations .sample-recommendation-note').count()) {
       assert.equal(await page.locator('#history-recommendations button').filter({ hasText: 'Practice plan unavailable' }).isDisabled(), true);
@@ -79,7 +79,7 @@ export async function checkSampleHistory(browser, site) {
     };
     for (const [game, field] of Object.entries(gameFilters)) {
       await page.locator(`#history-game-tabs button[data-history-game="${game}"]`).click();
-      assert.match(await page.locator('#history-game-filters').innerText(), new RegExp(field));
+      assert.match(await page.locator('#history-game-filters').textContent(), new RegExp(field));
       assert.ok(Number((await page.locator('#history-metrics .metric strong').first().textContent()).replaceAll(',', '')) > 0, `${game} has matching attempts`);
       assert.ok(await page.locator('#history-charts .interactive-chart').count() > 0, `${game} populates charts`);
     }
@@ -199,9 +199,9 @@ export async function checkSampleHistory(browser, site) {
     await emptyPage.addInitScript((key) => localStorage.setItem(key, '[]'), historyKey);
     await emptyPage.goto(site);
     await emptyPage.locator('#open-history').click();
-    assert.match(await emptyPage.locator('#history-empty-real').innerText(), /No real history yet\./);
+    assert.match(await emptyPage.locator('#history-empty-real').textContent(), /No real history yet\./);
     await emptyPage.locator('#history-view-sample').click();
-    assert.match(await emptyPage.locator('#history-sample-banner').innerText(), /SAMPLE DATA MODE/);
+    assert.match(await emptyPage.locator('#history-sample-banner').textContent(), /SAMPLE DATA MODE/);
     assert.equal(Number((await emptyPage.locator('#history-metrics .metric strong').first().textContent()).replaceAll(',', '')), 1680);
     assert.equal(await emptyPage.evaluate((key) => localStorage.getItem(key), historyKey), '[]', 'sample mode leaves an empty real history empty');
     assert.equal(await emptyPage.evaluate((key) => localStorage.getItem(key), challengeKey), null, 'sample mode creates no persistent real recommendation');

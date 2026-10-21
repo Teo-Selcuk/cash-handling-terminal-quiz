@@ -97,8 +97,18 @@ function normalizedAttemptId(record, index) {
   return `legacy:${index}:${escaped(record.timestamp)}`;
 }
 
+// A normalized view is a pure function of the record and its position, and every screen asks for the same ones, so each
+// view is built once per record object (the app hands out the same record objects until the saved data changes).
+const normalizedViews = new WeakMap();
 /** Return an additive normalized view of one history record. */
 export function normalizeHistoryRecord(record, index = 0) {
+  if (record === null || typeof record !== 'object') return normalizeHistoryRecordUncached(record, index);
+  let byIndex = normalizedViews.get(record);
+  if (!byIndex) { byIndex = new Map(); normalizedViews.set(record, byIndex); }
+  if (!byIndex.has(index)) byIndex.set(index, normalizeHistoryRecordUncached(record, index));
+  return byIndex.get(index);
+}
+function normalizeHistoryRecordUncached(record, index = 0) {
   if (!record || typeof record !== 'object' || !OUTCOMES.has(record.outcome)) return null;
   const game = gameOf(record);
   if (!game) return null;

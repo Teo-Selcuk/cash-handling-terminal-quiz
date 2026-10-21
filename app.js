@@ -1,9 +1,9 @@
 import { accountStorage as localStorage, initializeAccounts } from './firebase-accounts.mjs?v=20261020-sync';
 import { canPlayGame } from './account-access.mjs';
 import { analyzeCashMistakes } from './cash-mistakes.mjs?v=20261011-fair-credit';
-import { enhanceHistoryTables } from './history-tables.mjs?v=20261021-alltables2';
+import { enhanceHistoryTables } from './history-tables.mjs?v=20261021-fast';
 import { chartExplanation, summaryChartExplanation, createExplanation } from './history-explanations.mjs?v=20261018-explain';
-import { goalProgress, availableProgressiveLevels, PROGRESSIVE_LEVELS, fraudProgressiveOverrides, GOAL_SETTINGS_KEY, GOAL_WINDOW_LIMITS, GOAL_SUCCESS_LIMITS, resolveGoalSettings } from './speed-goals.mjs?v=20261018-goals';
+import { goalProgress, availableProgressiveLevels, PROGRESSIVE_LEVELS, fraudProgressiveOverrides, GOAL_SETTINGS_KEY, GOAL_WINDOW_LIMITS, GOAL_SUCCESS_LIMITS, resolveGoalSettings } from './speed-goals.mjs?v=20261021-fast';
 import { createOverloadUI } from './overload-ui.mjs?v=20261003-accounts';
 import { summarizeOverload, overloadRecommendation } from './overload-analytics.mjs?v=20261003-accounts';
 import { decideCheck, scoreHoldDecision, ITEM_TYPES, ITEM_REASONS, ACTIONS, HOLD_TYPES, availabilityText } from './check-holds.mjs?v=20261003-accounts';
@@ -24,7 +24,7 @@ import { PRACTICE_GAMES, rankPracticeCandidates, recommendPractice, practiceSett
 import {
   buildChartSpecs, buildConditionalReport, buildErrorAnalytics, buildAdvancedErrorAnalytics, buildGameFilters, buildProgressModel, comparePeriods,
   filterHistory, recommendNextChallenge, progressionSegments,
-} from './progress-analytics.mjs?v=20261017-perf';
+} from './progress-analytics.mjs?v=20261021-fast';
 import { generateSampleHistory, generateSampleChessHistory } from './sample-history.mjs?v=20261008-advanced-errors';
 import {
   DENOMINATIONS,
@@ -544,11 +544,19 @@ function showScreen(name) {
   else if (heading) window.setTimeout(() => heading.focus({ preventScroll: true }), 0);
 }
 
+// The saved history is parsed once per distinct saved text. Every caller gets the same read-only array of the same record
+// objects, so per-record work (hashing, normalizing) and the analytics caches built on it are reused across screens.
+// Code that needs to change the list copies it first (see persistRecord).
+let historyCache = { raw: null, list: [] };
 function getHistory(strict = false) {
   try {
-    const history = JSON.parse(localStorage.getItem(HISTORY_KEY) ?? '[]');
-    if (!Array.isArray(history)) throw new Error('Saved history is not a list.');
-    return history;
+    const raw = localStorage.getItem(HISTORY_KEY) ?? '[]';
+    if (raw !== historyCache.raw) {
+      const history = JSON.parse(raw);
+      if (!Array.isArray(history)) throw new Error('Saved history is not a list.');
+      historyCache = { raw, list: history };
+    }
+    return historyCache.list;
   } catch (error) {
     if (strict) throw error;
     return [];
@@ -792,7 +800,7 @@ function persistRecord(record) {
     evidence.noiseMaintained = evidence.noiseMaintained && state.sessionNoiseStarted
       && state.distractionAudioContext?.state === 'running';
   }
-  const history = getHistory();
+  const history = getHistory().slice();
   const savedRecord = { ...record, ...evidence,
     settingsJson: JSON.stringify(sessionPreset()),
     ...(state.practicePlan ? { practicePlanJson: JSON.stringify({ ...state.practicePlan, evidence: [] }) } : {}),
@@ -4775,27 +4783,31 @@ function renderChartCard(spec, records) {
   const summary = document.createElement('summary');
   summary.textContent = 'Table alternative';
   tableDetails.append(summary);
-  const table = document.createElement('table');
-  table.innerHTML = '<thead><tr><th>Category</th><th>Value</th><th>Evidence</th><th>95% interval</th></tr></thead>';
-  const body = document.createElement('tbody');
-  points.forEach((point) => {
-    const row = document.createElement('tr');
-    const correct = point.correct ?? point.detail?.correct;
-    const evidence = series.metric === 'accuracy' && point.measure !== 'mean' && correct !== undefined
-      ? `${correct} / ${point.count}` : Number.isFinite(point.opportunities) && Number.isFinite(point.errors)
-        ? `${point.errors} / ${point.opportunities} errors across ${point.attemptCount ?? point.attemptIds.length} attempts`
-        : `${point.attemptIds.length} ${spec.evidenceUnit ?? 'attempts'}`;
-    [point.label, chartValue(point, series.metric), evidence, point.interval ? `${point.interval[0]}–${point.interval[1]}%` : '—'].forEach((value) => {
-      const cell = document.createElement('td');
-      cell.textContent = value;
-      row.append(cell);
+  // The table alternative stays closed until someone asks for it, so it is built on first open instead of for every chart.
+  const buildTableAlternative = () => {
+    const table = document.createElement('table');
+    table.innerHTML = '<thead><tr><th>Category</th><th>Value</th><th>Evidence</th><th>95% interval</th></tr></thead>';
+    const body = document.createElement('tbody');
+    points.forEach((point) => {
+      const row = document.createElement('tr');
+      const correct = point.correct ?? point.detail?.correct;
+      const evidence = series.metric === 'accuracy' && point.measure !== 'mean' && correct !== undefined
+        ? `${correct} / ${point.count}` : Number.isFinite(point.opportunities) && Number.isFinite(point.errors)
+          ? `${point.errors} / ${point.opportunities} errors across ${point.attemptCount ?? point.attemptIds.length} attempts`
+          : `${point.attemptIds.length} ${spec.evidenceUnit ?? 'attempts'}`;
+      [point.label, chartValue(point, series.metric), evidence, point.interval ? `${point.interval[0]}–${point.interval[1]}%` : '—'].forEach((value) => {
+        const cell = document.createElement('td');
+        cell.textContent = value;
+        row.append(cell);
+      });
+      body.append(row);
     });
-    body.append(row);
-  });
-  table.append(body);
-  tableDetails.append(table);
+    table.append(body);
+    tableDetails.append(table);
+    enhanceHistoryTables(tableDetails);
+  };
+  tableDetails.addEventListener('toggle', () => { if (tableDetails.open && !tableDetails.querySelector('table')) buildTableAlternative(); }, { once: false });
   card.append(tableDetails);
-  enhanceHistoryTables(card);
   return card;
 }
 

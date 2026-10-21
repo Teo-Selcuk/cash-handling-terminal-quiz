@@ -28,7 +28,9 @@ test('closed tables are not measured or drawn, and chart data tables stay inside
   assert.match(css, /chess-history-selected[^{]*:not\(#history-all-tables\)/, 'the section stays visible on the Chess tab');
 });
 
-test('the changed modules and stylesheet carry a fresh cache-busting version', () => {
-  assert.match(html, /history-tables\.mjs\?v=20261021-alltables2/);
-  assert.match(html, /style\.css\?v=20261021-alltables2/);
+test('the History table module and stylesheet are preloaded under the version app.js imports', () => {
+  const app = readFileSync(new URL('../app.js', import.meta.url), 'utf8');
+  const imported = app.match(/history-tables\.mjs\?v=([\w-]+)/)[1];
+  assert.match(html, new RegExp(`history-tables\\.mjs\\?v=${imported}`));
+  assert.match(html, /style\.css\?v=[\w-]+/);
 });

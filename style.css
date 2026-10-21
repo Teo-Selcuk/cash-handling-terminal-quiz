@@ -1292,3 +1292,14 @@ button.chess-square.last-move { box-shadow: inset 0 0 0 999px rgb(246 246 105 / 
 #chess-screen .chess-topbar > #chess-fullscreen-note { flex: 0 1 auto; margin: 0 0 0 auto; text-align: right; }
 #chess-screen > .screen-title-row { margin-bottom: 0.25rem; }
 #chess-screen .chess-sidebar .chart-note { text-align: left; }
+
+/* Long History panels skip layout and paint until they are near the viewport. A maximized chart is position: fixed and a
+   contained ancestor would trap it, so containment is switched off while one is open. */
+#history-screen .history-error-analysis,
+#history-screen .history-charts,
+#history-screen .error-analysis-tables,
+#history-screen .history-comparison,
+#history-screen .practice-section { content-visibility: auto; contain-intrinsic-size: auto 900px; }
+body:has(.interactive-chart.is-maximized) #history-screen .history-error-analysis,
+body:has(.interactive-chart.is-maximized) #history-screen .history-charts { content-visibility: visible; }
+.all-tables-list > .history-table-container { content-visibility: auto; contain-intrinsic-size: auto 360px; }

@@ -56,7 +56,7 @@ export async function checkProgress(browser, site) {
     assert.match(await page.locator('#history-heading').textContent(), /History \| Progress \| Charts \| Attempts/);
     assert.equal(await page.locator('#history-error-analysis').isVisible(), true, 'filtered Error Analysis is available in History');
     assert.match(await page.locator('#history-error-data-label').textContent(), /saved real gameplay/);
-    assert.match(await page.locator('#history-error-metrics').innerText(), /Overall error rate.*108\/324/s);
+    assert.match(await page.locator('#history-error-metrics').textContent(), /Overall error rate.*108\/324/s);
     assert.ok(await page.locator('[data-table-source="history-error-category-table"] tbody tr').count() > 0, 'game-specific error categories render');
     assert.ok(await page.locator('[data-table-source="history-error-combination-table"] tbody tr').count() > 0, 'supported raw-input combinations render');
     assert.ok(await page.locator('#history-error-charts h4').allTextContents().then((titles) => titles.includes('Error Rate by Category') && titles.includes('Error Rate by Raw Input') && titles.includes('Error Rate Over Time')),
@@ -209,14 +209,14 @@ export async function checkProgress(browser, site) {
     const conditions = page.locator('#history-insights select');
     await conditions.nth(0).selectOption('cash|Transaction|Change');
     await conditions.nth(1).selectOption('cash|Hundred-dollar bills|Two or more');
-    assert.match(await page.locator('#history-insights').innerText(), /4\/6; 95% Wilson interval/);
+    assert.match(await page.locator('#history-insights').textContent(), /4\/6; 95% Wilson interval/);
     await page.locator('#clear-history-filters').click();
     await page.locator('#history-quick-ranges button[data-history-range="50a"]').click();
     assert.equal(await page.locator('#history-quick-ranges button[data-history-range="50a"]').getAttribute('aria-pressed'), 'true');
-    assert.match(await page.locator('#history-insights').innerText(), /Correct by:.*5s.*10s.*15s/s);
+    assert.match(await page.locator('#history-insights').textContent(), /Correct by:.*5s.*10s.*15s/s);
     assert.ok(await page.locator('#history-error-charts .interactive-chart').filter({ has: page.getByRole('heading', { name: 'Error Rate Over Time' }) }).count() === 1,
       'the 50-attempt legacy selection recalculates its supported error trend');
-    assert.match(await page.locator('#history-error-metrics').innerText(), /Overall error rate/);
+    assert.match(await page.locator('#history-error-metrics').textContent(), /Overall error rate/);
     await page.locator('#error-analysis-sort').selectOption('alphabetical');
     assert.equal(await page.locator('#error-analysis-sort').inputValue(), 'alphabetical', 'error breakdowns can be sorted');
     await page.locator('#error-analysis-sort').selectOption('error-rate');
@@ -227,7 +227,7 @@ export async function checkProgress(browser, site) {
     assert.ok(await chart.locator('.chart-y-tick').count() >= 3, 'charts show numeric Y-axis ticks');
     assert.equal(await chart.locator('.chart-series-line').count(), 1, 'time-series points are connected');
     assert.ok(await page.locator('#history-charts .interactive-chart').locator('.chart-value-label').count(), 'bar chart values are visible');
-    assert.match(await page.locator('#history-accuracy-chart').innerText(), /Accuracy.*Difficulty.*0%.*100%/s, 'summary bar chart labels its category and aligned numeric axis');
+    assert.match(await page.locator('#history-accuracy-chart').textContent(), /Accuracy.*Difficulty.*0%.*100%/s, 'summary bar chart labels its category and aligned numeric axis');
     await chart.getByRole('button', { name: 'Hide data' }).click();
     await chart.getByRole('button', { name: 'Show data' }).click();
     await chart.getByRole('button', { name: 'Zoom in' }).click();

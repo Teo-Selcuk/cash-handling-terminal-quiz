@@ -1,6 +1,6 @@
 // Per-game speed goals and progressive levels. Goal progress is derived from the
 // saved attempt history, so it persists wherever that history persists.
-import { normalizeHistoryRecord, deduplicateHistory } from './progress-analytics.mjs?v=20261017-perf';
+import { normalizeHistoryRecord, deduplicateHistory } from './progress-analytics.mjs?v=20261021-fast';
 
 export const GOAL_SUCCESS_PERCENT = 90;
 export const GOAL_MINIMUM_QUESTIONS = 5;
@@ -89,8 +89,23 @@ export function meetsGoal(run, goal, { window = 1, successPercent = GOAL_SUCCESS
   return run.level === goal.level && round2(run.successPercent) >= successPercent && fast;
 }
 
+// Results depend only on the attempts and the arguments, so they are kept per history array (the app hands out one
+// shared array until the saved data changes) and the next screen or panel reuses them.
+const roundsCache = new WeakMap();
+const progressCache = new WeakMap();
+const cachedFor = (store, history, key, compute) => {
+  if (!Array.isArray(history)) return compute();
+  let byKey = store.get(history);
+  if (!byKey) { byKey = new Map(); store.set(history, byKey); }
+  if (!byKey.has(key)) byKey.set(key, compute());
+  return byKey.get(key);
+};
+
 /** Group saved attempts into completed timed rounds for one game, oldest first. */
 export function roundsFromHistory(history, game) {
+  return cachedFor(roundsCache, history, game, () => computeRounds(history, game));
+}
+function computeRounds(history, game) {
   const metric = goalMetric(game);
   const sessions = new Map();
   (Array.isArray(history) ? history : []).forEach((record, index) => {
@@ -121,6 +136,9 @@ export function roundsFromHistory(history, game) {
  * previous level's goals all pass.
  */
 export function goalProgress(history, game, savedSettings = {}) {
+  return cachedFor(progressCache, history, game + JSON.stringify(savedSettings ?? {}), () => computeGoalProgress(history, game, savedSettings));
+}
+function computeGoalProgress(history, game, savedSettings = {}) {
   const goals = goalsForGame(game);
   const rounds = roundsFromHistory(history, game);
   const settings = resolveGoalSettings(game, savedSettings);
