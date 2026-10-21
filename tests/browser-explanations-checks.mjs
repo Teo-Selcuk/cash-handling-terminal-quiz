@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { openAllTables } from './browser-all-tables-checks.mjs';
 
 // Every chart and table on History shows a toggleable explanation; all tables collapse and expand together.
 export async function checkExplanations(browser, base) {
@@ -18,6 +19,7 @@ export async function checkExplanations(browser, base) {
       const tab = page.locator(`#history-game-tabs button[data-history-game="${game}"]`);
       if (!(await tab.isVisible())) continue;
       await tab.click();
+      await openAllTables(page);
       const missing = await page.evaluate(() => {
         const visible = (el) => el.getClientRects().length > 0;
         const charts = [...document.querySelectorAll('.interactive-chart, .history-visuals > .visual-card')].filter(visible);
@@ -35,18 +37,19 @@ export async function checkExplanations(browser, base) {
     assert.equal(await note.evaluate((el) => el.open), false, 'explanations start hidden');
     await note.locator('summary').click();
     assert.equal(await note.evaluate((el) => el.open), true);
-    assert.ok(await note.locator('p').isVisible(), 'toggle shows the explanation');
+    assert.ok(await note.locator('p').first().isVisible(), 'toggle shows the explanation');
     await note.locator('summary').click();
-    assert.equal(await note.locator('p').isVisible(), false, 'toggle hides the explanation');
+    assert.equal(await note.locator('p').first().isVisible(), false, 'toggle hides the explanation');
     const outcomeNote = page.locator('.history-visuals .visual-card > .explanation').first();
     await outcomeNote.locator('summary').click();
     assert.match(await outcomeNote.textContent(), /Timed out.*timer ran out/s);
-    const tableCount = await page.locator('.history-table-container').count();
+    await openAllTables(page);
+    const tableCount = await page.locator('#history-all-tables .history-table-container:not([hidden])').count();
     assert.ok(tableCount > 1);
     await page.getByRole('button', { name: 'Minimize All Tables', exact: true }).first().click();
-    assert.equal(await page.locator('.history-table-container[data-table-size="minimized"]').count(), tableCount, 'one control minimizes every table');
+    assert.equal(await page.locator('#history-all-tables .history-table-container[data-table-size="minimized"]:not([hidden])').count(), tableCount, 'one control minimizes every table');
     await page.getByRole('button', { name: 'Expand All Tables', exact: true }).first().click();
-    assert.equal(await page.locator('.history-table-container[data-table-size="expanded"]').count(), tableCount, 'one control expands every table');
+    assert.equal(await page.locator('#history-all-tables .history-table-container[data-table-size="expanded"]:not([hidden])').count(), tableCount, 'one control expands every table');
     assert.equal(await page.locator('.history-table-viewport[hidden]').count(), 0);
     console.log('Explanations: every chart and table explained, toggles work, minimize/expand all, empty state');
   } finally { await context.close(); }

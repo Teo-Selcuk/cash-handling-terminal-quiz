@@ -21,6 +21,7 @@ import { checkRound2 } from './browser-round2-checks.mjs';
 import { checkOverload } from './browser-overload-checks.mjs';
 import { checkFirebase, checkGuestAccess, withApprovedProfiles } from './browser-firebase-checks.mjs';
 import { checkSyncBacklog } from './browser-sync-backlog-checks.mjs';
+import { checkAllTables } from './browser-all-tables-checks.mjs';
 const { chromium } = createRequire(import.meta.url)('playwright');
 const root = process.env.QUIZ_STATIC_ROOT || fileURLToPath(new URL('../', import.meta.url));
 const server = createServer(async (request, response) => {
@@ -73,6 +74,8 @@ try {
   } else if (process.env.QUIZ_FOCUSED === 'sync-backlog') {
     if (process.env.QUIZ_EMULATORS !== '1') throw new Error('Sync backlog checks require local Firebase emulators.');
     await checkSyncBacklog(browser, base);
+  } else if (process.env.QUIZ_FOCUSED === 'all-tables') {
+    await checkAllTables(browser, base);
   } else if (process.env.QUIZ_FOCUSED === 'overload') {
     await checkOverload(browser, base);
   } else if (process.env.QUIZ_FOCUSED === 'history-layout') {
@@ -103,6 +106,7 @@ try {
   }
   if (process.env.QUIZ_FOCUSED !== 'playback') {
   await checkHistoryLayout(browser, base);
+  await checkAllTables(browser, base);
   await checkGuestAccess(browser, base);
   if(process.env.QUIZ_EMULATORS==='1')await checkSyncBacklog(browser, base);
   if(process.env.QUIZ_EMULATORS==='1')await withApprovedProfiles(browser,base,async()=>{await checkFraudInspection(browser,base);await checkHoldTraining(browser,base);});

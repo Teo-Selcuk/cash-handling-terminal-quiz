@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { openAllTables } from './browser-all-tables-checks.mjs';
 import { resolve } from 'node:path';
 import { generateSampleHistory } from '../sample-history.mjs';
 import { buildAdvancedErrorAnalytics } from '../progress-analytics.mjs';
@@ -17,6 +18,7 @@ export async function checkHistoryLayout(browser, base) {
       await page.locator(`#history-data-source input[value="${source}"]`).check();
       for (const game of ['all', 'cash', 'memory', 'task', 'error-detection', 'fraud-inspection', 'typing', 'overload']) {
         await page.locator(`#history-game-tabs button[data-history-game="${game}"]`).click();
+        await openAllTables(page);
         const sizes = () => page.locator('#history-screen .history-table-container').evaluateAll(nodes => nodes.map(n => n.dataset.tableSize));
         await page.getByRole('button', { name: 'Minimize All Tables', exact: true }).click();
         assert.ok((await sizes()).every(size => size === 'minimized'));
@@ -26,10 +28,10 @@ export async function checkHistoryLayout(browser, base) {
         assert.ok((await sizes()).every(size => size === 'minimized'));
         if (game === 'memory' && source === 'real') {
           const expected = buildAdvancedErrorAnalytics(real.filter(r => r.game === 'memory'));
-          const rows = await page.locator('#memory-position-analysis tbody tr').allTextContents();
+          const rows = await page.locator('[data-table-source="memory-position-analysis"] tbody tr').allTextContents();
           assert.equal(rows.length, expected.memory.positions.length);
           expected.memory.positions.forEach((p, index) => assert.ok(rows[index].includes(`${p.errors} / ${p.opportunities}`)));
-          assert.equal(await page.locator('#memory-digit-confusion tbody tr').count(), 10);
+          assert.equal(await page.locator('[data-table-source="memory-digit-confusion"] tbody tr').count(), 10);
           const trend = page.getByRole('combobox', { name: 'Digit position trend', exact: true });
           const last = await trend.locator('option').last().getAttribute('value');
           await trend.selectOption(last);
@@ -37,7 +39,7 @@ export async function checkHistoryLayout(browser, base) {
         }
         if (game === 'cash' && source === 'real') {
           const expected = buildAdvancedErrorAnalytics(real.filter(r => r.game === 'cash'));
-          assert.equal(await page.locator('#cash-arithmetic-details tbody tr').count(), expected.cash.details.length);
+          assert.equal(await page.locator('[data-table-source="cash-arithmetic-details"] tbody tr').count(), expected.cash.details.length);
           assert.equal(await page.locator('[data-chart-id="cash-magnitude"] .analytics-mark').count(), expected.cash.magnitude.length);
           assert.ok(!(await page.locator('[data-chart-id="cash-magnitude"] .analytics-mark').first().getAttribute('aria-label')).includes('%'));
         }
@@ -75,6 +77,7 @@ export async function checkHistoryLayout(browser, base) {
         assert.equal(await page.locator('[data-chart-kind="scatter"] .chart-series-line').count(), 0, 'response-time correlation scatter stays unconnected');
       }
       await page.locator('#history-game-tabs button[data-history-game="typing"]').click();
+      await openAllTables(page);
       if (source === 'sample') {
         const shell = page.locator('#typing-history-rows').locator('xpath=ancestor::div[contains(@class,"history-table-container")]');
         await shell.getByRole('button', { name: 'Minimize Table', exact: true }).click();
@@ -95,6 +98,9 @@ export async function checkHistoryLayout(browser, base) {
     await page.setViewportSize({ width: 320, height: 900 });
     await page.locator('#typing-history-details').screenshot({ path: resolve(process.env.TEMP || '/tmp', 'quiz-history-layout-mobile.png') });
     await page.locator('#history-game-tabs button[data-history-game="chess"]').click();
+    await openAllTables(page);
+    await page.locator('#history-data-source input[value="sample"]').check();
+    await openAllTables(page);
     assert.equal(await page.locator('#chess-history-games').evaluate(node => Boolean(node.closest('.history-table-container'))), true);
     const chess = page.locator('#chess-history-games').locator('..');
     await chess.getByRole('button', { name: 'Minimize Table', exact: true }).click();

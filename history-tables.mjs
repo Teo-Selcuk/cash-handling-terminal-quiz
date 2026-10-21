@@ -9,19 +9,89 @@ const LIST_EXPLANATIONS = {
   'chess-lessons': { what: 'Your lesson tries. Each card is one lesson: whether you solved it and how many hints you used.', terms: [['Hints', 'How many times you asked for help.']] },
 };
 const setters = new WeakMap();
-function globalControls(root) {
-  const page = root.closest('dialog, .screen');
-  if (!page || page.querySelector(':scope > .global-table-controls')) return;
+const HISTORY_PAGE_ID = 'history-screen', SECTION_ID = 'history-all-tables';
+const slots = new WeakMap();
+const plural = (count) => `${count} table${count === 1 ? '' : 's'}`;
+function buildToolbar(scope) {
   const toolbar = document.createElement('div'); toolbar.className = 'global-table-controls history-table-controls';
   toolbar.setAttribute('aria-label', 'All table sizes');
   for (const [label, size] of [['Minimize All Tables', 'minimized'], ['Expand All Tables', 'expanded'], ['Reset Tables to Default', DEFAULT_SIZE]]) {
     const button = document.createElement('button'); button.type = 'button'; button.className = 'text-button'; button.textContent = label;
+    button.dataset.tableSize = size; button.dataset.reset = String(label.startsWith('Reset'));
     button.addEventListener('click', () => {
-      for (const shell of page.querySelectorAll('.history-table-container')) setters.get(shell)?.(size);
+      for (const shell of scope().querySelectorAll('.history-table-container')) setters.get(shell)?.(size);
+      refreshSection();
     });
     toolbar.append(button);
   }
-  page.prepend(toolbar);
+  return toolbar;
+}
+function globalControls(root) {
+  const page = root.closest('dialog, .screen');
+  if (!page || page.querySelector(':scope > .global-table-controls')) return;
+  if (page.id === HISTORY_PAGE_ID) return; // The History page keeps these buttons inside its "All tables" section.
+  page.prepend(buildToolbar(() => page));
+}
+
+// One collapsible section holds every History table. A hidden slot marks where each table was drawn, so tables of
+// panels that were re-rendered or are not showing never appear here.
+function historySection(page) {
+  let section = page.querySelector(`:scope > #${SECTION_ID}`);
+  if (section) return section;
+  section = document.createElement('details'); section.id = SECTION_ID; section.className = 'all-tables-section';
+  const summary = document.createElement('summary');
+  const title = document.createElement('span'); title.className = 'all-tables-title'; title.textContent = 'All tables';
+  const count = document.createElement('span'); count.className = 'all-tables-count'; count.setAttribute('role', 'status'); count.textContent = plural(0);
+  const chevron = document.createElement('span'); chevron.className = 'all-tables-chevron'; chevron.setAttribute('aria-hidden', 'true'); chevron.textContent = '⌄';
+  summary.append(title, count, chevron);
+  const body = document.createElement('div'); body.className = 'all-tables-body';
+  const empty = document.createElement('p'); empty.className = 'all-tables-empty'; empty.textContent = 'No attempts yet'; empty.hidden = true;
+  const list = document.createElement('div'); list.className = 'all-tables-list';
+  body.append(buildToolbar(() => page), empty, list);
+  section.append(summary, body);
+  section.addEventListener('toggle', () => { if (section.open) { refreshSection(); for (const viewport of observed) measure(viewport); } });
+  page.append(section);
+  // Tab and data-source switches hide whole panels without re-rendering; keep the list and count in step.
+  if (typeof MutationObserver !== 'undefined') new MutationObserver(() => scheduleRefresh()).observe(page, { subtree: true, attributes: true, attributeFilter: ['hidden'] });
+  return section;
+}
+// Chart data tables stay inside their charts (they are that chart's accessible data view); every other table moves here.
+function adoptShell(page, shell) {
+  if (slots.has(shell) || shell.closest('.chart-table-alternative, dialog')) return;
+  const slot = document.createElement('span'); slot.hidden = true; slot.dataset.tableSlot = '';
+  shell.before(slot); slots.set(shell, slot);
+  const source = slot.parentElement?.closest('[id]')?.id; // Where the table was drawn, so it can still be found by that name.
+  if (source) shell.dataset.tableSource = source;
+  historySection(page).querySelector('.all-tables-list').append(shell);
+}
+// Tables built while detached (chart cards) are adopted once they are on the page.
+function adoptLooseShells(page) {
+  for (const shell of page.querySelectorAll('.history-table-container')) if (!shell.closest('#' + SECTION_ID)) adoptShell(page, shell);
+}
+let refreshQueued = false;
+function scheduleRefresh() {
+  if (refreshQueued) return;
+  refreshQueued = true;
+  requestAnimationFrame(() => { refreshQueued = false; refreshSection(); });
+}
+function refreshSection() {
+  const section = document.getElementById(SECTION_ID);
+  if (!section) return;
+  const list = section.querySelector('.all-tables-list');
+  let shown = 0; const sizesShown = [];
+  for (const shell of [...list.children]) {
+    const slot = slots.get(shell);
+    if (!slot?.isConnected) { shell.remove(); continue; }
+    const visible = !slot.parentElement?.closest('[hidden]') && dataRowCount(shell.querySelector('.history-table-viewport')) > 0;
+    shell.hidden = !visible;
+    if (visible) { shown += 1; sizesShown.push(shell.dataset.tableSize); }
+  }
+  section.querySelector('.all-tables-count').textContent = plural(shown);
+  section.querySelector('.all-tables-empty').hidden = shown > 0;
+  section.querySelector('.global-table-controls').hidden = shown === 0;
+  for (const button of section.querySelectorAll('.global-table-controls button')) {
+    button.setAttribute('aria-pressed', String(shown > 0 && button.dataset.reset !== 'true' && sizesShown.every((size) => size === button.dataset.tableSize)));
+  }
 }
 const observed = new Set();
 let serial = 0;
@@ -30,6 +100,7 @@ const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserv
 });
 
 function measure(viewport) {
+  if (viewport.closest('details:not([open])')) return; // Closed tables are not drawn, so there is nothing to measure.
   const rows = [...viewport.querySelectorAll('tbody > tr')];
   let height = rows.slice(0, 28).reduce((sum, row) => sum + row.getBoundingClientRect().height, 0)
     + (viewport.querySelector('thead')?.getBoundingClientRect().height ?? 0)
@@ -41,12 +112,21 @@ function measure(viewport) {
   if (height > 0) viewport.style.setProperty('--table-normal-height', `${Math.ceil(height) + 2}px`);
 }
 
+// Empty tables show one full-width placeholder row; those are not attempts.
+function dataRowCount(viewport) {
+  const body = viewport.querySelector('tbody');
+  if (!body) return rowCount(viewport);
+  return [...body.rows].filter((row) => !(row.cells.length === 1 && row.cells[0].colSpan > 1)).length;
+}
+
 function rowCount(viewport) {
   return viewport.querySelector('tbody')?.rows.length ?? viewport.querySelectorAll(':scope > article, :scope > ul > li').length;
 }
 
 export function enhanceHistoryTables(root) {
   globalControls(root);
+  const historyPage = root.closest('.screen');
+  if (historyPage?.id === HISTORY_PAGE_ID) historySection(historyPage);
   for (const viewport of observed) if (!viewport.isConnected) { observer?.unobserve(viewport); observed.delete(viewport); }
   for (const table of root.querySelectorAll('table')) {
     let viewport = table.closest('.history-table-viewport');
@@ -62,6 +142,8 @@ export function enhanceHistoryTables(root) {
     shell.querySelector('.history-table-count').textContent = `${table.tBodies[0]?.rows.length ?? 0} rows · ${shell.dataset.tableSize} view`;
     requestAnimationFrame(() => measure(viewport));
   }
+  if (historyPage?.id === HISTORY_PAGE_ID) adoptLooseShells(historyPage);
+  if (document.getElementById(SECTION_ID)) refreshSection();
 }
 
 export function enhanceHistoryList(viewport, key, label, explanation = LIST_EXPLANATIONS[key] ?? tableExplanation(label)) {
@@ -75,6 +157,8 @@ export function enhanceHistoryList(viewport, key, label, explanation = LIST_EXPL
   shell.className = 'history-table-container';
   viewport.before(shell);
   shell.append(viewport);
+  const page = shell.closest('.screen');
+  const inHistory = page?.id === HISTORY_PAGE_ID;
   viewport.classList.add('history-table-viewport');
   viewport.id ||= `history-table-viewport-${++serial}`;
   viewport.tabIndex = 0;
@@ -90,6 +174,7 @@ export function enhanceHistoryList(viewport, key, label, explanation = LIST_EXPL
     sizes.set(key, size); shell.dataset.tableSize = size; viewport.hidden = size === 'minimized';
     count.textContent = `${rowCount(viewport)} rows · ${size} view`;
     for (const [button, value] of buttons) { button.setAttribute('aria-pressed', String(value === size)); button.setAttribute('aria-expanded', String(size !== 'minimized')); }
+    if (shell.closest('#' + SECTION_ID)) refreshSection();
     requestAnimationFrame(() => measure(viewport));
   };
   for (const [text, value] of [['Minimize Table', 'minimized'], ['Normal Table', 'normal'], ['Expand Table', 'expanded']]) {
@@ -103,5 +188,6 @@ export function enhanceHistoryList(viewport, key, label, explanation = LIST_EXPL
   shell.prepend(toolbar, note);
   setters.set(shell, setSize);
   setSize(sizes.get(key) ?? DEFAULT_SIZE);
+  if (inHistory) { adoptShell(page, shell); refreshSection(); }
   if (!observed.has(viewport)) { observed.add(viewport); observer?.observe(viewport); }
 }

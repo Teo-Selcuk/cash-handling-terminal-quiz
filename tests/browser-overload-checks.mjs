@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { openAllTables } from './browser-all-tables-checks.mjs';
 import { TASKS } from '../overload-core.mjs';
 import { resolve } from 'node:path';
 
@@ -89,13 +90,15 @@ export async function checkOverload(browser, site) {
     await page.setViewportSize({ width:1440, height:1000 });
     await page.getByRole('button', { name: 'History / Progress', exact: true }).click();
     assert.ok(await page.locator('#overload-history-rows tr').count() >= 24);
+    await openAllTables(page);
+    await page.locator('#overload-history-rows').locator('xpath=ancestor::div[contains(@class,"history-table-container")]').getByRole('button', { name: 'Expand Table', exact: true }).click();
     await page.locator('#overload-history-rows button').first().click(); assert.ok(await page.locator('#attempt-detail-content table').count() >= 2);
     await page.locator('#close-attempt-detail').click();
     const real = await page.evaluate(key => localStorage.getItem(key), key);
     await page.locator('#history-data-source input[value="sample"]').check();
     assert.ok(await page.locator('#overload-history-rows tr').count() >= 200);
     assert.equal(await page.locator('#history-charts .interactive-chart').count(), 11);
-    assert.ok(await page.locator('#history-error-category-table tbody tr').count() > 5);
+    assert.ok(await page.locator('[data-table-source="history-error-category-table"] tbody tr').count() > 5);
     assert.match(await page.locator('#overload-history-evidence').textContent(), /Most reliable/);
     assert.ok(await page.locator('#history-recommendations .practice-recommendation').count() <= 1);
     for (const id of ['overload-score','overload-accuracy','overload-response','overload-survival','overload-peak']) {
@@ -103,6 +106,7 @@ export async function checkOverload(browser, site) {
       const labels = await chart.locator('svg text, td, .chart-selection-summary').allTextContents();
       for (const label of labels) assert.ok(!/\d+\.\d{3,}/.test(label), `${id} label uses at most two decimals: ${label}`);
     }
+    await openAllTables(page);
     const shell = page.locator('#overload-history-rows').locator('xpath=ancestor::div[contains(@class,"history-table-container")]');
     await shell.getByRole('button', { name: 'Minimize Table', exact: true }).click(); assert.equal(await shell.locator('.history-table-viewport').isVisible(),false);
     await shell.getByRole('button', { name: 'Expand Table', exact: true }).click(); assert.equal(await shell.locator('.history-table-viewport').isVisible(),true);

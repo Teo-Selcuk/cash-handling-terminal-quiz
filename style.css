@@ -671,7 +671,7 @@ footer { width: min(100% - 1.25rem, 112rem); margin: 0 auto; padding-bottom: 2re
 
 /* Chess uses the existing surface, typography, and chart controls. */
 #setup-form.chess-setup-selected > :not(:first-child):not(#chess-setup-options):not([type="submit"]) { display: none; }
-#history-screen.chess-history-selected > :not(.screen-title-row):not(#history-game-tabs):not(#chess-history):not(#history-data-source):not(#history-sample-banner) { display: none; }
+#history-screen.chess-history-selected > :not(.screen-title-row):not(#history-game-tabs):not(#chess-history):not(#history-data-source):not(#history-sample-banner):not(#history-all-tables) { display: none; }
 .chess-layout { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(16rem, 0.6fr); gap: 1.5rem; align-items: start; margin-top: 1rem; }
 .chess-board-column, .chess-sidebar { min-width: 0; }
 .chess-sidebar { display: grid; gap: 1rem; }
@@ -1150,6 +1150,18 @@ body.chess-arena #chess-screen {
 @media(prefers-reduced-motion:reduce) { .account-summary-chevron { transition:none; } }
 .advanced-error-charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
 .global-table-controls { flex-wrap: wrap; margin-bottom: 1rem; }
+.all-tables-section { margin-block: 1rem; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.all-tables-section > summary { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.75rem; padding: 0.75rem 1rem; cursor: pointer; list-style: none; font-weight: 700; }
+.all-tables-section > summary::-webkit-details-marker { display: none; }
+.all-tables-count { flex: 1 1 auto; color: var(--muted); font-size: 0.875rem; font-weight: 400; }
+.all-tables-chevron { transition: transform 0.15s; }
+.all-tables-section[open] > summary { border-bottom: 1px solid var(--line); background: var(--surface-quiet); }
+.all-tables-section[open] .all-tables-chevron { transform: rotate(180deg); }
+.all-tables-body { padding: 0.75rem 1rem 1rem; min-width: 0; }
+.all-tables-body .global-table-controls[hidden], .all-tables-list [hidden] { display: none !important; }
+.all-tables-empty { margin: 0.5rem 0; color: var(--muted); }
+.global-table-controls button[aria-pressed="true"] { background: var(--surface-quiet); outline: 1px solid var(--line); }
+@media (prefers-reduced-motion: reduce) { .all-tables-chevron { transition: none; } }
 .digit-heat-cell { position: relative; text-align: center; font-variant-numeric: tabular-nums; }
 .digit-match { background: color-mix(in srgb, #25885d calc(var(--heat-opacity) * 100%), transparent); }
 .digit-confused { background: color-mix(in srgb, #dd8557 calc(var(--heat-opacity) * 100%), transparent); }

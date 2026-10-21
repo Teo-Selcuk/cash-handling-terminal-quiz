@@ -57,8 +57,8 @@ export async function checkProgress(browser, site) {
     assert.equal(await page.locator('#history-error-analysis').isVisible(), true, 'filtered Error Analysis is available in History');
     assert.match(await page.locator('#history-error-data-label').textContent(), /saved real gameplay/);
     assert.match(await page.locator('#history-error-metrics').innerText(), /Overall error rate.*108\/324/s);
-    assert.ok(await page.locator('#history-error-category-table tbody tr').count() > 0, 'game-specific error categories render');
-    assert.ok(await page.locator('#history-error-combination-table tbody tr').count() > 0, 'supported raw-input combinations render');
+    assert.ok(await page.locator('[data-table-source="history-error-category-table"] tbody tr').count() > 0, 'game-specific error categories render');
+    assert.ok(await page.locator('[data-table-source="history-error-combination-table"] tbody tr').count() > 0, 'supported raw-input combinations render');
     assert.ok(await page.locator('#history-error-charts h4').allTextContents().then((titles) => titles.includes('Error Rate by Category') && titles.includes('Error Rate by Raw Input') && titles.includes('Error Rate Over Time')),
       'category, raw-input, and trend charts render when their saved fields exist');
     assert.equal(await page.locator('#history-error-charts .interactive-chart button:text-is("Maximize")').count(), await page.locator('#history-error-charts .interactive-chart').count(), 'every error chart has a maximize control');

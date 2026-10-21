@@ -1,4 +1,4 @@
-import { enhanceHistoryList } from './history-tables.mjs?v=20261018-explain';
+import { enhanceHistoryList } from './history-tables.mjs?v=20261021-alltables2';
 import { Chess, ChessSession, DEFAULT_POSITION, DIFFICULTIES, normalizeSettings } from './chess-core.mjs';
 import { ChessBoard } from './chess-board.mjs?v=20261017-round2';
 import { ChessEngine, analyzeMove } from './chess-engine.mjs';

@@ -44,6 +44,9 @@ replaces `AGENTS.md`; keep every agent rule here so there is one source of truth
   never hard-code dark text that can land on a dark background.
 - Every chart and data table has a short "What this shows" explanation in simple
   words, shown or hidden with an info toggle.
+- History page tables (not chart data tables) live in one "All tables" section, collapsed by default, with a table
+  count in its header and Minimize/Expand all buttons. Tests that need a table must open it first
+  (`openAllTables` in `tests/browser-all-tables-checks.mjs`) and find moved tables by `data-table-source`.
 - Setup screen game cards share one width and height; long text wraps inside.
 - Speed goals: a round passes a goal when success rate >= 90% and average answer
   time <= the goal time (exact limits pass). Passing a goal unlocks the next;

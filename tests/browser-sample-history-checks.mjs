@@ -39,9 +39,9 @@ export async function checkSampleHistory(browser, site) {
     assert.equal(Number((await page.locator('#history-metrics .metric strong').first().textContent()).replaceAll(',', '')), 1680);
     assert.match(await page.locator('#history-error-data-label').textContent(), /Based on Sample Data/);
     assert.match(await page.locator('#history-error-metrics').innerText(), /Overall error rate/);
-    assert.ok(await page.locator('#history-error-category-table tbody tr').count() > 1, 'sample mode has game-specific error categories');
-    assert.ok(await page.locator('#history-error-raw-table tbody tr').count() > 1, 'sample mode has raw-input error rates');
-    assert.ok(await page.locator('#history-error-combination-table tbody tr').count() > 1, 'sample mode has input-combination rates');
+    assert.ok(await page.locator('[data-table-source="history-error-category-table"] tbody tr').count() > 1, 'sample mode has game-specific error categories');
+    assert.ok(await page.locator('[data-table-source="history-error-raw-table"] tbody tr').count() > 1, 'sample mode has raw-input error rates');
+    assert.ok(await page.locator('[data-table-source="history-error-combination-table"] tbody tr').count() > 1, 'sample mode has input-combination rates');
     assert.equal(await page.locator('#history-rows tr').first().locator('td').count(), 8, 'sample attempt rows include both error fields');
     assert.equal(await page.locator('#history-rows tr').count(), 1680, 'all attempts remain available inside the bounded viewport');
     assert.match(await page.locator('#history-attempt-summary').textContent(), /1,680 matching/);
@@ -154,7 +154,7 @@ export async function checkSampleHistory(browser, site) {
 
     await page.locator('#history-data-source input[value="real"]').check();
     assert.equal(await page.locator('#history-metrics .metric strong').first().textContent(), '1', 'returning to Real Data restores the actual attempt view');
-    assert.match(await page.locator('#history-rows').innerText(), /Change 500¢/);
+    assert.match(await page.locator('#history-rows').textContent(), /Change 500¢/);
     assert.equal(await page.locator('#history-sample-banner').isVisible(), false);
     assert.equal(await page.evaluate((key) => localStorage.getItem(key), historyKey), original);
     await page.locator('#history-data-source input[value="sample"]').check();

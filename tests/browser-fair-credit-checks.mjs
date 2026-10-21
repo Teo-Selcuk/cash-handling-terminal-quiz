@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { openAllTables } from './browser-all-tables-checks.mjs';
 import { mkdir } from 'node:fs/promises';
 import { buildProgressModel } from '../progress-analytics.mjs';
 const key = 'cash-handling-terminal-quiz-history-v1';
@@ -50,9 +51,10 @@ export async function checkFairCredit(browser, base) {
       await page.setViewportSize({ width, height: 900 });
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `analytics fit ${width}px`);
     }
+    await openAllTables(page);
     for (const [button, size] of [['Minimize All Tables', 'minimized'], ['Expand All Tables', 'expanded'], ['Reset Tables to Default', 'minimized']]) {
       await page.getByRole('button', { name: button, exact: true }).click();
-      assert.ok((await page.locator('#advanced-error-analytics .history-table-container').evaluateAll(nodes => nodes.map(n => n.dataset.tableSize))).every(s => s === size));
+      assert.ok((await page.locator('#history-all-tables .history-table-container').evaluateAll(nodes => nodes.map(n => n.dataset.tableSize))).every(s => s === size));
     }
     await page.goto(base); await page.locator('input[name="game"][value="cash"]').check();
     await page.locator('input[name="cashSessionMode"][value="guided"]').check();
@@ -67,7 +69,7 @@ export async function checkFairCredit(browser, base) {
     assert.match(await page.locator('#feedback-details').innerText(), /Step 1: expected \$20.00, entered \$21.00/);
     await page.reload(); await page.locator('#open-history').click(); await page.locator('[data-history-game="cash"]').click();
     assert.match(await page.locator('#cash-step-details').innerText(), /Confirmed/);
-    assert.equal(await page.locator('#cash-step-details tbody tr').count(), 1, 'blank rows do not invent intermediate steps');
+    assert.equal(await page.locator('[data-table-source="cash-step-details"] tbody tr').count(), 1, 'blank rows do not invent intermediate steps');
     await page.goto(base); await page.locator('input[name="game"][value="memory"]').check();
     await page.clock.install();
     await page.getByRole('button', { name: 'Start quiz', exact: true }).click();
