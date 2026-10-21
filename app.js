@@ -3,7 +3,7 @@ import { canPlayGame } from './account-access.mjs';
 import { analyzeCashMistakes } from './cash-mistakes.mjs?v=20261011-fair-credit';
 import { enhanceHistoryTables } from './history-tables.mjs?v=20261021-fast';
 import { chartExplanation, summaryChartExplanation, createExplanation } from './history-explanations.mjs?v=20261018-explain';
-import { goalProgress, availableProgressiveLevels, PROGRESSIVE_LEVELS, fraudProgressiveOverrides, GOAL_SETTINGS_KEY, GOAL_WINDOW_LIMITS, GOAL_SUCCESS_LIMITS, resolveGoalSettings } from './speed-goals.mjs?v=20261021-fast';
+import { goalProgress, availableProgressiveLevels, PROGRESSIVE_LEVELS, fraudProgressiveOverrides, GOAL_SETTINGS_KEY, GOAL_WINDOW_LIMITS, GOAL_SUCCESS_LIMITS, resolveGoalSettings } from './speed-goals.mjs?v=20261021-goals';
 import { createOverloadUI } from './overload-ui.mjs?v=20261003-accounts';
 import { summarizeOverload, overloadRecommendation } from './overload-analytics.mjs?v=20261003-accounts';
 import { decideCheck, scoreHoldDecision, ITEM_TYPES, ITEM_REASONS, ACTIONS, HOLD_TYPES, availabilityText } from './check-holds.mjs?v=20261003-accounts';
@@ -607,6 +607,7 @@ function renderSpeedGoals(section, history, game) {
     ['Current goal', progress.current ? `${progress.current.level}: ${goalTargetText(progress.current.target, progress.unit)} at ${progress.settings.successPercent}%+` : 'All goals passed'],
     [progress.unit === 'WPM' ? 'Best speed' : 'Best time', progress.bestSpeed === null ? 'No attempts yet' : progress.unit === 'WPM' ? `${progress.bestSpeed} WPM` : `${progress.bestSpeed}s per ${game === 'overload' ? 'action' : 'question'}`],
     ['Best success rate', progress.bestSuccessPercent === null ? 'No attempts yet' : `${progress.bestSuccessPercent}%`],
+    [`Best success in ${progress.settings.window} ${progress.attemptName ?? 'attempts'} in a row`, bestWindowText(progress)],
     ['Latest run', latestRunText(progress)],
     ['Goals passed', `${progress.passedCount} of ${progress.total}`],
   ]) {
@@ -635,6 +636,11 @@ function renderSpeedGoals(section, history, game) {
 
 function readGoalSettings() {
   try { return JSON.parse(localStorage.getItem(GOAL_SETTINGS_KEY) ?? '{}') ?? {}; } catch { return {}; }
+}
+
+function bestWindowText(progress) {
+  const parts = Object.entries(progress.bestWindow ?? {}).map(([level, run]) => `${level} ${run.successPercent}%`);
+  return parts.length ? parts.join(' · ') : `Needs ${progress.settings.window} ${progress.attemptName ?? 'attempts'} at one difficulty`;
 }
 
 function latestRunText(progress) {

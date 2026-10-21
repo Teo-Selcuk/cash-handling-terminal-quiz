@@ -57,7 +57,7 @@ export const GOAL_LADDER = Object.freeze({
 // Cash handling goes one step further on Hard. Typing steps are words per minute;
 // Multitasker steps are seconds per action.
 const GAME_LADDER = Object.freeze({
-  cash: Object.freeze({ ...GOAL_LADDER, Hard: Object.freeze([20, 15, 12, 10, 7.5, 5]) }),
+  cash: Object.freeze({ ...GOAL_LADDER, Easy: Object.freeze([15, 12, 10, 7.5, 5]), Hard: Object.freeze([20, 15, 12, 10, 7.5, 5]) }),
   typing: Object.freeze({ Easy: Object.freeze([25, 30, 35]), Medium: Object.freeze([30, 40, 50]), Hard: Object.freeze([40, 50, 60, 70]) }),
   overload: Object.freeze({ Easy: Object.freeze([4, 3.5, 3]), Medium: Object.freeze([3.5, 3, 2.5]), Hard: Object.freeze([3, 2.5, 2]) }),
 });
@@ -144,6 +144,7 @@ function computeGoalProgress(history, game, savedSettings = {}) {
   const settings = resolveGoalSettings(game, savedSettings);
   const metric = goalMetric(game);
   const passed = new Map();
+  const bestWindow = {};
   let current = 0;
   // Per difficulty: running totals so every run is measured in constant time.
   const levels = Object.fromEntries(LEVELS.map((level) => [level, { count: 0, correct: [0], success: [0], seconds: [0], timed: [0] }]));
@@ -170,11 +171,12 @@ function computeGoalProgress(history, game, savedSettings = {}) {
     track.count += 1;
     if (track.count < settings.window) continue;
     const run = runAt(row.difficulty, settings.window);
-    while (current < goals.length && meetsGoal(run, goals[current], settings)) {
-      passed.set(goals[current].id, row.session);
-      current += 1;
-    }
+    const best = bestWindow[row.difficulty];
+    if (!best || run.successPercent > best.successPercent) bestWindow[row.difficulty] = { ...run, successPercent: round2(run.successPercent) };
+    // Every goal is checked on every run, so goals met earlier in any order stay checked off.
+    for (const goal of goals) if (!passed.has(goal.id) && meetsGoal(run, goal, settings)) passed.set(goal.id, row.session);
   }
+  while (current < goals.length && passed.has(goals[current].id)) current += 1;
   const currentLevel = goals[current]?.level ?? null;
   const track = currentLevel ? levels[currentLevel] : null;
   const latestSize = track ? Math.min(track.count, settings.window) : 0;
@@ -193,6 +195,9 @@ function computeGoalProgress(history, game, savedSettings = {}) {
     passedCount: passed.size,
     total: goals.length,
     unlockedLevels: LEVELS.filter(levelOpen),
+    // Highest success rate over any `settings.window` attempts in a row, per difficulty and overall.
+    bestWindow,
+    bestWindowSuccess: Object.values(bestWindow).reduce((max, run) => (max === null || run.successPercent > max ? run.successPercent : max), null),
     unit: metric.unit, better: metric.better, attemptName: metric.attemptName,
     bestSpeed: speeds.length ? round2(metric.better === 'higher' ? Math.max(...speeds) : Math.min(...speeds)) : null,
     bestSeconds: speeds.length && metric.unit === 's' ? round2(Math.min(...speeds)) : null,

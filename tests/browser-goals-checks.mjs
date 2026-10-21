@@ -44,16 +44,16 @@ export async function checkGoals(browser, base) {
     await page.locator('#goal-window-cash').fill('5');
     await page.locator('#goal-window-cash').dispatchEvent('change');
     assert.match(await page.locator('#speed-goals-setup').textContent(), /any 5 attempts in a row/, 'attempt count can be changed');
-    assert.match(await page.locator('#speed-goals-setup').textContent(), /Easy: 10s or faster at 90%\+.*No attempts yet.*0 of 14/s);
+    assert.match(await page.locator('#speed-goals-setup').textContent(), /Easy: 15s or faster at 90%\+.*No attempts yet.*0 of 16/s);
     const levelOptions = await page.locator('#progressive-level option').evaluateAll((options) => options.map((o) => [o.value, o.disabled]));
     assert.deepEqual(levelOptions.map(([, disabled]) => disabled), [false, false, false, true, true, true, true], 'Medium and Hard levels start locked');
 
     await playCashRound(page, { questions: 5, wrong: 1 });
-    assert.equal(await status(page, 'cash:Easy:10'), 'current', '80% round does not pass');
+    assert.equal(await status(page, 'cash:Easy:15'), 'current', '80% round does not pass');
 
     await playCashRound(page, { questions: 5, progressive: '2' });
     // Automated answers take about a second, so this round meets every Easy time at once.
-    for (const seconds of [10, 7.5, 5]) assert.equal(await status(page, `cash:Easy:${seconds}`), 'passed', `fast 100% round passes Easy ${seconds}s`);
+    for (const seconds of [15, 12, 10, 7.5, 5]) assert.equal(await status(page, `cash:Easy:${seconds}`), 'passed', `fast 100% round passes Easy ${seconds}s`);
     assert.equal(await status(page, 'cash:Medium:15'), 'current', 'Medium opens only once every Easy goal passed');
     assert.equal(await status(page, 'cash:Medium:12'), 'locked');
     assert.equal(await status(page, 'cash:Hard:20'), 'locked', 'Hard stays locked until Medium goals pass');

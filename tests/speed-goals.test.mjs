@@ -29,15 +29,16 @@ test('Easy 10s at 90% passes and unlocks 7.5s', () => {
   const progress = progressOf(round('Easy', 9, 9), 'cash');
   assert.equal(progress.goals.find((item) => item.seconds === 10 && item.level === 'Easy').passed, true);
   assert.deepEqual([progress.current.level, progress.current.seconds], ['Easy', 7.5]);
-  assert.equal(progress.passedCount, 1);
+  assert.equal(progress.passedCount, 3, '15s, 12s and 10s all pass at 9s');
 });
 
 test('a failed round does not unlock anything', () => {
-  for (const history of [round('Easy', 9, 8), round('Easy', 11, 10)]) {
-    const progress = progressOf(history, 'cash');
-    assert.equal(progress.passedCount, 0);
-    assert.deepEqual([progress.current.level, progress.current.seconds], ['Easy', 10]);
-  }
+  const weak = progressOf(round('Easy', 9, 8), 'cash');
+  assert.equal(weak.passedCount, 0);
+  assert.deepEqual([weak.current.level, weak.current.seconds], ['Easy', 15]);
+  const slow = progressOf(round('Easy', 11, 10), 'cash');
+  assert.equal(slow.passedCount, 2, 'only 15s and 12s are met at 11s');
+  assert.deepEqual([slow.current.level, slow.current.seconds], ['Easy', 10]);
 });
 
 test('boundaries: exactly 10.0s and exactly 90% pass; 10.1s and 89.9% do not', () => {
@@ -46,12 +47,12 @@ test('boundaries: exactly 10.0s and exactly 90% pass; 10.1s and 89.9% do not', (
   assert.equal(meetsGoal({ ...base, successPercent: 90, averageSeconds: 10 }, g), true);
   assert.equal(meetsGoal({ ...base, successPercent: 90, averageSeconds: 10.1 }, g), false);
   assert.equal(meetsGoal({ ...base, successPercent: 89.9, averageSeconds: 5 }, g), false);
-  assert.equal(progressOf(round('Easy', 10, 9), 'cash').passedCount, 1, 'saved round at exactly 10s and 9/10');
+  assert.equal(progressOf(round('Easy', 10, 9), 'cash').passedCount, 3, 'saved round at exactly 10s and 9/10');
 });
 
 test('Medium unlocks only after every Easy goal passes', () => {
   const early = progressOf([...round('Medium', 4), ...round('Easy', 9)], 'cash');
-  assert.equal(early.goals.filter((item) => item.level === 'Medium' && item.passed).length, 0, 'Medium rounds before unlock do not count');
+  assert.equal(early.goals.filter((item) => item.level === 'Medium' && item.passed).length, 5, 'goals met earlier are checked off even before the level opens');
   assert.deepEqual(early.unlockedLevels, ['Easy']);
   const done = progressOf([...round('Easy', 4.9), ...round('Medium', 14)], 'cash');
   assert.deepEqual(done.unlockedLevels, ['Easy', 'Medium']);
@@ -62,7 +63,7 @@ test('Medium unlocks only after every Easy goal passes', () => {
 test('goal progress persists: it is rebuilt from saved history after restart', () => {
   const saved = JSON.stringify([...round('Easy', 7), ...round('Easy', 6, 9, 10, 'memory')]);
   const restored = JSON.parse(saved);
-  assert.equal(progressOf(restored, 'cash').passedCount, 2);
+  assert.equal(progressOf(restored, 'cash').passedCount, 4);
   assert.equal(progressOf(restored, 'memory').passedCount, 2, 'each game keeps its own goals');
   assert.equal(progressOf(restored, 'task').passedCount, 0);
 });
@@ -125,33 +126,33 @@ test('cash Hard mode has a 5 second goal; other games stop at 7.5 seconds', () =
 test('149 good attempts do not pass the 150-attempt goal; the 150th does', () => {
   const rounds = (count) => Array.from({ length: Math.ceil(count / 30) }, (_, i) => round('Easy', 9, 30, Math.min(30, count - i * 30))).flat();
   assert.equal(goalProgress(rounds(149), 'cash').passedCount, 0);
-  assert.equal(goalProgress(rounds(150), 'cash').passedCount, 1);
+  assert.equal(goalProgress(rounds(150), 'cash').passedCount, 3);
 });
 
 test('the run may start anywhere: a bad start does not block a later good run', () => {
   const history = [...round('Easy', 20, 0, 10), ...round('Easy', 9, 10, 10), ...round('Easy', 9, 10, 10)];
-  assert.equal(goalProgress(history, 'cash', { window: 20 }).passedCount, 1);
+  assert.equal(goalProgress(history, 'cash', { window: 20 }).passedCount, 3);
 });
 
 test('an earlier good run still counts after worse attempts follow', () => {
   const history = [...round('Easy', 9, 10, 10), ...round('Easy', 9, 10, 10), ...round('Easy', 30, 0, 10)];
-  assert.equal(goalProgress(history, 'cash', { window: 20 }).passedCount, 1);
+  assert.equal(goalProgress(history, 'cash', { window: 20 }).passedCount, 3);
 });
 
 test('success is measured over the full run: 18 of 20 passes, 17 of 20 fails', () => {
-  assert.equal(goalProgress([...round('Easy', 9, 10, 10), ...round('Easy', 9, 8, 10)], 'cash', { window: 20 }).passedCount, 1);
+  assert.equal(goalProgress([...round('Easy', 9, 10, 10), ...round('Easy', 9, 8, 10)], 'cash', { window: 20 }).passedCount, 3);
   assert.equal(goalProgress([...round('Easy', 9, 9, 10), ...round('Easy', 9, 8, 10)], 'cash', { window: 20 }).passedCount, 0);
 });
 
 test('average time is measured over the full run', () => {
-  assert.equal(goalProgress([...round('Easy', 10, 10, 10), ...round('Easy', 10, 10, 10)], 'cash', { window: 20 }).passedCount, 1);
-  assert.equal(goalProgress([...round('Easy', 11, 10, 10), ...round('Easy', 9, 10, 10)], 'cash', { window: 20 }).passedCount, 1, 'average of 11 and 9 is exactly 10');
-  assert.equal(goalProgress([...round('Easy', 11, 10, 10), ...round('Easy', 9.5, 10, 10)], 'cash', { window: 20 }).passedCount, 0);
+  assert.equal(goalProgress([...round('Easy', 10, 10, 10), ...round('Easy', 10, 10, 10)], 'cash', { window: 20 }).passedCount, 3);
+  assert.equal(goalProgress([...round('Easy', 11, 10, 10), ...round('Easy', 9, 10, 10)], 'cash', { window: 20 }).passedCount, 3, 'average of 11 and 9 is exactly 10');
+  assert.equal(goalProgress([...round('Easy', 11, 10, 10), ...round('Easy', 9.5, 10, 10)], 'cash', { window: 20 }).passedCount, 2);
 });
 
 test('runs never mix difficulties and games', () => {
   const mixed = [...round('Easy', 9, 10, 10), ...round('Medium', 9, 10, 10), ...round('Easy', 9, 10, 10)];
-  assert.equal(goalProgress(mixed, 'cash', { window: 20 }).passedCount, 1, 'Easy attempts around Medium ones are consecutive Easy attempts');
+  assert.equal(goalProgress(mixed, 'cash', { window: 20 }).passedCount, 3, 'Easy attempts around Medium ones are consecutive Easy attempts');
   assert.equal(goalProgress(round('Easy', 9, 10, 10), 'cash', { window: 20 }).passedCount, 0);
   assert.equal(goalProgress([...round('Easy', 9, 10, 10), ...round('Easy', 9, 10, 10, 'memory')], 'cash', { window: 20 }).passedCount, 0);
 });
@@ -159,9 +160,9 @@ test('runs never mix difficulties and games', () => {
 test('settings change the run length and the success rate for one game only', () => {
   const history = round('Easy', 9, 8, 10);
   assert.equal(goalProgress(history, 'cash', { window: 10 }).passedCount, 0);
-  assert.equal(goalProgress(history, 'cash', { window: 10, successPercent: 80 }).passedCount, 1);
+  assert.equal(goalProgress(history, 'cash', { window: 10, successPercent: 80 }).passedCount, 3);
   const saved = { cash: { window: 10, successPercent: 80 }, memory: { window: 50 } };
-  assert.equal(goalProgress(history, 'cash', saved).passedCount, 1);
+  assert.equal(goalProgress(history, 'cash', saved).passedCount, 3);
   assert.equal(goalProgress(round('Easy', 9, 10, 10, 'memory'), 'memory', saved).passedCount, 0, 'memory still needs 50 attempts');
 });
 
@@ -213,4 +214,17 @@ test('Multitasker goals are seconds per action at an action accuracy', () => {
   assert.equal(goalProgress(overloadRuns('Easy', 3.5, 92, 10), 'overload').passedCount, 2);
   assert.equal(goalProgress(overloadRuns('Easy', 3.5, 85, 10), 'overload').passedCount, 0);
   assert.equal(goalProgress(overloadRuns('Easy', 3.5, 85, 10), 'overload', { overload: { successPercent: 80 } }).passedCount, 2, 'success rate is a setting');
+});
+
+test('cash Easy ladder includes 15s and 12s', () => {
+  assert.deepEqual(goalsForGame('cash').filter((item) => item.level === 'Easy').map((item) => item.target), [15, 12, 10, 7.5, 5]);
+});
+
+test('every goal met by any run is checked off, in any order, and the best run is reported', () => {
+  const history = [...round('Easy', 4, 6), ...round('Easy', 9, 10)];
+  const progress = progressOf(history, 'cash', { successPercent: 60 });
+  assert.equal(progress.goals.find((item) => item.id === 'cash:Easy:5').passed, true, 'fast 60% run passes the hardest goal');
+  assert.equal(progress.goals.find((item) => item.id === 'cash:Easy:15').passed, true);
+  assert.equal(progress.bestWindow.Easy.successPercent, 100);
+  assert.equal(progress.bestWindowSuccess, 100);
 });
