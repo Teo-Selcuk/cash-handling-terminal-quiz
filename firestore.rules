@@ -17,7 +17,7 @@ service cloud.firestore {
         && entry.modifiedAt is int && entry.modifiedAt > 0
         && entry.deviceId is string && entry.deviceId.size() > 0 && entry.deviceId.size() <= 128
         && ((kind == 'gameHistory' && entry.key in ['cash-handling-terminal-quiz-history-v1','cash-handling-chess-games-v1','cash-handling-chess-lessons-v1'])
-        || (kind == 'settings' && entry.key in ['cash-handling-terminal-quiz-presets-v1','cash-handling-terminal-quiz-theme-v1','cash-handling-terminal-quiz-current-challenge-v1','cash-handling-terminal-quiz-chart-appearance-v1','cash-handling-terminal-quiz-typing-presets-v1','cash-handling-chess-current-v1','cash-handling-chess-settings-v1','cash-handling-multitasker-settings-v1']));
+        || (kind == 'settings' && entry.key in ['cash-handling-terminal-quiz-presets-v1','cash-handling-terminal-quiz-theme-v1','cash-handling-terminal-quiz-current-challenge-v1','cash-handling-terminal-quiz-chart-appearance-v1','cash-handling-terminal-quiz-typing-presets-v1','cash-handling-chess-current-v1','cash-handling-chess-settings-v1','cash-handling-multitasker-settings-v1','cash-handling-terminal-quiz-goal-settings-v1']));
     }
     match /users/{uid}/{kind}/{entryId} {
       allow read: if isOwner(uid) && kind in ['gameHistory','settings'];
