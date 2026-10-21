@@ -8,7 +8,7 @@ import { buildProgressModel } from '../progress-analytics.mjs';
 const email='approved@example.com';
 const password='Test-'+crypto.randomUUID();
 const historyKey='cash-handling-terminal-quiz-history-v1';
-const accountModule='./firebase-accounts.mjs?v=20261020-fast';
+const accountModule='./firebase-accounts.mjs?v=20261020-sync';
 const sdkBase='https://www.gstatic.com/firebasejs/12.19.0/';
 const ready=page=>page.waitForFunction(()=>document.documentElement.dataset.appReady==='true');
 const saved=page=>page.locator('#account-status').filter({hasText:/^Saved$/}).waitFor({timeout:30000});

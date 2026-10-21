@@ -2,6 +2,8 @@ import { AccountStorage, shouldReplace, SYNC_KEYS } from './account-data.mjs?v=2
 import { firebaseConfig } from './firebase-config.mjs';
 import { isApprovedUid } from './account-access.mjs';
 
+const remoteIds=new Set();
+let markConnected;const connected=new Promise(resolve=>{markConnected=resolve;});
 let sdk,auth,db,initialized=false,connecting=false,reconnectTimer,saving=false,retryTimer,slowTimer,loaded=false,unsubscribers=[];
 const $=id=>document.getElementById('account-'+id);
 const changedKeys=new Set();let changeTimer;
@@ -50,14 +52,29 @@ async function syncEntry(uid,id,entry){
   if(result)accountStorage.merge(id,result);
   else accountStorage.acknowledge(id,entry);
 }
+// Records the cloud has never seen cannot conflict, so they upload in large batches; edits to known records still use a transaction.
+async function uploadNew(uid,items){
+  for(let i=0;i<items.length;i+=400){
+    if(auth.currentUser?.uid!==uid)return;
+    const chunk=items.slice(i,i+400),batch=sdk.writeBatch(db);
+    for(const [id,entry] of chunk)batch.set(sdk.doc(db,'users',uid,collectionName(entry.key),id),encode(entry));
+    await withTimeout(batch.commit(),20000);
+    if(auth.currentUser?.uid!==uid)return;
+    for(const [id,entry] of chunk){remoteIds.add(id);accountStorage.acknowledge(id,entry);}
+  }
+}
 async function flush(){
   if(saving||!db||!accountStorage.uid)return;
   if(!navigator.onLine){status('Offline · saved on this device');return;}
   saving=true;const uid=accountStorage.uid;let failed=false;
   try{
     accountStorage.refresh();
-    const queue=accountStorage.pending();
-    if(queue.length)status('Syncing');
+    const all=accountStorage.pending();
+    // Wait for the first full cloud read so the app knows which records already exist there.
+    if(!loaded&&all.length){status(navigator.onLine?'Syncing in the background…':'Offline · saved on this device');return;}
+    const fresh=all.filter(([id])=>!remoteIds.has(id)),queue=all.filter(([id])=>remoteIds.has(id));
+    if(all.length)status('Syncing');
+    await uploadNew(uid,fresh);
     for(let i=0;i<queue.length;i+=8){
       if(auth.currentUser?.uid!==uid)break;
       await Promise.all(queue.slice(i,i+8).map(([id,entry])=>syncEntry(uid,id,entry)));
@@ -65,7 +82,7 @@ async function flush(){
     $('error').textContent='';
     status(accountStorage.pending().length?'Syncing':loaded?'Saved':'Loading account…');
   }catch(error){failed=true;status(navigator.onLine?'Sync problem · saved on this device, retrying':'Offline · saved on this device');$('error').textContent=humanError(error);}
-  finally{saving=false;if(accountStorage.uid===uid&&accountStorage.pending().length){clearTimeout(retryTimer);retryTimer=setTimeout(()=>void flush(),failed?15000:300);}}
+  finally{saving=false;if(loaded&&accountStorage.uid===uid&&accountStorage.pending().length){clearTimeout(retryTimer);retryTimer=setTimeout(()=>void flush(),failed?15000:300);}}
 }
 function subscribe(uid){
   let ready=new Set();loaded=false;
@@ -73,7 +90,7 @@ function subscribe(uid){
   for(const kind of ['gameHistory','settings']){
     unsubscribers.push(sdk.onSnapshot(sdk.collection(db,'users',uid,kind),{includeMetadataChanges:true},snapshot=>{
       if(auth.currentUser?.uid!==uid)return;
-      try{for(const change of snapshot.docChanges())if(change.type!=='removed'&&!change.doc.metadata.hasPendingWrites)accountStorage.merge(change.doc.id,decode(change.doc.data()));}
+      try{for(const change of snapshot.docChanges())if(change.type!=='removed'&&!change.doc.metadata.hasPendingWrites){remoteIds.add(change.doc.id);accountStorage.merge(change.doc.id,decode(change.doc.data()));}}
       catch{status('Sync error · unreadable cloud record');return;}
       if(!snapshot.metadata.fromCache){ready.add(kind);loaded=ready.size===2;}
       $('import').disabled=!loaded;
@@ -88,7 +105,9 @@ async function action(operation){
   finally{$('form').inert=false;$('form').removeAttribute('aria-busy');$('submit').textContent='Sign in';$('password').value='';}
 }
 export async function initializeAccounts(){
-  $('form').addEventListener('submit',event=>{event.preventDefault();if(!auth)return;void action(async()=>{
+  $('form').addEventListener('submit',event=>{event.preventDefault();void action(async()=>{
+    // Tapping Sign in early starts the connection now and waits for it instead of ignoring the tap.
+    if(!initialized){status('Connecting…');void connectAccounts();await Promise.race([connected,new Promise((_,reject)=>setTimeout(()=>reject({code:'unavailable'}),20000))]);}
     await sdk.setPersistence(auth,$('remember').checked?sdk.browserLocalPersistence:sdk.browserSessionPersistence);
     const credential=await sdk.signInWithEmailAndPassword(auth,$('email').value.trim(),$('password').value);
     if(!isApprovedUid(credential.user.uid)){await sdk.signOut(auth);throw {code:'auth/account-not-approved'};}
@@ -103,6 +122,7 @@ export async function initializeAccounts(){
   // The app starts from the account remembered on this device; the network check below runs in the background so a
   // slow Firebase connection never delays the first screen. A different real account triggers one reload.
   accountStorage.activate(rememberedUid());
+  $('form').inert=false;
   status(accountStorage.uid?'Saved on this device · connecting…':'Saved on this device');
   // Start Firebase after the first screen is drawn and idle, so its download and setup never block taps.
   const start=()=>void connectAccounts();
@@ -120,7 +140,7 @@ function rememberUid(uid){
 function applyUser(user){
   const uid=user?.uid??null;
   unsubscribers.forEach(stop=>stop());unsubscribers=[];clearTimeout(retryTimer);clearTimeout(slowTimer);
-  rememberUid(uid);loaded=false;
+  rememberUid(uid);loaded=false;remoteIds.clear();
   if(uid!==accountStorage.uid){accountStorage.activate(uid);for(const key of SYNC_KEYS)changed(key);window.dispatchEvent(new CustomEvent('account-change',{detail:{uid}}));}
   $('form').hidden=Boolean(user);$('signout').hidden=!user;$('user').textContent=user?.email??'Guest · saved on this device';
   $('form').inert=false;$('error').textContent='';
@@ -147,7 +167,7 @@ async function connectAccounts(){
       if(user&&!isApprovedUid(user.uid)){void sdk.signOut(auth);return;}
       if(initialized&&(user?.uid??null)!==accountStorage.uid)applyUser(user);
     });
-    initialized=true;
-  }catch(error){status('Sync problem · you can keep playing, saved on this device');$('error').textContent=humanError(error);$('form').inert=true;clearTimeout(reconnectTimer);reconnectTimer=setTimeout(()=>void connectAccounts(),20000);}
+    initialized=true;markConnected();
+  }catch(error){status('Sync problem · you can keep playing, saved on this device');$('error').textContent=humanError(error);clearTimeout(reconnectTimer);reconnectTimer=setTimeout(()=>void connectAccounts(),20000);}
   finally{connecting=false;}
 }

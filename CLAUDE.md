@@ -29,6 +29,8 @@ replaces `AGENTS.md`; keep every agent rule here so there is one source of truth
 - Unit tests (required gate): `node --test tests/*.test.mjs`
 - Browser checks (need Playwright on `NODE_PATH`): `node tests/browser-smoke.mjs`.
   `QUIZ_FOCUSED=<name>` runs one focused group.
+- Sync and Fraud checks need the Firebase emulators and Java: `firebase emulators:start --only auth,firestore --project cash-handling-quiz`
+  (ports are in `firebase.json`), then `QUIZ_EMULATORS=1 QUIZ_FOCUSED=firebase|fraud|sync-backlog node tests/browser-smoke.mjs`.
 
 ## Change rules
 
