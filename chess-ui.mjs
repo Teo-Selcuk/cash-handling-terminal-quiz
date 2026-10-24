@@ -1,4 +1,4 @@
-import { enhanceHistoryList } from './history-tables.mjs?v=20261021-fast';
+import { enhanceHistoryList } from './history-tables.mjs?v=20261023-round3';
 import { Chess, ChessSession, DEFAULT_POSITION, DIFFICULTIES, normalizeSettings } from './chess-core.mjs';
 import { ChessBoard } from './chess-board.mjs?v=20261017-round2';
 import { ChessEngine, analyzeMove } from './chess-engine.mjs';
@@ -14,7 +14,7 @@ const make = (tag, text, className = '') => { const node = document.createElemen
 const download = (text, name, type) => { const url = URL.createObjectURL(new Blob([text], { type })); const link = document.createElement('a'); link.href = url; link.download = name; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); };
 const resultLabel = game => !game.result ? 'In progress' : game.result.winner === null ? 'Draw' : game.result.winner === game.player ? 'Win' : 'Loss';
 
-export function createChessUI({ showScreen, renderChart, showChartData, storage = globalThis.localStorage }) {
+export function createChessUI({ showScreen, renderChart, showChartData, renderProjection, storage = globalThis.localStorage }) {
   const store = new ChessStore(storage);
   let session = null, lesson = null, review = null, selected = null, hint = null, promotion = null;
   let busy = false, ready = false, engineError = false, active = false, savedAt = 0;
@@ -332,6 +332,7 @@ export function createChessUI({ showScreen, renderChart, showChartData, storage 
     el('history-charts').replaceChildren(...chessChartSpecs(games, attempts).map(spec => renderChart({ ...spec, description: data ? 'Fictional sample games with synthetic move evaluations.' : spec.description, onPoint: ids => {
       const record = games.find(g => ids.includes(g.id)); if (record && !data) reviewGame(record); else showChartData(spec);
     } }, games)));
+    renderProjection?.(el('history-projection'), games);
     el('history-games').replaceChildren();
     if (!games.length) el('history-games').append(make('p', 'No chess games match these filters. Finish a game to see results here.'));
     for (const game of [...games].reverse()) {

@@ -6,6 +6,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkTyping } from './browser-typing-checks.mjs';
+import { checkRound3 } from './browser-round3-checks.mjs';
 import { checkHistoryLayout } from './browser-history-layout-checks.mjs';
 import { checkFairCredit } from './browser-fair-credit-checks.mjs';
 import { checkHistory, checkAutoContinue, checkTimeouts } from './browser-history-checks.mjs';
@@ -28,7 +29,7 @@ const server = createServer(async (request, response) => {
   const path = new URL(request.url, 'http://localhost').pathname;
   const file = path === '/' ? 'index.html' : path.slice(1);
   if (file === 'cash-mistakes.mjs') { response.setHeader('Content-Type', 'text/javascript'); response.end(await readFile(resolve(root, file))); return; }
-  if (!['account-access.mjs', 'firebase-accounts.mjs', 'firebase-config.mjs', 'account-data.mjs', 'overload-core.mjs', 'overload-ui.mjs', 'overload-analytics.mjs', 'check-holds.mjs', 'hold-training-ui.mjs', 'history-tables.mjs', 'history-explanations.mjs', 'speed-goals.mjs', 'typing-core.mjs', 'index.html', 'app.js', 'style.css', 'quiz-core.mjs', 'pattern-games.mjs', 'distraction-sounds.mjs', 'adaptive-practice.mjs', 'progress-analytics.mjs', 'fraud-inspection.mjs', 'sample-history.mjs', 'chess-ui.mjs', 'chess-core.mjs', 'chess-board.mjs', 'chess-engine.mjs', 'chess-lessons.mjs', 'chess-storage.mjs', 'chess-analytics.mjs', 'assets/chess/chess.mjs', 'assets/chess/chess.js.map', 'assets/chess/stockfish-19-lite-single.js', 'assets/chess/stockfish-19-lite-single.wasm', 'assets/chess/chess-LICENSE', 'assets/chess/stockfish-COPYING.txt', 'assets/fraud/id-portrait-female-20260922.jpg', 'assets/fraud/id-portrait-male-20260922.jpg', 'assets/fraud/id-portrait-female-2-20260929.jpg', 'assets/fraud/id-portrait-male-2-20260929.jpg'].includes(file)) {
+  if (!['account-access.mjs', 'firebase-accounts.mjs', 'firebase-config.mjs', 'account-data.mjs', 'overload-core.mjs', 'overload-ui.mjs', 'overload-analytics.mjs', 'check-holds.mjs', 'hold-training-ui.mjs', 'history-tables.mjs', 'history-explanations.mjs', 'chart-contrast.mjs', 'chart-examples.mjs', 'chart-games.mjs', 'numpad-shortcuts.mjs', 'progress-projection.mjs', 'speed-goals.mjs', 'typing-core.mjs', 'index.html', 'app.js', 'style.css', 'quiz-core.mjs', 'pattern-games.mjs', 'distraction-sounds.mjs', 'adaptive-practice.mjs', 'progress-analytics.mjs', 'fraud-inspection.mjs', 'sample-history.mjs', 'chess-ui.mjs', 'chess-core.mjs', 'chess-board.mjs', 'chess-engine.mjs', 'chess-lessons.mjs', 'chess-storage.mjs', 'chess-analytics.mjs', 'assets/chess/chess.mjs', 'assets/chess/chess.js.map', 'assets/chess/stockfish-19-lite-single.js', 'assets/chess/stockfish-19-lite-single.wasm', 'assets/chess/chess-LICENSE', 'assets/chess/stockfish-COPYING.txt', 'assets/fraud/id-portrait-female-20260922.jpg', 'assets/fraud/id-portrait-male-20260922.jpg', 'assets/fraud/id-portrait-female-2-20260929.jpg', 'assets/fraud/id-portrait-male-2-20260929.jpg'].includes(file)) {
     response.writeHead(404).end(); return;
   }
   response.setHeader('Content-Type', file.endsWith('.jpg') ? 'image/jpeg' : ({ '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.mjs': 'text/javascript', '.wasm': 'application/wasm' })[extname(file)] ?? 'text/plain');
@@ -65,7 +66,9 @@ try {
     };
   });
   const base = process.env.QUIZ_LIVE_URL || `http://127.0.0.1:${server.address().port}/`;
-  if (process.env.QUIZ_FOCUSED === 'round2') {
+  if (process.env.QUIZ_FOCUSED === 'round3') {
+    await checkRound3(browser, base);
+  } else if (process.env.QUIZ_FOCUSED === 'round2') {
     await checkRound2(browser, base);
   } else if (process.env.QUIZ_FOCUSED === 'fair-credit') {
     await checkFairCredit(browser, base);
@@ -111,6 +114,7 @@ try {
   if(process.env.QUIZ_EMULATORS==='1')await checkSyncBacklog(browser, base);
   if(process.env.QUIZ_EMULATORS==='1')await withApprovedProfiles(browser,base,async()=>{await checkFraudInspection(browser,base);await checkHoldTraining(browser,base);});
   await checkChartFormatting(browser, base);
+  await checkRound3(browser, base);
   await checkChess(browser, base);
   await checkRound2(browser, base);
   }

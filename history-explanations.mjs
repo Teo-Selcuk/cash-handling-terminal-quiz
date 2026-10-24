@@ -392,11 +392,14 @@ export function createExplanation({ what, how, terms = [], reading = [] }, label
     details.append(read);
   }
   if (terms.length) {
-    const list = document.createElement('dl');
+    // Each term is one bullet: the word in bold, then what it means.
+    const list = document.createElement('ul');
+    list.className = 'explanation-terms';
     for (const [term, meaning] of terms) {
-      const dt = document.createElement('dt'); dt.textContent = term;
-      const dd = document.createElement('dd'); dd.textContent = meaning;
-      list.append(dt, dd);
+      const item = document.createElement('li');
+      const word = document.createElement('strong'); word.textContent = term;
+      item.append(word, document.createTextNode(`: ${meaning}`));
+      list.append(item);
     }
     details.append(list);
   }

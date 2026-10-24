@@ -1,16 +1,21 @@
 import { accountStorage as localStorage, initializeAccounts } from './firebase-accounts.mjs?v=20261020-sync';
 import { canPlayGame } from './account-access.mjs';
 import { analyzeCashMistakes } from './cash-mistakes.mjs?v=20261011-fair-credit';
-import { enhanceHistoryTables } from './history-tables.mjs?v=20261021-fast';
-import { chartExplanation, summaryChartExplanation, createExplanation } from './history-explanations.mjs?v=20261018-explain';
-import { goalProgress, availableProgressiveLevels, PROGRESSIVE_LEVELS, fraudProgressiveOverrides, GOAL_SETTINGS_KEY, GOAL_WINDOW_LIMITS, GOAL_SUCCESS_LIMITS, resolveGoalSettings } from './speed-goals.mjs?v=20261021-goals';
+import { enhanceHistoryTables } from './history-tables.mjs?v=20261023-round3';
+import { chartExplanation, summaryChartExplanation, createExplanation } from './history-explanations.mjs?v=20261023-round3';
+import { resolveLabelColor } from './chart-contrast.mjs?v=20261023-round3';
+import { chartExample, summaryChartExample, createExample } from './chart-examples.mjs?v=20261023-round3';
+import { chartGameTag, chartFitsGame } from './chart-games.mjs?v=20261023-round3';
+import { numpadChoice } from './numpad-shortcuts.mjs?v=20261023-round3';
+import { buildProjection, projectionRows, chessProjectionRows } from './progress-projection.mjs?v=20261023-round3';
+import { goalProgress, goalMetric, availableProgressiveLevels, PROGRESSIVE_LEVELS, fraudProgressiveOverrides, GOAL_SETTINGS_KEY, GOAL_WINDOW_LIMITS, GOAL_SUCCESS_LIMITS, resolveGoalSettings } from './speed-goals.mjs?v=20261021-goals';
 import { createOverloadUI } from './overload-ui.mjs?v=20261003-accounts';
 import { summarizeOverload, overloadRecommendation } from './overload-analytics.mjs?v=20261003-accounts';
 import { decideCheck, scoreHoldDecision, ITEM_TYPES, ITEM_REASONS, ACTIONS, HOLD_TYPES, availabilityText } from './check-holds.mjs?v=20261003-accounts';
 import { renderHoldTraining, readHoldAnswer } from './hold-training-ui.mjs?v=20261003-accounts';
 import { TYPING_PRESETS, resolveTypingSettings, createTypingPrompt, scoreTyping, summarizeTyping } from './typing-core.mjs?v=20261002-typing';
 import { PATTERN_GAME_NAMES } from './pattern-games.mjs';
-import { createChessUI } from './chess-ui.mjs?v=20261021-alltables';
+import { createChessUI } from './chess-ui.mjs?v=20261023-round3';
 import { ChessStore } from './chess-storage.mjs';
 import { createDistractionSamples } from './distraction-sounds.mjs';
 import {
@@ -135,8 +140,9 @@ function chartSettings(id) {
 }
 function applyChartAppearance(element, id) {
   const settings = chartSettings(id);
-  const labelColor = settings.labelColor === 'custom' ? settings.customColor : chartLabelColors[settings.labelColor];
-  element.style.setProperty('--chart-label-color', labelColor);
+  element.dataset.appearanceId = id;
+  // The chosen color is resolved for the current theme and darkened or lightened until it reads on the card.
+  element.style.setProperty('--chart-label-color', resolveLabelColor(settings, document.documentElement.dataset.theme));
   // Label color recolors data value labels only; axis text and legends stay theme-static.
   element.style.setProperty('--chart-label-scale', String(chartLabelSizes[settings.labelSize]));
   element.style.setProperty('--chart-label-font', chartLabelFonts[settings.labelFont]);
@@ -462,6 +468,8 @@ function applyTheme(theme, persist = false) {
   refs['theme-toggle'].textContent = selectedTheme === 'dark' ? 'Light mode' : 'Dark mode';
   refs['theme-toggle'].setAttribute('aria-label', `Switch to ${selectedTheme === 'dark' ? 'light' : 'dark'} mode`);
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', selectedTheme === 'dark' ? '#0d1719' : '#123f46');
+  // Chart label colors are resolved per theme, so they are worked out again for the new theme.
+  document.querySelectorAll('[data-appearance-id]').forEach((element) => applyChartAppearance(element, element.dataset.appearanceId));
   if (!persist) return;
   try {
     localStorage.setItem(THEME_KEY, selectedTheme);
@@ -3804,6 +3812,21 @@ function chartExplanationToggle(id, explanation) {
   note.addEventListener('toggle', () => { if (note.open) openChartExplanations.add(id); else openChartExplanations.delete(id); });
   return note;
 }
+const openChartExamples = new Set();
+function chartExampleToggle(id, example) {
+  const note = createExample(example);
+  note.dataset.example = id;
+  note.open = openChartExamples.has(id);
+  note.addEventListener('toggle', () => { if (note.open) openChartExamples.add(id); else openChartExamples.delete(id); });
+  return note;
+}
+/** A small tag naming the game a chart belongs to, so same-named charts in two games are told apart. */
+function chartGameTagElement(game) {
+  const tag = document.createElement('p');
+  tag.className = 'chart-game-tag';
+  tag.textContent = chartGameTag(game);
+  return tag;
+}
 
 function accuracyLevelText(level) {
   if (!level.answered) return 'No attempts';
@@ -3818,8 +3841,10 @@ function renderHistoryVisuals(summary) {
   applyChartAppearance(outcomeCard, 'outcomes');
   applyChartAppearance(accuracyCard, 'accuracy-by-difficulty');
   for (const [card, id] of [[outcomeCard, 'outcomes'], [accuracyCard, 'accuracy-by-difficulty']]) {
-    card.querySelector(':scope > .explanation')?.remove();
-    card.querySelector('.summary-chart-actions').after(chartExplanationToggle(id, summaryChartExplanation(id, summary)));
+    card.querySelectorAll(':scope > .explanation, :scope > .chart-example').forEach((note) => note.remove());
+    card.querySelector('.summary-chart-actions').after(chartExplanationToggle(id, summaryChartExplanation(id, summary)), chartExampleToggle(id, summaryChartExample(id, summary)));
+    card.dataset.game = historyView.filters.game;
+    card.querySelector('.chart-game-tag').textContent = chartGameTag(historyView.filters.game);
   }
   const palette = chartSettings('outcomes').palette;
   outcomeCard.querySelectorAll('[data-chart-data], [data-chart-settings]').forEach((button) => {
@@ -4470,6 +4495,7 @@ function renderChartCard(spec, records) {
   card.className = `interactive-chart visual-card${view.expanded ? ' is-maximized' : ''}`;
   card.dataset.chartKind = spec.kind;
   card.dataset.chartId = spec.id;
+  card.dataset.game = historyView.filters.game;
   applyChartAppearance(card, spec.id);
   card.tabIndex = -1;
   if (view.expanded) {
@@ -4513,8 +4539,8 @@ function renderChartCard(spec, records) {
   control(view.compare ? 'Hide comparison' : 'Compare periods', () => { view.compare = !view.compare; });
   control('Appearance', () => openChartSettings(spec.id, spec.title), false, false);
   control(view.expanded ? 'Restore size' : 'Maximize', () => { view.expanded = !view.expanded; });
-  heading.append(title, controls);
-  card.append(heading, chartExplanationToggle(spec.id, chartExplanation(spec)));
+  heading.append(chartGameTagElement(historyView.filters.game), title, controls);
+  card.append(heading, chartExplanationToggle(spec.id, chartExplanation(spec)), chartExampleToggle(spec.id, chartExample(spec)));
   const status = document.createElement('p');
   status.className = 'chart-note chart-hover';
   status.textContent = view.notice ?? `${spec.attemptIds.length} eligible filtered attempt${spec.attemptIds.length === 1 ? '' : 's'}.`;
@@ -4818,7 +4844,7 @@ function renderChartCard(spec, records) {
 }
 
 function renderHistoryCharts(records) {
-  const specs = buildChartSpecs(records, historyView.filters.game);
+  const specs = buildChartSpecs(records, historyView.filters.game).filter((spec) => chartFitsGame(spec.id, historyView.filters.game));
   refs['history-charts'].replaceChildren(...specs.map((spec) => renderChartCard(spec, records)));
 }
 
@@ -5085,42 +5111,151 @@ function renderErrorAnalysis(records, history) {
   return analytics;
 }
 
+/** A real bulleted list: one short idea per item. */
+function bulletList(lines, className = '') {
+  const list = document.createElement('ul');
+  list.className = `plain-bullets${className ? ` ${className}` : ''}`;
+  for (const line of lines.filter(Boolean)) {
+    const item = document.createElement('li');
+    item.textContent = line;
+    list.append(item);
+  }
+  return list;
+}
+
+const projectionNumber = (value, unit) => (unit === '%' ? `${Math.round(value)}%` : unit === 'WPM' ? `${Math.round(value)} WPM` : `${(Math.round(value * 10) / 10).toFixed(1)} s`);
+function projectionRange(range, unit) {
+  return `likely ${projectionNumber(range.likely, unit)} (range ${projectionNumber(range.low, unit)} to ${projectionNumber(range.high, unit)})`;
+}
+
+/** Projection section for one game: pace, low / likely / high ranges per horizon, the next goal, advice and limits. */
+function renderProjection(target, game, rows, { goal = null, unit = 's', better = 'lower', attemptName = 'attempts', noGoalText = '' } = {}) {
+  if (!target) return;
+  target.hidden = game === 'all';
+  if (game === 'all') { target.replaceChildren(); return; }
+  const projection = buildProjection(rows, { now: Date.now(), unit, better, goal, attemptName });
+  const heading = document.createElement('div'); heading.className = 'visual-heading';
+  const titleWrap = document.createElement('div');
+  titleWrap.append(chartGameTagElement(game));
+  const title = document.createElement('h3'); title.textContent = 'Projection'; titleWrap.append(title);
+  heading.append(titleWrap);
+  target.replaceChildren(heading);
+  target.dataset.status = projection.status;
+  if (projection.status !== 'ok') {
+    const message = document.createElement('p'); message.className = 'projection-empty'; message.textContent = projection.message;
+    target.append(message);
+    if (projection.detail) target.append(bulletList([projection.detail]));
+    return;
+  }
+  const speedLabel = unit === 'WPM' ? 'Typing speed' : game === 'chess' ? 'Seconds per move' : 'Answer time';
+  target.append(bulletList([projection.paceText, ...projection.trendText, ...projection.gaps.notes], 'projection-basis'));
+  const grid = document.createElement('div'); grid.className = 'projection-grid'; grid.setAttribute('role', 'list');
+  for (const horizon of projection.horizons) {
+    const item = document.createElement('div'); item.className = 'projection-item'; item.setAttribute('role', 'listitem'); item.dataset.horizon = horizon.key;
+    const name = document.createElement('strong'); name.textContent = horizon.label;
+    item.append(name, bulletList([
+      `${game === 'chess' ? 'Win rate' : 'Success rate'}: ${projectionRange(horizon.success, '%')}.`,
+      horizon.speed ? `${speedLabel}: ${projectionRange(horizon.speed, unit)}.` : `${speedLabel}: not enough timed ${attemptName}.`,
+      `About ${Math.round(horizon.future)} more ${Math.round(horizon.future) === 1 ? attemptName.replace(/s$/, '') : attemptName} at your pace.`,
+    ]));
+    grid.append(item);
+  }
+  target.append(grid);
+  const meaning = document.createElement('p'); meaning.className = 'chart-note projection-meaning'; meaning.textContent = projection.rangeMeaning;
+  target.append(meaning);
+  if (projection.goal) {
+    const plan = projection.goal;
+    const goalText = `${plan.level} ${plan.better === 'higher' ? `${plan.target} WPM or more` : `${plan.target} s or less`} at ${plan.successPercent}% success`;
+    const lines = [`Next goal: ${goalText}, over ${plan.window} ${attemptName} in a row.`,
+      `Now at ${plan.level}: about ${Math.round(plan.successLevel)}% success${plan.speedLevel === null ? '' : ` and ${projectionNumber(plan.speedLevel, unit)}`}${plan.usedLevelOnly ? '' : ` (from all levels; fewer than 10 ${attemptName} at ${plan.level})`}.`];
+    if (plan.totalAttempts === null) lines.push('At your current trend this goal is not getting closer. A change in how you practice (slower and more careful, or shorter sessions) is needed first.');
+    else {
+      lines.push(`Likely needs about ${plan.totalAttempts} more ${attemptName} at ${plan.level}, including one full run of ${plan.window} in a row.`);
+      lines.push(`At your current pace (${Math.round(plan.levelPace * 10) / 10} per week at this level), that is about ${plan.weeksAtCurrentPace < 1 ? 'less than a week' : `${Math.round(plan.weeksAtCurrentPace)} weeks`}.`);
+      lines.push(`To get there in about 4 weeks, you would need about ${plan.attemptsPerWeekFor4Weeks} ${attemptName} per week.`);
+    }
+    const goalTitle = document.createElement('h4'); goalTitle.textContent = 'Pace for your next goal';
+    target.append(goalTitle, bulletList(lines, 'projection-goal'));
+  }
+  else if (noGoalText) {
+    const goalTitle = document.createElement('h4'); goalTitle.textContent = 'Pace for your next goal';
+    target.append(goalTitle, bulletList([noGoalText], 'projection-goal'));
+  }
+  const advice = document.createElement('p'); advice.className = 'projection-advice'; advice.textContent = projection.advice;
+  const limitsTitle = document.createElement('h4'); limitsTitle.textContent = 'Honest limits';
+  target.append(advice, limitsTitle, bulletList(projection.limits, 'projection-limits'));
+}
+
+function renderGameProjection(history, game) {
+  if (game === 'all' || game === 'chess') { renderProjection(document.getElementById('history-projection'), 'all', []); return; }
+  const progress = goalProgress(history, game, readGoalSettings());
+  const metric = goalMetric(game);
+  const goal = progress.current ? { level: progress.current.level, target: progress.current.target, better: progress.current.better,
+    successPercent: progress.settings.successPercent, window: progress.settings.window } : null;
+  renderProjection(document.getElementById('history-projection'), game, projectionRows(history, game), { goal, unit: metric.unit, better: metric.better, attemptName: metric.attemptName,
+    noGoalText: progress.total ? 'You have passed every speed goal for this game. The projection above still shows where your trend is heading.' : '' });
+}
+
 function renderAdvancedErrorAnalysis(records) {
   const target = document.getElementById('advanced-error-analytics'); target.replaceChildren();
   const { memory, cash, charts } = buildAdvancedErrorAnalytics(records);
   if (!records.some(row => ['memory', 'cash'].includes(row.game))) return;
+  const hasMemory = records.some(r => r.game === 'memory');
+  const hasCash = records.some(r => r.game === 'cash');
   const heading = document.createElement('h4'); heading.textContent = 'Detailed digit and arithmetic analysis'; target.append(heading);
-  const note = document.createElement('p'); note.className = 'chart-note';
-  note.textContent = `Digit offsets are compared from the beginning of each value; leading zeros are preserved. Missing digits count as positional errors; extra digits and decimal placement are separate. Blank timeouts and unavailable legacy evidence are excluded from detailed comparisons (${memory.unavailable} memory, ${cash.unavailable} cash). Value credit = fully correct values ÷ expected values; digit accuracy is separate. Observed rates estimate mistakes in this sample. Compare memory-load rows while holding digits per value or value count constant; sparse or mixed configurations cannot isolate the effect. Cash explanations can overlap: matching a signature is a possibility, not proof of reasoning. Confirmed step errors compare recorded operands and results only; later correct arithmetic can still propagate an earlier wrong amount. Denomination matches describe possible misreads, including hypothetical $2 and $4 values. Missing intermediate work stays unavailable.`;
-  target.append(note);
+  target.append(bulletList([
+    ...(hasMemory ? [
+      'Digits are compared from the left. A missing digit counts as a wrong digit.',
+      'Extra digits and a misplaced decimal point are counted on their own.',
+      'Value credit means values fully right ÷ values shown. Digit accuracy is counted separately.',
+    ] : []),
+    `Blank time-outs and old records without details are left out (${memory.unavailable} memory, ${cash.unavailable} cash).`,
+    ...(hasCash ? [
+      'A "likely cause" is a pattern your wrong answer fits. It is a guess, not proof.',
+      'A "confirmed step error" means a saved step had the wrong result for its own numbers. One early slip can carry into later steps.',
+      'A bill or coin mix-up means the size of the miss matches the gap between two bills or coins (made-up $2 and $4 values are included).',
+    ] : []),
+  ], 'advanced-error-notes'));
+  const tablesNote = document.createElement('p'); tablesNote.className = 'advanced-error-tables-note';
+  tablesNote.textContent = 'The tables for this section are in "All tables" at the bottom of the page.';
+  target.append(tablesNote);
   const table = (id, label, headers, rows, format) => {
-    const section = document.createElement('section'); section.id = id;
+    // The heading names the table; the table itself moves to "All tables", and the empty section is hidden by CSS.
+    const section = document.createElement('section'); section.id = id; section.className = 'table-slot-section';
     const title = document.createElement('h4'); title.textContent = label; section.append(title);
     const body = document.createElement('div'); section.append(body); target.append(section);
     appendAnalyticsTable(body, headers, rows, 'No supported answers in the current selection.', row => makeAnalyticsRow(format(row)));
   };
   const counts = g => [g.label, `${g.errors} / ${g.opportunities}`, `${g.errorRatePercent}%`, `${g.accuracyPercent}%`];
-  if (records.some(r => r.game === 'memory')) {
-    const creditNote = document.createElement('p');
-    creditNote.textContent = `Total points: ${memory.points.toFixed(2)}/${memory.scoredAttempts}. Fully correct values: ${memory.correctValues}/${memory.totalValues}. Digits correct: ${memory.correctDigits}/${memory.totalDigits} (${memory.totalDigits ? (100 * memory.correctDigits / memory.totalDigits).toFixed(2) : '—'}%). Attempts without scoring evidence: ${records.filter(r => r.game === 'memory' && r.isAnswered).length - memory.scoredAttempts}. Outcome and overall error charts count imperfect rounds; accuracy and points give value credit.`;
-    target.append(creditNote);
-    const loadSignals = document.createElement('p'); loadSignals.className = 'chart-note';
+  if (hasMemory) {
+    target.append(bulletList([
+      `Total points: ${memory.points.toFixed(2)} of ${memory.scoredAttempts} rounds.`,
+      `Values fully right: ${memory.correctValues} of ${memory.totalValues}.`,
+      `Digits right: ${memory.correctDigits} of ${memory.totalDigits} (${memory.totalDigits ? (100 * memory.correctDigits / memory.totalDigits).toFixed(2) : '—'}%).`,
+      `Rounds without scoring details: ${records.filter(r => r.game === 'memory' && r.isAnswered).length - memory.scoredAttempts}.`,
+      'The outcome and error charts count any round that was not perfect. Accuracy and points give part credit for each right value.',
+    ], 'advanced-error-notes'));
     const axisSignal = (groups, name) => {
       const observed = groups.filter(g => g.attemptIds.length >= 5).sort((a,b) => Number(a.key)-Number(b.key));
-      if (observed.length < 2) return `${name}: needs at least two loads with five attempts each`;
+      if (observed.length < 2) return `${name}: needs at least two sizes with five tries each.`;
       const low = observed[0]; const high = observed.at(-1);
       const difference = Math.round((high.errorRatePercent - low.errorRatePercent) * 100) / 100;
-      return `${name}: ${low.errorRatePercent}% at ${low.label} (${low.attemptIds.length} attempts) → ${high.errorRatePercent}% at ${high.label} (${high.attemptIds.length} attempts), ${Math.abs(difference)} percentage points ${difference > 0 ? 'higher' : difference < 0 ? 'lower' : 'unchanged'}`;
+      return `${name}: ${low.errorRatePercent}% wrong at ${low.label} (${low.attemptIds.length} tries), ${high.errorRatePercent}% wrong at ${high.label} (${high.attemptIds.length} tries). That is ${difference === 0 ? 'no change' : `${Math.abs(difference)} points ${difference > 0 ? 'more' : 'fewer'} mistakes`}.`;
     };
-    loadSignals.textContent = `${axisSignal(memory.valueCounts, 'More values')}. ${axisSignal(memory.lengths, 'Longer values')}. These are observed endpoint comparisons; difficulty, timers and the other load dimension may also differ. Use the joint load table below to compare similar settings.`;
-    target.append(loadSignals);
+    target.append(bulletList([
+      axisSignal(memory.valueCounts, 'More values'),
+      axisSignal(memory.lengths, 'Longer values'),
+      'These compare only the smallest and largest sizes. Level and timers can differ too, so check the load table for fair matches.',
+    ], 'advanced-error-notes'));
     table('memory-credit-history', 'Round credit history', ['Timestamp', 'Difficulty', 'Outcome', 'Score', 'Values correct', 'Digits correct', 'Digit accuracy'], records.filter(r => r.game === 'memory' && r.isAnswered), r => {
       const credit = memoryCredit(r);
       return [r.timestamp, r.difficulty, r.outcome, credit ? `${credit.attemptScore.toFixed(2)}/1.00` : 'Unavailable', credit ? `${credit.correctValueCount}/${credit.totalValueCount}` : 'Unavailable', credit?.totalDigitCount != null ? `${credit.correctDigitCount}/${credit.totalDigitCount}` : 'Unavailable', credit?.digitAccuracyPercent != null ? `${credit.digitAccuracyPercent}%` : 'Unavailable'];
     });
-    const highlights = document.createElement('p');
-    highlights.textContent = `Most missed position: ${memory.mostMissed ? `${memory.mostMissed.label} (${memory.mostMissed.errorRatePercent}%)` : 'needs five opportunities per position'}. Most accurate: ${memory.mostAccurate ? `${memory.mostAccurate.label} (${memory.mostAccurate.accuracyPercent}%)` : 'needs five opportunities per position'}. Missing digits: ${memory.missing}. Extra digits: ${memory.extra}.`;
-    target.append(highlights);
+    target.append(bulletList([
+      `Most missed digit spot: ${memory.mostMissed ? `${memory.mostMissed.label} (${memory.mostMissed.errorRatePercent}% wrong)` : 'needs five tries at each spot'}.`,
+      `Most accurate digit spot: ${memory.mostAccurate ? `${memory.mostAccurate.label} (${memory.mostAccurate.accuracyPercent}% right)` : 'needs five tries at each spot'}.`,
+      `Missing digits: ${memory.missing}. Extra digits: ${memory.extra}.`,
+    ], 'advanced-error-notes'));
     table('memory-position-analysis', 'Digit position accuracy', ['Position', 'Errors / digits', 'Error rate', 'Accuracy'], memory.positions, counts);
     table('memory-value-position-analysis', 'Value position accuracy', ['Value position', 'Wrong / values', 'Error rate', 'Accuracy'], memory.valuePositions, counts);
     table('memory-load-analysis', 'Difficulty and memory load comparison', ['Difficulty | Values | Digits per value | Total digits', 'Wrong / values', 'Error rate', 'Accuracy', 'Attempts'], memory.loads, g => [...counts(g), g.attemptIds.length]);
@@ -5148,12 +5283,12 @@ function renderAdvancedErrorAnalysis(records) {
       cell.style.setProperty('--heat-opacity', String(Math.min(0.8, 0.12 + count / Math.max(1, ...memory.confusion.flat()))));
       cell.title = `Expected ${expected}, entered ${entered}: ${count} ${expected === entered ? 'correct digits' : 'substitutions'}`;
     }));
-    const legend = document.createElement('p'); legend.className = 'chart-note'; legend.textContent = 'Cell counts: diagonal = correctly recalled digits; other cells = substitutions. Missing/extra digits have no digit pair and are excluded. Darker cells indicate higher counts.'; heatmap.append(legend);
+    heatmap.append(bulletList(['Each cell counts digits: the row is the right digit, the column is what you typed.', 'Cells on the diagonal are digits you got right; other cells are swapped digits.', 'Missing or extra digits have no pair, so they are left out.', 'Darker cells mean higher counts.'], 'digit-heatmap-legend'));
     const confused = memory.confusion.flatMap((cells, from) => cells.map((count, to) => ({ from, to, count }))).filter(g => g.from !== g.to && g.count).sort((a,b) => b.count-a.count);
     table('memory-common-digit-confusion', 'Commonly confused digits', ['Expected', 'Entered', 'Substitutions'], confused, g => [g.from, g.to, g.count]);
     table('memory-digit-details', 'Raw digit comparison history', ['Timestamp', 'Difficulty', 'Value #', 'Expected', 'Entered', 'Wrong positions', 'Expected → entered digits', 'Adjacent swap pattern', 'Missing', 'Extra', 'Decimal mismatch'], memory.details, r => [r.timestamp, r.difficulty, r.sequence, r.expected, r.entered, r.wrongPositions.join(', ') || 'All digits correct', r.digitPairs.filter(p => !p.correct).map(p => `Position ${p.position}: ${p.expected} → ${p.entered}`).join('; ') || 'All match', r.swaps.join(', ') || 'None', r.missing, r.extra, r.decimalError ? 'Yes' : 'No']);
   }
-  if (records.some(r => r.game === 'cash')) {
+  if (hasCash) {
     table('cash-stage-analysis', 'Calculation stage evidence', ['Stage / evidence', 'Errors or matching possibilities', 'Attempts'], cash.stages, g => [g.label, g.errors, g.attemptIds.length]);
     table('cash-cause-analysis', 'Likely causes and recorded discrepancies', ['Cause / evidence', 'Matching attempts'], cash.causes, g => [g.label, g.attemptIds.length]);
     table('cash-denomination-confusion', 'Possible bill and coin confusion', ['Denominations', 'Matching attempts'], [...cash.billConfusion, ...cash.coinConfusion], g => [g.label, g.attemptIds.length]);
@@ -5212,23 +5347,21 @@ function renderHistoryInsights(records, errorAnalytics = buildErrorAnalytics(rec
     controls.append(label);
   });
   root.append(controls);
-  const summary = document.createElement('p');
-  summary.className = 'chart-note';
   const rate = report.rate;
-  summary.textContent = `${rate.label}: ${rate.value === null ? 'no matching attempts' : `${rate.value}% (${Number(rate.correct.toFixed(2))}/${rate.count}${rate.interval ? `; 95% Wilson interval ${rate.interval[0]}–${rate.interval[1]}%` : ' points; memory value credit'})`}. ${report.notAnswered} not answered; ${rate.missing} lack a selected field; ${report.missingTime} lack response time.`;
-  root.append(summary);
-  const speed = document.createElement('p');
-  speed.className = 'chart-note';
-  speed.textContent = `Speed: ${report.speed.map((point) => `${point.label} ${point.value === null ? 'no data' : `${point.value}% (${Number(point.correct.toFixed(2))}/${point.count})`}`).join(' · ')}. `
-    + `Correct by: ${report.correctBy.map((point) => `${point.seconds}s ${point.value ?? '—'}%`).join(' · ')}.`;
-  root.append(speed);
+  const pointsCredit = !rate.interval;
+  root.append(bulletList([
+    rate.value === null ? `${rate.label}: no matching tries.` : `${rate.label}: ${rate.value}% right (${Number(rate.correct.toFixed(2))}/${rate.count}${pointsCredit ? ' points' : ' tries'}).`,
+    rate.interval ? `Likely true range: ${rate.interval[0]}–${rate.interval[1]}% (a 95% Wilson interval: the fewer tries, the wider it is).` : rate.value === null ? '' : 'Number memory gives part credit, so this counts points instead of right answers.',
+    `Not answered: ${report.notAnswered}. Missing the chosen detail: ${rate.missing}. No answer time saved: ${report.missingTime}.`,
+  ], 'insight-summary'));
+  root.append(bulletList([
+    ...report.speed.map((point) => `Answers in ${point.label}: ${point.value === null ? 'no data' : `${point.value}% right (${Number(point.correct.toFixed(2))}/${point.count})`}.`),
+    `Correct by: ${report.correctBy.map((point) => `${point.seconds}s ${point.value ?? '—'}%`).join(' · ')} (share of answers that were right within that many seconds).`,
+  ], 'insight-speed'));
   if (historyView.filters.game !== 'all') {
-    const distance = document.createElement('p');
-    distance.className = 'chart-note';
     const unit = historyView.filters.game === 'cash' ? 'cents off' : historyView.filters.game === 'memory' ? 'digit edits' : historyView.filters.game === 'task' ? 'action errors' : 'selections to fix';
-    distance.textContent = report.meanDistance === null ? 'Answer distance is not recorded for these attempts.'
-      : `Average answer distance: ${report.meanDistance.toFixed(1)} ${unit} across ${report.distanceCount} attempts.`;
-    root.append(distance);
+    root.append(bulletList([report.meanDistance === null ? 'How far off wrong answers were is not saved for these tries.'
+      : `Wrong answers were off by ${report.meanDistance.toFixed(1)} ${unit} on average (${report.distanceCount} tries).`], 'insight-distance'));
   }
   const columns = document.createElement('div');
   columns.className = 'insight-columns';
@@ -5236,38 +5369,41 @@ function renderHistoryInsights(records, errorAnalytics = buildErrorAnalytics(rec
     const section = document.createElement('section');
     const heading = document.createElement('h4'); heading.textContent = title;
     const list = document.createElement('ul');
+    list.className = 'plain-bullets';
     if (!groups.length) {
       const item = document.createElement('li');
-      item.textContent = 'No supported pattern yet. Keep practicing under the same conditions.';
+      item.textContent = 'No clear pattern yet. Keep practicing with the same settings.';
       list.append(item);
     }
     groups.forEach((group) => {
       const item = document.createElement('li');
       const direction = group.gapPoints >= 0 ? 'higher' : 'lower';
-      item.textContent = `${group.label}: ${group.value}% accuracy (${Number(group.correct.toFixed(2))} of ${group.count} ${group.measure === 'mean' ? 'points' : 'attempts'}). `
-        + `That is ${Math.abs(group.gapPoints)} percentage points ${direction} than the ${group.baselinePercent}% result `
-        + `for the same difficulty and mode (${group.comparableCount} comparable attempts). `
-        + `${group.interval ? `The estimated 95% range for this accuracy is ${group.interval[0]}–${group.interval[1]}% (Wilson interval). ` : 'Uses value credit. '}${group.evidence}.`;
+      item.append(document.createTextNode(`${group.label}: ${group.value}% right (${Number(group.correct.toFixed(2))} of ${group.count} ${group.measure === 'mean' ? 'points' : 'tries'}).`));
+      item.append(bulletList([
+        `${Math.abs(group.gapPoints)} points ${direction} than your ${group.baselinePercent}% at the same level and mode (${group.comparableCount} tries).`,
+        group.interval ? `Likely true range: ${group.interval[0]}–${group.interval[1]}%.` : 'Counts part credit.',
+        `${group.evidence}.`,
+      ]));
       list.append(item);
     });
     const detailedSkills = title === 'Strengths' ? errorAnalytics.strengths : errorAnalytics.weaknesses;
     detailedSkills.slice(0, 3).forEach((group) => {
       const item = document.createElement('li');
-      item.textContent = `${title === 'Strengths' ? 'Strength' : 'Weakness'} — ${formatSkillEvidence(group)}.`;
+      item.textContent = `${title === 'Strengths' ? 'Strength' : 'Weakness'}: ${formatSkillEvidence(group)}.`;
       list.append(item);
     });
     section.append(heading, list);
     columns.append(section);
   }
   root.append(columns);
-  const focus = document.createElement('p');
-  focus.className = 'chart-note';
   const recommendation = recommendNextChallenge(records, { game: historyView.filters.game });
   const specificWeakness = errorAnalytics.weaknesses[0];
-  const weaknessEvidence = specificWeakness ? ` Highest detailed error rate: ${formatSkillEvidence(specificWeakness)}.` : '';
-  focus.textContent = (recommendation.challenge ? `Practice focus: ${recommendation.target}. ${recommendation.reason}` : recommendation.reason) + weaknessEvidence;
-  if (historyView.dataSource === 'sample') focus.textContent = `Based on Sample Data. ${focus.textContent}`;
-  root.append(focus);
+  root.append(bulletList([
+    historyView.dataSource === 'sample' ? 'Based on Sample Data.' : '',
+    recommendation.challenge ? `Practice focus: ${recommendation.target}.` : '',
+    recommendation.reason,
+    specificWeakness ? `Most mistakes per chance: ${formatSkillEvidence(specificWeakness)}.` : '',
+  ], 'insight-focus'));
 }
 
 function currentComparison(history, filtered) {
@@ -5577,12 +5713,14 @@ function renderHistory() {
   renderHistoryDataSource(history);
   if (chessSelected) {
     refs['history-game-tabs'].querySelectorAll('button').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.historyGame === 'chess')));
+    renderGameProjection(history, 'chess');
     chessUI.renderHistory(historyView.dataSource === 'sample' ? generateSampleChessHistory({ now: new Date(history[0].timestamp), seed: Number(history[0].attemptId.split('-')[1]) }) : null);
     enhanceHistoryTables(refs['history-screen']);
     return;
   }
   const gameOnly = filterHistory(history, { game: historyView.filters.game });
   renderSpeedGoals(refs['speed-goals-history'], history, historyView.filters.game);
+  renderGameProjection(history, historyView.filters.game);
   renderHistoryFilters(gameOnly);
   const records = filterHistory(history, historyView.filters);
   renderTypingHistory(records);
@@ -5807,7 +5945,8 @@ typingElement('reset').addEventListener('click', () => {
   catch (error) { typingElement('setup-status').textContent = error.message; }
 });
 
-const chessUI = createChessUI({ storage: localStorage, showScreen, renderChart: renderChartCard, showChartData: spec => openChartData(spec.title, chartSpecDataTable(spec)) });
+const chessUI = createChessUI({ storage: localStorage, showScreen, renderChart: renderChartCard, showChartData: spec => openChartData(spec.title, chartSpecDataTable(spec)),
+  renderProjection: (target, games) => renderProjection(target, 'chess', chessProjectionRows(games), { unit: 's', better: 'lower', attemptName: 'games', noGoalText: 'Chess has no speed goals, so only the trend is shown.' }) });
 const overloadUI = createOverloadUI({ showScreen, onSave(record) {
   state.game = 'overload'; state.sessionId = record.sessionId; state.difficulty = record.difficulty; state.questionCount = 1;
   state.results = record.outcome === 'Not answered' ? [] : [record]; persistRecord(record);
@@ -5984,6 +6123,20 @@ refs['answer-form'].addEventListener('submit', (event) => {
   submitCurrentAnswer();
 });
 
+// Number keypad shortcuts pick Exact, Change or Short while a cash question waits for an answer.
+document.addEventListener('keydown', (event) => {
+  const active = state.activeScreen === 'quiz' && state.game === 'cash' && !state.answerSubmitted && !event.target.closest?.('dialog[open]');
+  const choice = numpadChoice(event, { active });
+  if (!choice) return;
+  const input = document.querySelector(`input[name="answerType"][value="${choice}"]`);
+  if (!input || input.disabled) return;
+  event.preventDefault();
+  input.checked = true;
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+  // Change and Short need an amount: move to the amount box so the keypad digits and Enter finish the answer.
+  const amount = refs['answer-amount'];
+  (choice !== 'Exact' && !amount.disabled && amount.getClientRects().length ? amount : input).focus({ preventScroll: true });
+});
 document.querySelectorAll('input[name="answerType"]').forEach((input) => input.addEventListener('change', () => {
   const exact = selectedAnswerType() === 'Exact';
   refs['answer-amount'].disabled = exact;

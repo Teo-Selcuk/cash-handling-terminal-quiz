@@ -209,7 +209,7 @@ export async function checkProgress(browser, site) {
     const conditions = page.locator('#history-insights select');
     await conditions.nth(0).selectOption('cash|Transaction|Change');
     await conditions.nth(1).selectOption('cash|Hundred-dollar bills|Two or more');
-    assert.match(await page.locator('#history-insights').textContent(), /4\/6; 95% Wilson interval/);
+    assert.match(await page.locator('#history-insights').textContent(), /4\/6 tries\)\..*95% Wilson interval/s);
     await page.locator('#clear-history-filters').click();
     await page.locator('#history-quick-ranges button[data-history-range="50a"]').click();
     assert.equal(await page.locator('#history-quick-ranges button[data-history-range="50a"]').getAttribute('aria-pressed'), 'true');

@@ -7,28 +7,33 @@
     <meta name="theme-color" content="#12343b">
     <title>Cash, Memory &amp; Detail Trainer</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="style.css?v=20261021-fast">
+    <link rel="stylesheet" href="style.css?v=20261023-round3">
     <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
     <!-- Start every startup module download at once instead of discovering imports one level at a time. -->
-    <link rel="modulepreload" href="app.js?v=20261021-goals">
+    <link rel="modulepreload" href="app.js?v=20261023-round3">
     <link rel="modulepreload" href="firebase-accounts.mjs?v=20261020-sync">
     <link rel="modulepreload" href="account-data.mjs?v=20261020-fast">
     <link rel="modulepreload" href="firebase-config.mjs">
     <link rel="modulepreload" href="account-access.mjs">
     <link rel="modulepreload" href="cash-mistakes.mjs?v=20261011-fair-credit">
-    <link rel="modulepreload" href="history-tables.mjs?v=20261021-fast">
-    <link rel="modulepreload" href="history-explanations.mjs?v=20261018-explain">
-    <link rel="modulepreload" href="speed-goals.mjs?v=20261021-goals">
+    <link rel="modulepreload" href="history-tables.mjs?v=20261023-round3">
+    <link rel="modulepreload" href="history-explanations.mjs?v=20261023-round3">
+    <link rel="modulepreload" href="chart-contrast.mjs?v=20261023-round3">
+    <link rel="modulepreload" href="chart-examples.mjs?v=20261023-round3">
+    <link rel="modulepreload" href="chart-games.mjs?v=20261023-round3">
+    <link rel="modulepreload" href="numpad-shortcuts.mjs?v=20261023-round3">
+    <link rel="modulepreload" href="progress-projection.mjs?v=20261023-round3">
     <link rel="modulepreload" href="progress-analytics.mjs?v=20261021-fast">
     <link rel="modulepreload" href="overload-core.mjs?v=20261003-accounts">
     <link rel="modulepreload" href="overload-analytics.mjs?v=20261003-accounts">
     <link rel="modulepreload" href="quiz-core.mjs?v=20261017-round2">
     <link rel="modulepreload" href="pattern-games.mjs">
+    <link rel="modulepreload" href="speed-goals.mjs?v=20261021-goals">
     <link rel="modulepreload" href="overload-ui.mjs?v=20261003-accounts">
     <link rel="modulepreload" href="check-holds.mjs?v=20261003-accounts">
     <link rel="modulepreload" href="hold-training-ui.mjs?v=20261003-accounts">
     <link rel="modulepreload" href="typing-core.mjs?v=20261002-typing">
-    <link rel="modulepreload" href="chess-ui.mjs?v=20261021-alltables">
+    <link rel="modulepreload" href="chess-ui.mjs?v=20261023-round3">
     <link rel="modulepreload" href="chess-core.mjs">
     <link rel="modulepreload" href="assets/chess/chess.mjs">
     <link rel="modulepreload" href="chess-board.mjs?v=20261017-round2">
@@ -476,10 +481,11 @@
           <fieldset>
             <legend id="question-heading">What should you do?</legend>
             <div class="answer-choices">
-              <label><input type="radio" name="answerType" value="Exact"><span>Exact</span></label>
-              <label><input type="radio" name="answerType" value="Change"><span>Change</span></label>
-              <label><input type="radio" name="answerType" value="Short"><span>Short</span></label>
+              <label><input type="radio" name="answerType" value="Exact" aria-keyshortcuts="Numpad/"><span>Exact <kbd class="key-hint" aria-hidden="true">Num /</kbd></span></label>
+              <label><input type="radio" name="answerType" value="Change" aria-keyshortcuts="Numpad*"><span>Change <kbd class="key-hint" aria-hidden="true">Num *</kbd></span></label>
+              <label><input type="radio" name="answerType" value="Short" aria-keyshortcuts="Numpad-"><span>Short <kbd class="key-hint" aria-hidden="true">Num -</kbd></span></label>
             </div>
+            <p class="shortcut-help" id="cash-shortcut-help">Number keypad: <kbd>/</kbd> Exact · <kbd>*</kbd> Change · <kbd>-</kbd> Short. Change and Short then jump to the amount box; type it and press Enter. Keys work only when no text box is selected. No keypad? Click a choice.</p>
           </fieldset>
 
           <label for="answer-amount">Change or shortage amount
@@ -745,7 +751,7 @@
             <label>Practice type<select id="chess-filter-practice"><option value="all">All practice</option><option value="uninterrupted">Unassisted, uninterrupted games</option><option value="assisted">Assisted games</option><option value="resumed">Resumed / interrupted games</option><option value="lesson">Lesson positions</option></select></label>
             <label>From date<input type="date" id="chess-filter-from"></label><label>Through date<input type="date" id="chess-filter-to"></label>
           </div>
-          <p id="chess-history-status" role="status"></p><div id="chess-history-metrics" class="metric-grid"></div><div id="chess-history-charts" class="history-charts"></div><div id="chess-history-games" class="chess-history-games"></div><details><summary>Lesson attempts and hints</summary><div id="chess-history-lessons"></div></details>
+          <p id="chess-history-status" role="status"></p><div id="chess-history-metrics" class="metric-grid"></div><div id="chess-history-charts" class="history-charts"></div><section id="chess-history-projection" class="visual-card history-projection" aria-label="Chess projection"></section><div id="chess-history-games" class="chess-history-games"></div><details><summary>Lesson attempts and hints</summary><div id="chess-history-lessons"></div></details>
         </section>
         <section class="history-filter-panel" aria-labelledby="history-filter-heading">
           <div class="visual-heading">
@@ -827,11 +833,12 @@
           <div id="history-comparison"></div>
         </section>
         <p class="chart-note">Old attempts keep only the fields they actually saved. Charts that need a newer field identify how many eligible attempts they use.</p>
+        <section id="history-projection" class="visual-card history-projection" aria-label="Projection" hidden></section>
         <section class="history-visuals" aria-label="History visualizations">
           <article class="visual-card" aria-labelledby="outcome-diagram-heading">
             <div class="visual-heading">
               <div>
-                <p class="eyebrow">Diagram</p>
+                <p class="eyebrow chart-game-tag">All games</p>
                 <h3 id="outcome-diagram-heading">Answer outcomes</h3>
               </div>
               <p class="chart-note" id="history-outcomes-summary"></p>
@@ -843,7 +850,7 @@
           <article class="visual-card" aria-labelledby="accuracy-chart-heading">
             <div class="visual-heading">
               <div>
-                <p class="eyebrow">Chart</p>
+                <p class="eyebrow chart-game-tag">All games</p>
                 <h3 id="accuracy-chart-heading">Accuracy by difficulty</h3>
               </div>
               <p class="chart-note" id="history-accuracy-summary"></p>
@@ -964,6 +971,6 @@
     </dialog>
 
     <footer>Browser edition. The original PowerShell quiz remains in this repository.</footer>
-    <script type="module" src="app.js?v=20261021-goals"></script>
+    <script type="module" src="app.js?v=20261023-round3"></script>
   </body>
 </html>

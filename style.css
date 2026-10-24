@@ -1303,3 +1303,41 @@ button.chess-square.last-move { box-shadow: inset 0 0 0 999px rgb(246 246 105 / 
 body:has(.interactive-chart.is-maximized) #history-screen .history-error-analysis,
 body:has(.interactive-chart.is-maximized) #history-screen .history-charts { content-visibility: visible; }
 .all-tables-list > .history-table-container { content-visibility: auto; contain-intrinsic-size: auto 360px; }
+
+/* Plain bullet lists: one short idea per item, left aligned, wrapping inside the card. */
+.plain-bullets { margin: 0.5rem 0; padding-left: 1.25rem; color: var(--ink); font-size: 0.9rem; line-height: 1.45; list-style: disc outside; text-align: left; }
+.plain-bullets li { margin: 0.2rem 0; overflow-wrap: anywhere; }
+.plain-bullets li::marker { color: var(--brand); }
+#advanced-error-analytics { min-width: 0; text-align: left; }
+#advanced-error-analytics > h4 { margin: 1rem 0 0.25rem; }
+.advanced-error-tables-note { margin: 0.25rem 0 0.75rem; color: var(--muted); font-size: 0.875rem; }
+/* Each table moves to "All tables"; its now-empty heading section is hidden. */
+.table-slot-section:not(:has(.history-table-container)) { display: none; }
+
+/* Keypad hints on the cash answer choices. */
+.key-hint { display: inline-block; margin-left: 0.35rem; padding: 0 0.3rem; border: 1px solid currentColor; border-radius: 0.25rem; font: 600 0.7rem/1.4 ui-monospace, Consolas, monospace; opacity: 0.85; white-space: nowrap; }
+.shortcut-help { margin: 0.5rem 0 0; color: var(--muted); font-size: 0.8125rem; }
+.shortcut-help kbd { padding: 0 0.25rem; border: 1px solid var(--line); border-radius: 0.2rem; font-family: ui-monospace, Consolas, monospace; }
+
+/* Per-game chart tag and Example toggle. */
+.chart-game-tag { margin: 0 0 0.15rem; color: var(--brand); font-size: 0.75rem; font-weight: 750; letter-spacing: 0.04em; text-transform: uppercase; }
+.visual-card > .explanation:not([open]), .visual-card > .chart-example:not([open]) { display: inline-block; margin-right: 1rem; vertical-align: top; }
+.chart-example { margin: 0.5rem 0 0; color: var(--ink); font-size: 0.875rem; min-width: 0; max-width: 100%; }
+.chart-example > summary { display: inline-flex; align-items: center; gap: 0.4rem; min-height: 2.25rem; cursor: pointer; color: var(--brand); font-weight: 700; list-style: none; }
+.chart-example > summary::-webkit-details-marker { display: none; }
+.chart-example[open] { display: block; padding: 0.5rem 0.75rem 0.75rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-quiet); overflow-wrap: anywhere; }
+.chart-example .chart-example-title { margin: 0.6rem 0 0.15rem; font-weight: 750; }
+
+/* Projection section. */
+.history-projection { margin: 1.5rem 0; min-width: 0; }
+.history-projection h3 { margin: 0; }
+.history-projection h4 { margin: 1rem 0 0.25rem; }
+.projection-empty { margin: 0.75rem 0 0.25rem; font-weight: 700; }
+.projection-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr)); gap: 0.75rem; margin-top: 0.75rem; }
+.projection-item { min-width: 0; padding: 0.75rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.projection-item .plain-bullets { font-size: 0.85rem; }
+.projection-meaning { margin-top: 0.5rem; text-align: left; }
+.projection-advice { margin: 1rem 0 0; padding: 0.6rem 0.75rem; border-left: 0.25rem solid var(--brand); background: var(--surface); font-weight: 700; }
+.plain-bullets .plain-bullets { margin: 0.15rem 0 0.25rem; font-size: inherit; list-style-type: circle; }
+.explanation-terms { margin: 0; padding-left: 1.25rem; list-style: disc outside; }
+.explanation-terms li { margin: 0.2rem 0; overflow-wrap: anywhere; }

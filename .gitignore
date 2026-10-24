@@ -24,3 +24,5 @@ ui-debug.log
 
 # Local browser crash logs
 debug.log
+
+.claude/
