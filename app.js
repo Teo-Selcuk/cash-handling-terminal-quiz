@@ -6,7 +6,7 @@ import { chartExplanation, summaryChartExplanation, createExplanation } from './
 import { resolveLabelColor } from './chart-contrast.mjs?v=20261023-round3';
 import { chartExample, summaryChartExample, createExample } from './chart-examples.mjs?v=20261023-round3';
 import { chartGameTag, chartFitsGame } from './chart-games.mjs?v=20261023-round3';
-import { numpadChoice } from './numpad-shortcuts.mjs?v=20261023-round3';
+import { numpadChoice, numpadListAction, listKeyHint } from './numpad-shortcuts.mjs?v=20261025-keypad';
 import { buildProjection, projectionRows, chessProjectionRows } from './progress-projection.mjs?v=20261023-round3';
 import { goalProgress, goalMetric, availableProgressiveLevels, PROGRESSIVE_LEVELS, fraudProgressiveOverrides, GOAL_SETTINGS_KEY, GOAL_WINDOW_LIMITS, GOAL_SUCCESS_LIMITS, resolveGoalSettings } from './speed-goals.mjs?v=20261021-goals';
 import { createOverloadUI } from './overload-ui.mjs?v=20261003-accounts';
@@ -2007,7 +2007,7 @@ function renderErrorDetectionCard(challenge) {
   refs['error-detection-detail-list'].dataset.puzzleType = challenge.puzzle.type;
   state.errorDetailSelections = new Set();
   refs['error-detection-no-errors'].checked = false;
-  refs['error-detection-detail-list'].replaceChildren(...challenge.details.map((detail) => {
+  refs['error-detection-detail-list'].replaceChildren(...challenge.details.map((detail, index) => {
     const button = document.createElement('button');
     const content = document.createElement('span');
     const copy = document.createElement('span');
@@ -2031,6 +2031,8 @@ function renderErrorDetectionCard(challenge) {
     if (visual) content.append(visual);
     content.append(copy);
     button.append(content, status);
+    // The hint sits beside the clue name so the button keeps its two-column layout.
+    if (listKeyHint(index + 1)) label.append(keyHintElement(listKeyHint(index + 1)));
     button.addEventListener('click', () => toggleErrorDetail(detail.id));
     return button;
   }));
@@ -2538,18 +2540,30 @@ function renderFraudDocuments(target, challenge, feedback = false) {
   target.replaceChildren(check, viewer);
 }
 
+/** A keypad hint shown inside a choice; hidden from screen readers, which get the keys from the help line. */
+function keyHintElement(text) {
+  const hint = document.createElement('kbd');
+  hint.className = 'key-hint';
+  hint.setAttribute('aria-hidden', 'true');
+  hint.textContent = text;
+  return hint;
+}
+
 function renderFraudIssueOptions() {
   const challenge = state.fraudChallenge;
   refs['fraud-issue-list'].replaceChildren();
   const choices = challenge.availableIssueOptions.map((category) => [category.id, category.label]);
   choices.push(['no-issues', 'No Issues Found']);
-  for (const [id, label] of choices) {
+  for (const [index, [id, label]] of choices.entries()) {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'fraud-issue-option';
     button.dataset.issueId = id;
     button.setAttribute('aria-pressed', 'false');
     button.textContent = label;
+    // Issues are numbered from 1; "No Issues Found" is keypad 0.
+    const hint = id === 'no-issues' ? 'Num 0' : listKeyHint(index + 1);
+    if (hint) button.append(keyHintElement(hint));
     button.addEventListener('click', () => toggleFraudIssue(id));
     refs['fraud-issue-list'].append(button);
   }
@@ -6136,6 +6150,29 @@ document.addEventListener('keydown', (event) => {
   // Change and Short need an amount: move to the amount box so the keypad digits and Enter finish the answer.
   const amount = refs['answer-amount'];
   (choice !== 'Exact' && !amount.disabled && amount.getClientRects().length ? amount : input).focus({ preventScroll: true });
+});
+// Keypad shortcuts for the list games: 1–9 (and "+" then 1–9) toggle numbered choices, 0 picks "nothing wrong",
+// keypad Enter submits. They work only while the round waits for an answer and no text box or dialog has focus.
+let numpadListPrefix = false;
+document.addEventListener('keydown', (event) => {
+  const game = state.activeScreen === 'error-detection' ? 'error-detection' : state.activeScreen === 'fraud-inspection' ? 'fraud-inspection' : null;
+  const active = Boolean(game) && !state.answerSubmitted && !event.target.closest?.('dialog[open]') && !document.querySelector('dialog[open]');
+  const action = numpadListAction(event, { active, prefix: numpadListPrefix });
+  if (!action) return;
+  event.preventDefault();
+  numpadListPrefix = action.type === 'prefix';
+  if (action.type === 'prefix') return;
+  const form = game === 'error-detection' ? refs['error-detection-form'] : refs['fraud-inspection-form'];
+  if (action.type === 'submit') { form.requestSubmit(); return; }
+  const buttons = game === 'error-detection'
+    ? [...refs['error-detection-detail-list'].querySelectorAll('button[data-detail-id]')]
+    : [...refs['fraud-issue-list'].querySelectorAll('button[data-issue-id]:not([data-issue-id="no-issues"])')];
+  const target = action.type === 'none'
+    ? (game === 'error-detection' ? refs['error-detection-no-errors'] : refs['fraud-issue-list'].querySelector('[data-issue-id="no-issues"]'))
+    : buttons[action.number - 1];
+  if (!target || target.disabled) return;
+  target.click();
+  target.focus({ preventScroll: true });
 });
 document.querySelectorAll('input[name="answerType"]').forEach((input) => input.addEventListener('change', () => {
   const exact = selectedAnswerType() === 'Exact';

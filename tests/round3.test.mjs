@@ -354,3 +354,38 @@ test('every game builds projection rows from its own history', () => {
   assert.match(app, /renderGameProjection\(history, historyView\.filters\.game\)/);
   assert.match(read('chess-ui.mjs'), /renderProjection\?\.\(el\('history-projection'\), games\)/);
 });
+
+// ---- Keypad shortcuts for the list games ----
+
+test('list games: keypad 1–9 pick choices, "+" reaches 10–18, 0 is "nothing wrong", Enter submits', async () => {
+  const { numpadListAction, listKeyHint } = await import('../numpad-shortcuts.mjs');
+  const key = (code, extra = {}) => ({ code, target: { tagName: 'BUTTON' }, ...extra });
+  assert.deepEqual(numpadListAction(key('Numpad3'), { active: true }), { type: 'pick', number: 3 });
+  assert.deepEqual(numpadListAction(key('Numpad3'), { active: true, prefix: true }), { type: 'pick', number: 12 });
+  assert.deepEqual(numpadListAction(key('NumpadAdd'), { active: true }), { type: 'prefix' });
+  assert.deepEqual(numpadListAction(key('Numpad0'), { active: true }), { type: 'none' });
+  assert.equal(numpadListAction(key('Numpad0'), { active: true, prefix: true }), null);
+  assert.deepEqual(numpadListAction(key('NumpadEnter'), { active: true }), { type: 'submit' });
+  assert.equal(numpadListAction(key('Digit3'), { active: true }), null, 'the number row is not a shortcut');
+  assert.equal(numpadListAction(key('Enter'), { active: true }), null, 'the main Enter keeps its normal job');
+  assert.equal(numpadListAction(key('Numpad3'), { active: false }), null, 'nothing outside an active round');
+  assert.equal(numpadListAction(key('Numpad3', { target: { tagName: 'SELECT' } }), { active: true }), null, 'nothing inside a list box');
+  assert.equal(numpadListAction(key('Numpad3', { target: { tagName: 'INPUT', type: 'text' } }), { active: true }), null);
+  assert.deepEqual(numpadListAction({ code: '', key: '7', location: 3, target: { tagName: 'BODY' } }, { active: true }), { type: 'pick', number: 7 });
+  assert.equal(listKeyHint(4), 'Num 4');
+  assert.equal(listKeyHint(15), 'Num + 6');
+  assert.equal(listKeyHint(19), '');
+});
+
+test('Error detection and fraud choices show keypad hints and a help line; clicks still work', () => {
+  const html = read('index.html');
+  const app = read('app.js');
+  assert.match(html, /id="error-detection-shortcut-help">Number keypad:/);
+  assert.match(html, /id="fraud-shortcut-help">Number keypad:/);
+  assert.match(html, /No anomalies in this puzzle <kbd class="key-hint" aria-hidden="true">Num 0<\/kbd>/);
+  assert.match(app, /if \(listKeyHint\(index \+ 1\)\) label\.append\(keyHintElement\(listKeyHint\(index \+ 1\)\)\)/);
+  assert.match(app, /const hint = id === 'no-issues' \? 'Num 0' : listKeyHint\(index \+ 1\)/);
+  assert.match(app, /button\.addEventListener\('click', \(\) => toggleErrorDetail\(detail\.id\)\)/);
+  assert.match(app, /button\.addEventListener\('click', \(\) => toggleFraudIssue\(id\)\)/);
+  assert.match(app, /!state\.answerSubmitted && !event\.target\.closest\?\.\('dialog\[open\]'\) && !document\.querySelector\('dialog\[open\]'\)/);
+});

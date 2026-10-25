@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="style.css?v=20261023-round3">
     <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
     <!-- Start every startup module download at once instead of discovering imports one level at a time. -->
-    <link rel="modulepreload" href="app.js?v=20261023-round3">
+    <link rel="modulepreload" href="app.js?v=20261025-keypad">
     <link rel="modulepreload" href="firebase-accounts.mjs?v=20261020-sync">
     <link rel="modulepreload" href="account-data.mjs?v=20261020-fast">
     <link rel="modulepreload" href="firebase-config.mjs">
@@ -21,7 +21,7 @@
     <link rel="modulepreload" href="chart-contrast.mjs?v=20261023-round3">
     <link rel="modulepreload" href="chart-examples.mjs?v=20261023-round3">
     <link rel="modulepreload" href="chart-games.mjs?v=20261023-round3">
-    <link rel="modulepreload" href="numpad-shortcuts.mjs?v=20261023-round3">
+    <link rel="modulepreload" href="numpad-shortcuts.mjs?v=20261025-keypad">
     <link rel="modulepreload" href="progress-projection.mjs?v=20261023-round3">
     <link rel="modulepreload" href="progress-analytics.mjs?v=20261021-fast">
     <link rel="modulepreload" href="overload-core.mjs?v=20261003-accounts">
@@ -632,8 +632,9 @@
           </fieldset>
           <label class="toggle-row" for="error-detection-no-errors">
             <input id="error-detection-no-errors" type="checkbox">
-            <span><strong>No anomalies in this puzzle</strong><small>Use this only when every displayed clue follows the rule.</small></span>
+            <span><strong>No anomalies in this puzzle <kbd class="key-hint" aria-hidden="true">Num 0</kbd></strong><small>Use this only when every displayed clue follows the rule.</small></span>
           </label>
+          <p class="shortcut-help" id="error-detection-shortcut-help">Number keypad: <kbd>1</kbd>–<kbd>8</kbd> mark or unmark that clue · <kbd>0</kbd> No anomalies · <kbd>Enter</kbd> check marked clues. Keys work only when no text box is selected. No keypad? Click a clue.</p>
           <button class="primary-button" id="submit-error-detection" type="submit">Check marked clues</button>
         </form>
       </section>
@@ -654,6 +655,7 @@
             <legend>Select every issue you found</legend>
             <p class="setup-note" id="fraud-selection-status" role="status" aria-live="polite">Choose one or more issues, or mark No Issues Found.</p>
             <div class="fraud-issue-list" id="fraud-issue-list" aria-describedby="fraud-selection-status"></div>
+            <p class="shortcut-help" id="fraud-shortcut-help">Number keypad: <kbd>1</kbd>–<kbd>9</kbd> select or clear that issue · <kbd>+</kbd> then <kbd>1</kbd>–<kbd>9</kbd> for issues 10 and up · <kbd>0</kbd> No Issues Found · <kbd>Enter</kbd> submit. Keys work only when no text box or list is selected. No keypad? Click an issue.</p>
           </fieldset>
           <button class="primary-button" id="submit-fraud-inspection" type="submit">Submit Review</button>
         </form>
@@ -971,6 +973,6 @@
     </dialog>
 
     <footer>Browser edition. The original PowerShell quiz remains in this repository.</footer>
-    <script type="module" src="app.js?v=20261023-round3"></script>
+    <script type="module" src="app.js?v=20261025-keypad"></script>
   </body>
 </html>
