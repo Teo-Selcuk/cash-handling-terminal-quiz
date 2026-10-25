@@ -35,7 +35,7 @@ test('sample history is isolated, stable for a seed, and covers every game mecha
 
   const normalized = first.map(normalizeHistoryRecord).filter(Boolean);
   const errorAnalytics = buildErrorAnalytics(first);
-  for (const game of ['cash', 'memory', 'task', 'error-detection', 'fraud-inspection', 'typing']) {
+  for (const game of ['cash', 'memory', 'task', 'error-detection', 'fraud-inspection', 'typing', 'holds-verification']) {
     const records = normalized.filter((record) => record.game === game);
     assert.ok(records.length > 0, `${game} has sample records`);
     assert.ok(buildChartSpecs(records, game).some((spec) => spec.series[0].points.length), `${game} charts have data`);

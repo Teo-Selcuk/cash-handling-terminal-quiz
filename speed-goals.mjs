@@ -1,13 +1,13 @@
 // Per-game speed goals and progressive levels. Goal progress is derived from the
 // saved attempt history, so it persists wherever that history persists.
-import { normalizeHistoryRecord, deduplicateHistory } from './progress-analytics.mjs?v=20261021-fast';
+import { normalizeHistoryRecord, deduplicateHistory } from './progress-analytics.mjs?v=20261025-holds';
 
 export const GOAL_SUCCESS_PERCENT = 90;
 export const GOAL_MINIMUM_QUESTIONS = 5;
 // A goal passes on any run of consecutive attempts (one difficulty, one game) as long as the run is this long.
 // Cash handling asks for a longer run than the other games. Both numbers can be changed per game in the app.
 // Typing counts tests and Multitasker counts runs, so their runs are shorter.
-export const DEFAULT_GOAL_WINDOW = Object.freeze({ cash: 150, memory: 80, task: 80, 'error-detection': 80, 'fraud-inspection': 80, typing: 10, overload: 10 });
+export const DEFAULT_GOAL_WINDOW = Object.freeze({ cash: 150, memory: 80, task: 80, 'error-detection': 80, 'fraud-inspection': 80, typing: 10, overload: 10, 'holds-verification': 80 });
 export const GOAL_WINDOW_LIMITS = Object.freeze({ min: 5, max: 1000 });
 export const GOAL_SUCCESS_LIMITS = Object.freeze({ min: 50, max: 100 });
 export const GOAL_SETTINGS_KEY = 'cash-handling-terminal-quiz-goal-settings-v1';
@@ -22,7 +22,7 @@ export function resolveGoalSettings(game, saved = {}) {
   };
 }
 
-export const GOAL_GAMES = Object.freeze(['cash', 'memory', 'task', 'error-detection', 'fraud-inspection', 'typing', 'overload']);
+export const GOAL_GAMES = Object.freeze(['cash', 'memory', 'task', 'error-detection', 'fraud-inspection', 'typing', 'overload', 'holds-verification']);
 
 const finite = (value) => (Number.isFinite(Number(value)) && value !== null && value !== '' ? Number(value) : null);
 // How each game scores one attempt for goals. success: 0-100 for that attempt. speed: the timed measure, or null.
@@ -60,6 +60,8 @@ const GAME_LADDER = Object.freeze({
   cash: Object.freeze({ ...GOAL_LADDER, Easy: Object.freeze([15, 12, 10, 7.5, 5]), Hard: Object.freeze([20, 15, 12, 10, 7.5, 5]) }),
   typing: Object.freeze({ Easy: Object.freeze([25, 30, 35]), Medium: Object.freeze([30, 40, 50]), Hard: Object.freeze([40, 50, 60, 70]) }),
   overload: Object.freeze({ Easy: Object.freeze([4, 3.5, 3]), Medium: Object.freeze([3.5, 3, 2.5]), Hard: Object.freeze([3, 2.5, 2]) }),
+  // Holds & Verification questions are read before they are answered, so its steps start longer.
+  'holds-verification': Object.freeze({ Easy: Object.freeze([30, 20, 15]), Medium: Object.freeze([25, 20, 15]), Hard: Object.freeze([20, 15, 12]) }),
 });
 const LEVELS = Object.freeze(['Easy', 'Medium', 'Hard']);
 

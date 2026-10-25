@@ -3,7 +3,7 @@
 export const GAME_LABELS = Object.freeze({
   all: 'All games', cash: 'Cash handling', memory: 'Number memory', task: 'Task simulation',
   'error-detection': 'Error detection', 'fraud-inspection': 'Check & ID fraud inspection',
-  typing: 'Typing speed', overload: 'Multitasker', chess: 'Chess',
+  typing: 'Typing speed', overload: 'Multitasker', 'holds-verification': 'Holds & Verification', chess: 'Chess',
 });
 
 export const gameLabel = (game) => GAME_LABELS[game] ?? GAME_LABELS.all;

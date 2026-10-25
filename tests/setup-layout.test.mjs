@@ -10,7 +10,7 @@ const [html, css] = await Promise.all([
 test('setup game cards share one width and one row height', () => {
   const grid = html.match(/<div class="choice-grid game-choice-grid">([\s\S]*?)<\/div>/)[1];
   const cards = grid.match(/<label class="choice-card">/g) ?? [];
-  assert.equal(cards.length, 8, 'eight game cards with the same markup class');
+  assert.equal(cards.length, 9, 'nine game cards with the same markup class');
   assert.match(css, /\.game-choice-grid \{ grid-auto-rows: 1fr; \}/, 'all rows match the tallest card');
   assert.match(css, /\.game-choice-grid > \.choice-card \{[^}]*height: 100%[^}]*\}/);
   assert.match(css, /\.game-choice-grid \{ grid-template-columns: repeat\(2, minmax\(0, 1fr\)\); \}/, 'equal column widths');
