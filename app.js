@@ -7,15 +7,16 @@ import { resolveLabelColor } from './chart-contrast.mjs?v=20261023-round3';
 import { chartExample, summaryChartExample, createExample } from './chart-examples.mjs?v=20261023-round3';
 import { chartGameTag, chartFitsGame } from './chart-games.mjs?v=20261023-round3';
 import { numpadChoice, numpadListAction, listKeyHint } from './numpad-shortcuts.mjs?v=20261025-keypad';
+import { roundEndAction } from './round-shortcuts.mjs?v=20261027-replay';
 import { buildProjection, projectionRows, chessProjectionRows } from './progress-projection.mjs?v=20261023-round3';
 import { goalProgress, goalMetric, availableProgressiveLevels, PROGRESSIVE_LEVELS, fraudProgressiveOverrides, GOAL_SETTINGS_KEY, GOAL_WINDOW_LIMITS, GOAL_SUCCESS_LIMITS, resolveGoalSettings } from './speed-goals.mjs?v=20261021-goals';
-import { createOverloadUI } from './overload-ui.mjs?v=20261003-accounts';
+import { createOverloadUI } from './overload-ui.mjs?v=20261027-replay';
 import { summarizeOverload, overloadRecommendation } from './overload-analytics.mjs?v=20261003-accounts';
 import { decideCheck, scoreHoldDecision, ITEM_TYPES, ITEM_REASONS, ACTIONS, HOLD_TYPES, availabilityText } from './check-holds.mjs?v=20261003-accounts';
 import { renderHoldTraining, readHoldAnswer } from './hold-training-ui.mjs?v=20261003-accounts';
 import { TYPING_PRESETS, resolveTypingSettings, createTypingPrompt, scoreTyping, summarizeTyping } from './typing-core.mjs?v=20261002-typing';
 import { PATTERN_GAME_NAMES } from './pattern-games.mjs';
-import { createChessUI } from './chess-ui.mjs?v=20261023-round3';
+import { createChessUI } from './chess-ui.mjs?v=20261027-replay';
 import { ChessStore } from './chess-storage.mjs';
 import { createDistractionSamples } from './distraction-sounds.mjs';
 import {
@@ -520,6 +521,7 @@ function showScreen(name) {
   refs['fraud-feedback'].hidden = name !== 'feedback' || state.game !== 'fraud-inspection';
   for (const screen of screens) refs[`${screen}-screen`].hidden = screen !== name;
   state.activeScreen = name;
+  if (name === 'summary') state.roundEndShownAt = Date.now();
   if (name === 'setup') { renderSpeedGoals(refs['speed-goals-setup'], getHistory(), selectedGame()); renderProgressiveLevels(selectedGame()); }
   const activeScreen = refs[`${name}-screen`];
   if (isCompactViewport()) activeScreen.scrollIntoView({ block: 'start', inline: 'nearest' });
@@ -5959,9 +5961,9 @@ typingElement('reset').addEventListener('click', () => {
   catch (error) { typingElement('setup-status').textContent = error.message; }
 });
 
-const chessUI = createChessUI({ storage: localStorage, showScreen, renderChart: renderChartCard, showChartData: spec => openChartData(spec.title, chartSpecDataTable(spec)),
+const chessUI = createChessUI({ storage: localStorage, showScreen, onMenu: () => returnToMainMenu(), renderChart: renderChartCard, showChartData: spec => openChartData(spec.title, chartSpecDataTable(spec)),
   renderProjection: (target, games) => renderProjection(target, 'chess', chessProjectionRows(games), { unit: 's', better: 'lower', attemptName: 'games', noGoalText: 'Chess has no speed goals, so only the trend is shown.' }) });
-const overloadUI = createOverloadUI({ showScreen, onSave(record) {
+const overloadUI = createOverloadUI({ showScreen, onMenu: () => returnToMainMenu(), onSave(record) {
   state.game = 'overload'; state.sessionId = record.sessionId; state.difficulty = record.difficulty; state.questionCount = 1;
   state.results = record.outcome === 'Not answered' ? [] : [record]; persistRecord(record);
 }, onHistory() { historyView.filters = { game: 'overload' }; renderHistory(); showScreen('history'); } });
@@ -6302,11 +6304,25 @@ document.querySelectorAll('input[name="difficulty"]').forEach((input) => input.a
 refs['save-preset'].addEventListener('click', saveSelectedPreset);
 refs['reset-selected-preset'].addEventListener('click', resetSelectedPreset);
 refs['reset-all-presets'].addEventListener('click', resetAllPresets);
-refs['start-another'].addEventListener('click', () => {
+refs['start-another'].addEventListener('click', returnToMainMenu);
+// Replay starts the same game again from the unchanged setup form, so every setting, level, and practice plan carries over.
+function replaySameSettings() {
+  refs['setup-form'].requestSubmit();
+}
+function returnToMainMenu() {
   clearPracticePlan();
   resetDistractionAudioSetup();
   updateGameSetup();
   showScreen('setup');
+}
+document.getElementById('play-again').addEventListener('click', replaySameSettings);
+document.addEventListener('keydown', (event) => {
+  if (state.activeScreen !== 'summary' || refs['summary-screen'].hidden) return;
+  const action = roundEndAction(event, { shownAt: state.roundEndShownAt ?? 0 });
+  if (!action) return;
+  event.preventDefault();
+  if (action === 'replay') replaySameSettings();
+  else returnToMainMenu();
 });
 refs['open-history'].addEventListener('click', openHistory);
 refs['summary-history'].addEventListener('click', openHistory);

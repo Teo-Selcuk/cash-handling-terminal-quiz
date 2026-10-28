@@ -7,10 +7,10 @@
     <meta name="theme-color" content="#12343b">
     <title>Cash, Memory &amp; Detail Trainer</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="style.css?v=20261023-round3">
+    <link rel="stylesheet" href="style.css?v=20261027-replay">
     <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
     <!-- Start every startup module download at once instead of discovering imports one level at a time. -->
-    <link rel="modulepreload" href="app.js?v=20261025-keypad">
+    <link rel="modulepreload" href="app.js?v=20261027-replay">
     <link rel="modulepreload" href="firebase-accounts.mjs?v=20261020-sync">
     <link rel="modulepreload" href="account-data.mjs?v=20261020-fast">
     <link rel="modulepreload" href="firebase-config.mjs">
@@ -22,6 +22,7 @@
     <link rel="modulepreload" href="chart-examples.mjs?v=20261023-round3">
     <link rel="modulepreload" href="chart-games.mjs?v=20261023-round3">
     <link rel="modulepreload" href="numpad-shortcuts.mjs?v=20261025-keypad">
+    <link rel="modulepreload" href="round-shortcuts.mjs?v=20261027-replay">
     <link rel="modulepreload" href="progress-projection.mjs?v=20261023-round3">
     <link rel="modulepreload" href="progress-analytics.mjs?v=20261021-fast">
     <link rel="modulepreload" href="overload-core.mjs?v=20261003-accounts">
@@ -29,11 +30,11 @@
     <link rel="modulepreload" href="quiz-core.mjs?v=20261017-round2">
     <link rel="modulepreload" href="pattern-games.mjs">
     <link rel="modulepreload" href="speed-goals.mjs?v=20261021-goals">
-    <link rel="modulepreload" href="overload-ui.mjs?v=20261003-accounts">
+    <link rel="modulepreload" href="overload-ui.mjs?v=20261027-replay">
     <link rel="modulepreload" href="check-holds.mjs?v=20261003-accounts">
     <link rel="modulepreload" href="hold-training-ui.mjs?v=20261003-accounts">
     <link rel="modulepreload" href="typing-core.mjs?v=20261002-typing">
-    <link rel="modulepreload" href="chess-ui.mjs?v=20261023-round3">
+    <link rel="modulepreload" href="chess-ui.mjs?v=20261027-replay">
     <link rel="modulepreload" href="chess-core.mjs">
     <link rel="modulepreload" href="assets/chess/chess.mjs">
     <link rel="modulepreload" href="chess-board.mjs?v=20261017-round2">
@@ -442,7 +443,7 @@
           </div>
           <aside class="chess-sidebar">
             <section id="chess-lesson-detail" class="visual-card" hidden><h3 id="chess-lesson-title"></h3><p id="chess-lesson-text"></p><p id="chess-lesson-step" role="status"></p><p id="chess-lesson-feedback" role="status"></p><div class="action-row"><button type="button" id="chess-demo-next" class="secondary-button">Show next move</button><button type="button" id="chess-practice" class="secondary-button" disabled>Practice it yourself</button><button type="button" id="chess-lesson-hint" class="text-button">Show lesson hint</button><button type="button" id="chess-lesson-restart" class="text-button">Retry exercise</button><button type="button" id="chess-lesson-play" class="secondary-button">Try this position against the computer</button></div><a id="chess-lesson-source" target="_blank" rel="noopener">Further reading</a></section>
-            <section id="chess-game-actions" class="visual-card"><h3 id="chess-game-label">Computer game</h3><p id="chess-game-details"></p><p id="chess-feedback" role="status"></p><div class="action-row"><button type="button" class="secondary-button" id="chess-hint" hidden>Hint</button><button type="button" class="text-button" id="chess-resign">Resign</button><button type="button" class="secondary-button" id="chess-rematch" hidden>Rematch</button><button type="button" class="secondary-button" id="chess-analyze" hidden>Analyze game</button><button type="button" class="text-button" id="chess-pgn">Export PGN</button></div></section>
+            <section id="chess-game-actions" class="visual-card"><h3 id="chess-game-label">Computer game</h3><p id="chess-game-details"></p><p id="chess-feedback" role="status"></p><div class="action-row"><button type="button" class="secondary-button" id="chess-hint" hidden>Hint</button><button type="button" class="text-button" id="chess-resign">Resign</button><button type="button" class="secondary-button" id="chess-rematch" hidden>Rematch (Enter)</button><button type="button" class="secondary-button" id="chess-analyze" hidden>Analyze game</button><button type="button" class="text-button" id="chess-pgn">Export PGN</button></div></section>
 
             <section id="chess-review" class="visual-card" hidden><h3>Game review</h3><p id="chess-review-status" role="status"></p><p id="chess-review-position" class="chess-review-position" role="status">Move 0 of 0</p><div class="chess-review-controls" role="group" aria-label="Step through moves"><button type="button" id="chess-review-first" class="secondary-button" aria-label="First position">⏮ First</button><button type="button" id="chess-review-prev" class="secondary-button" aria-label="Previous move">◀ Previous</button><button type="button" id="chess-review-next" class="secondary-button" aria-label="Next move">Next ▶</button><button type="button" id="chess-review-last" class="secondary-button" aria-label="Last position">Last ⏭</button></div><label>Replay position<input type="range" id="chess-replay" min="0" max="0" value="0"></label><p class="chart-note">Tip: use the Left and Right arrow keys to step, or select a move in the list.</p><p id="chess-review-move"></p><p id="chess-review-eval"></p><p class="chart-note">Centipawn loss compares the played move with the engine’s best move using 250 ms per search. Inaccuracy ≥50, mistake ≥100, blunder ≥200. Forced mates are separate. Short searches are estimates.</p></section>
             <section id="chess-moves-card" class="visual-card chess-moves-card" aria-labelledby="chess-moves-heading"><h3 id="chess-moves-heading">Moves</h3><ol id="chess-moves" class="chess-moves"></ol></section>
@@ -697,9 +698,11 @@
           <div id="summary-recommendations"></div>
         </section>
         <div class="action-row">
-          <button class="primary-button" id="start-another" type="button">Start another game</button>
+          <button class="primary-button" id="play-again" type="button">Play again · same settings (Enter)</button>
+          <button class="secondary-button" id="start-another" type="button">Main menu (Esc)</button>
           <button class="secondary-button" id="summary-history" type="button">View all history</button>
         </div>
+        <p class="setup-note round-end-keys">Keyboard: Enter or R plays again with the same settings. Esc or M goes back to the main menu.</p>
       </section>
 
       <section class="screen" id="history-screen" hidden aria-labelledby="history-heading">
@@ -973,6 +976,6 @@
     </dialog>
 
     <footer>Browser edition. The original PowerShell quiz remains in this repository.</footer>
-    <script type="module" src="app.js?v=20261025-keypad"></script>
+    <script type="module" src="app.js?v=20261027-replay"></script>
   </body>
 </html>

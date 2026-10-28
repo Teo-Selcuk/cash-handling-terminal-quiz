@@ -1,4 +1,5 @@
 import { enhanceHistoryList } from './history-tables.mjs?v=20261023-round3';
+import { roundEndAction } from './round-shortcuts.mjs?v=20261027-replay';
 import { Chess, ChessSession, DEFAULT_POSITION, DIFFICULTIES, normalizeSettings } from './chess-core.mjs';
 import { ChessBoard } from './chess-board.mjs?v=20261017-round2';
 import { ChessEngine, analyzeMove } from './chess-engine.mjs';
@@ -14,7 +15,9 @@ const make = (tag, text, className = '') => { const node = document.createElemen
 const download = (text, name, type) => { const url = URL.createObjectURL(new Blob([text], { type })); const link = document.createElement('a'); link.href = url; link.download = name; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); };
 const resultLabel = game => !game.result ? 'In progress' : game.result.winner === null ? 'Draw' : game.result.winner === game.player ? 'Win' : 'Loss';
 
-export function createChessUI({ showScreen, renderChart, showChartData, renderProjection, storage = globalThis.localStorage }) {
+export function createChessUI({ showScreen, renderChart, showChartData, renderProjection, onMenu = null, storage = globalThis.localStorage }) {
+  // When a game ends: Enter or R starts a rematch with the same settings; Esc or M saves and returns to the main menu.
+  let resultSession = null, resultShownAt = 0;
   const store = new ChessStore(storage);
   let session = null, lesson = null, review = null, selected = null, hint = null, promotion = null;
   let busy = false, ready = false, engineError = false, active = false, savedAt = 0;
@@ -59,6 +62,7 @@ export function createChessUI({ showScreen, renderChart, showChartData, renderPr
   function saveCurrent() { if (session && !session.result) storageAction(() => store.saveCurrent(session.snapshot())); }
   function saveFinished() {
     if (!session?.result) return;
+    if (resultSession !== session) { resultSession = session; resultShownAt = Date.now(); }
     const record = session.snapshot();
     storageAction(() => { store.saveGame(record); store.clearCurrent(record.id); });
     document.getElementById('open-history').disabled = false;
@@ -181,7 +185,7 @@ export function createChessUI({ showScreen, renderChart, showChartData, renderPr
       const color = session.player === 'w' ? 'White' : 'Black';
       el('game-label').textContent = `${color} vs ${session.settings.difficulty} · level ${session.settings.skillLevel}/20`;
       el('game-details').textContent = `${session.settings.timeControl === 'clock' ? `${session.settings.minutes}+${session.settings.increment} game clock` : session.settings.timeControl === 'move' ? `${session.settings.secondsPerMove}s per move` : 'Untimed'}${session.resumed ? ' · resumed practice' : session.interrupted ? ' · interrupted practice' : ''}${session.lessonId ? ' · lesson position' : ''}${session.settings.coaching || session.hints ? ' · assisted' : ''}`;
-      if (session.result) status(`${resultLabel(session)} — ${session.result.reason}. Use Analyze game to review alternatives.`);
+      if (session.result) status(`${resultLabel(session)} — ${session.result.reason}. Use Analyze game to review alternatives. Enter or R: rematch · Esc or M: main menu.`);
       else if (session.paused) status(engineError ? 'Engine unavailable. Play and clocks are paused; retry to continue.' : 'Game paused.');
       else if (!busy) status(`${chess.turn() === session.player ? 'Your' : 'Computer’s'} turn (${chess.turn() === 'w' ? 'White' : 'Black'})${chess.isCheck() ? ' — check' : ''}.`);
       updateClocks();
@@ -402,6 +406,14 @@ export function createChessUI({ showScreen, renderChart, showChartData, renderPr
   el('review-last').addEventListener('click', () => { if (review) stepReview(review.record.moves.length); });
   el('moves').addEventListener('click', event => { const ply = event.target.closest('li')?.dataset.ply; if (review && ply) stepReview(Number(ply)); });
   el('moves').addEventListener('keydown', event => { const ply = event.target.closest('li')?.dataset.ply; if (review && ply && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); stepReview(Number(ply)); } });
+  document.addEventListener('keydown', event => {
+    if (!active || review || lesson || !session?.result || el('screen').hidden || event.target.closest?.('.chess-board, dialog')) return;
+    const action = roundEndAction(event, { shownAt: resultShownAt });
+    if (!action) return;
+    event.preventDefault();
+    if (action === 'replay') el('rematch').click();
+    else { leave(); onMenu?.(); }
+  });
   document.addEventListener('keydown', event => {
     if (!review || el('screen').hidden || event.target.closest?.('input, select, textarea, button, [contenteditable], .chess-board, dialog')) return;
     if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); stepReview(review.index + (event.key === 'ArrowLeft' ? -1 : 1)); }

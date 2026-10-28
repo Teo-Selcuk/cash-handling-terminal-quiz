@@ -1,11 +1,12 @@
 import { TASKS, OverloadRun, resolveOverloadSettings } from './overload-core.mjs?v=20261003-accounts';
+import { roundEndAction } from './round-shortcuts.mjs?v=20261027-replay';
 const names=Object.fromEntries(TASKS.map(t=>[t.id,t.name]));
 const fmt=v=>v===null?'—':String(Number(Number(v).toFixed(2)));
 const el=(tag,text,cls)=> {const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
 const button=(text,action)=> {const b=el('button',text);b.type='button';b.addEventListener('click',action);return b;};
 const taskHints={math:['＋','Solve quick calculations'],shapes:['◆','Find the matching shapes'],ball:['●','Catch the falling ball'],color:['◉','Name the ink color'],arrows:['↔','Choose the opposite direction'],wires:['⌁','Connect matching wires'],pattern:['▦','Repeat the sequence'],cards:['▣','Remember matching cards'],mole:['◎','Find the mole']};
 
-export function createOverloadUI({onSave,onHistory,showScreen}) {
+export function createOverloadUI({onSave,onHistory,showScreen,onMenu=()=>{}}) {
   const setup=document.getElementById('overload-setup-options'),screen=document.getElementById('overload-screen');
   const fields={};let run=null,timer=null,pausedAt=null,pauseOffset=0,lastSaved=0,active=null,finished=false,audio=null;
   const clock=()=>(pausedAt ?? performance.now())-pauseOffset;
@@ -48,8 +49,8 @@ export function createOverloadUI({onSave,onHistory,showScreen}) {
   }
   setup.addEventListener('input',describeSetup);setup.addEventListener('change',describeSetup);describeSetup();
   const scoreboard=el('div',undefined,'overload-scoreboard'),status=el('p','Ready','overload-status'),controls=el('div',undefined,'overload-controls'),grid=el('div',undefined,'overload-grid'),result=el('section',undefined,'overload-result');result.hidden=true;
-  status.setAttribute('role','status');const pause=button('Pause',()=>togglePause()),stop=button('End run',()=>end('stopped')),again=button('Another run',()=>start()),history=button('History / Progress',()=>{end('stopped');onHistory();});
-  controls.append(pause,stop,again,history);again.hidden=true;
+  status.setAttribute('role','status');const pause=button('Pause',()=>togglePause()),stop=button('End run',()=>end('stopped')),again=button('Another run · same settings (Enter)',()=>start()),menu=button('Main menu (Esc)',()=>onMenu()),history=button('History / Progress',()=>{end('stopped');onHistory();});
+  controls.append(pause,stop,again,menu,history);again.hidden=true;menu.hidden=true;let finishedAt=0;
   screen.append(el('h2','Multitasker'),scoreboard,status,controls,grid,result);
   const cards=new Map();
   function readSettings() {
@@ -131,12 +132,12 @@ export function createOverloadUI({onSave,onHistory,showScreen}) {
   function tick(){if(pausedAt!==null||!run||run.ended)return;const count=run.events.length,pressure=run.pressureEvents.length;run.advance(clock());draw();if(run.pressureEvents.length>pressure)beep(true);if(run.events.length!==count||clock()-lastSaved>5000)save();if(run.ended)finish();}
   function togglePause(){if(!run||run.ended)return;if(pausedAt===null){pausedAt=performance.now();pause.textContent='Resume';grid.inert=true;status.textContent='Paused · all task clocks stopped';save();}else{pauseOffset+=performance.now()-pausedAt;pausedAt=null;pause.textContent='Pause';grid.inert=false;draw();}}
   function end(reason){if(!run||run.ended)return;if(pausedAt!==null)togglePause();run.advance(clock());run.finish(reason,null,clock());finish();}
-  function finish(){if(finished)return;finished=true;clearInterval(timer);save();grid.inert=true;pause.hidden=true;stop.hidden=true;again.hidden=false;audio?.close().catch(()=>{});audio=null;
+  function finish(){if(finished)return;finished=true;clearInterval(timer);save();grid.inert=true;pause.hidden=true;stop.hidden=true;again.hidden=false;menu.hidden=false;finishedAt=Date.now();audio?.close().catch(()=>{});audio=null;
     const r=run.record(clock());result.hidden=false;result.replaceChildren(el('h3',run.endingReason==='mistake'?'Run ended on a mistake':'Run complete'),el('p',`Score ${r.overloadScore} · Accuracy ${fmt(r.overloadAccuracy)}% · ${fmt(r.overloadDuration)}s survival · ${r.overloadErrors} errors · Peak ${r.overloadPeakTasks} tasks`));
     if(run.events.length){const last=run.events.at(-1);result.append(el('p',`${names[last.task]}: expected ${JSON.stringify(last.expected)}; entered ${JSON.stringify(last.answer)}. ${last.errorCause??'Correct action'}.`));}
-    status.textContent=`${run.endingReason} · activity saved to History / Progress`;result.scrollIntoView({block:'nearest'});
+    status.textContent=`${run.endingReason} · activity saved to History / Progress · Enter or R: run again · Esc or M: main menu`;result.scrollIntoView({block:'nearest'});
   }
-  function start(){let settings;try{settings=readSettings();}catch(error){status.textContent=error.message;setup.append(el('p',error.message,'setup-note'));return;}clearInterval(timer);pauseOffset=0;pausedAt=null;finished=false;run=new OverloadRun(settings,Math.random,clock());cards.clear();grid.replaceChildren();grid.inert=false;pause.hidden=false;pause.textContent='Pause';stop.hidden=false;again.hidden=true;result.hidden=true;showScreen('overload');save();draw();timer=setInterval(tick,100);grid.firstElementChild?.focus();}
+  function start(){let settings;try{settings=readSettings();}catch(error){status.textContent=error.message;setup.append(el('p',error.message,'setup-note'));return;}clearInterval(timer);pauseOffset=0;pausedAt=null;finished=false;run=new OverloadRun(settings,Math.random,clock());cards.clear();grid.replaceChildren();grid.inert=false;pause.hidden=false;pause.textContent='Pause';stop.hidden=false;again.hidden=true;menu.hidden=true;result.hidden=true;showScreen('overload');save();draw();timer=setInterval(tick,100);grid.firstElementChild?.focus();}
   screen.addEventListener('keydown',e=> {
     if(!run||run.ended||pausedAt!==null)return;
     if(e.altKey&&/^[1-9]$/.test(e.key)){e.preventDefault();grid.children[Number(e.key)-1]?.focus();return;}
@@ -144,6 +145,13 @@ export function createOverloadUI({onSave,onHistory,showScreen}) {
     if(p.task==='ball'&&['ArrowLeft','ArrowRight'].includes(e.key)){e.preventDefault();run.move(p.id,p.trial.raw.catchPosition+(e.key==='ArrowLeft'?-1:1),clock());updateClocks();}
     else if(p.task==='arrows'&&e.key.startsWith('Arrow')){e.preventDefault();respond(p,e.key.slice(5).toLowerCase(),p.trial.id);}
     else if(['shapes','cards','pattern','mole'].includes(p.task)&&/^[1-9]$/.test(e.key)){e.preventDefault();const card=cards.get(p.id),choices=[...card.querySelectorAll('.overload-task-content button')];choices[Number(e.key)-1]?.click();}
+  });
+  // After a run: Enter or R runs again with the same settings; Esc or M returns to the main menu.
+  document.addEventListener('keydown',e=> {
+    if(screen.hidden||!finished)return;
+    const action=roundEndAction(e,{shownAt:finishedAt});
+    if(!action)return;
+    e.preventDefault();if(action==='replay')start();else onMenu();
   });
   document.addEventListener('visibilitychange',()=>{if(document.hidden&&run&&!run.ended&&pausedAt===null)togglePause();});
   window.addEventListener('pagehide',()=>{if(run&&!run.ended)save();});
