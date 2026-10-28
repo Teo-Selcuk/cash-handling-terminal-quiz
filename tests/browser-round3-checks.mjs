@@ -88,8 +88,25 @@ async function checkNumpadPlay(browser, base) {
     await page.keyboard.press('NumpadSubtract');
     assert.equal(await page.locator('input[name="answerType"]:checked').getAttribute('value'), 'Short');
     assert.equal(await page.evaluate(() => document.activeElement.id), 'answer-amount', 'Short moves to the amount box');
-    await page.keyboard.press('NumpadDivide');
-    assert.equal(await page.locator('input[name="answerType"]:checked').getAttribute('value'), 'Short', 'keys do nothing inside the text box');
+    // Inside the amount box: letters and symbols never appear, the keypad keys switch the answer, and nothing typed is lost.
+    await page.keyboard.type('1a2 $+,5x');
+    assert.equal(await page.locator('#answer-amount').inputValue(), '12.5', 'only digits and one decimal point are entered');
+    await page.keyboard.press('NumpadMultiply');
+    assert.equal(await page.locator('input[name="answerType"]:checked').getAttribute('value'), 'Change', 'keypad * switches the answer from the amount box');
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'answer-amount', 'focus stays in the amount box');
+    assert.equal(await page.locator('#answer-amount').inputValue(), '12.5', 'switching keeps the typed amount');
+    if (await page.locator('#cash-builder-section').isVisible()) {
+      await page.locator('#cash-builder .quantity-button[aria-label^="Add one"]').first().click();
+      await page.locator('#answer-amount').focus();
+    }
+    const counts = await page.locator('#cash-builder [data-count-for]').allTextContents();
+    await page.keyboard.press('NumpadSubtract');
+    assert.equal(await page.locator('input[name="answerType"]:checked').getAttribute('value'), 'Short');
+    assert.deepEqual(await page.locator('#cash-builder [data-count-for]').allTextContents(), counts, 'switching keeps the cash counts');
+    assert.equal(await page.evaluate(() => Boolean(document.activeElement.closest('#cash-builder-section'))), false, 'focus never moves into the cash builder');
+    await page.locator('#answer-amount').fill('');
+    await page.keyboard.press('Enter');
+    assert.match(await page.locator('#amount-input-message').textContent(), /Enter the amount/, 'an empty amount is no answer');
     await page.locator('input[name="answerType"][value="Exact"]').focus();
     await page.keyboard.press('Minus');
     assert.equal(await page.locator('input[name="answerType"]:checked').getAttribute('value'), 'Short', 'the main keyboard minus is not a shortcut');

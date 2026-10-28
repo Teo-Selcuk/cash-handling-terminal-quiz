@@ -6,17 +6,18 @@ import { chartExplanation, summaryChartExplanation, createExplanation } from './
 import { resolveLabelColor } from './chart-contrast.mjs?v=20261023-round3';
 import { chartExample, summaryChartExample, createExample } from './chart-examples.mjs?v=20261023-round3';
 import { chartGameTag, chartFitsGame } from './chart-games.mjs?v=20261023-round3';
-import { numpadChoice, numpadListAction, listKeyHint } from './numpad-shortcuts.mjs?v=20261025-keypad';
-import { roundEndAction } from './round-shortcuts.mjs?v=20261027-replay';
+import { numpadChoice, numpadListAction, listKeyHint } from './numpad-shortcuts.mjs?v=20261028-amount';
+import { attachAmountFilter, readAmountCents } from './amount-input.mjs?v=20261028-amount';
+import { roundEndAction } from './round-shortcuts.mjs?v=20261028-amount';
 import { buildProjection, projectionRows, chessProjectionRows } from './progress-projection.mjs?v=20261023-round3';
 import { goalProgress, goalMetric, availableProgressiveLevels, PROGRESSIVE_LEVELS, fraudProgressiveOverrides, GOAL_SETTINGS_KEY, GOAL_WINDOW_LIMITS, GOAL_SUCCESS_LIMITS, resolveGoalSettings } from './speed-goals.mjs?v=20261021-goals';
-import { createOverloadUI } from './overload-ui.mjs?v=20261027-replay';
+import { createOverloadUI } from './overload-ui.mjs?v=20261028-amount';
 import { summarizeOverload, overloadRecommendation } from './overload-analytics.mjs?v=20261003-accounts';
 import { decideCheck, scoreHoldDecision, ITEM_TYPES, ITEM_REASONS, ACTIONS, HOLD_TYPES, availabilityText } from './check-holds.mjs?v=20261003-accounts';
 import { renderHoldTraining, readHoldAnswer } from './hold-training-ui.mjs?v=20261003-accounts';
 import { TYPING_PRESETS, resolveTypingSettings, createTypingPrompt, scoreTyping, summarizeTyping } from './typing-core.mjs?v=20261002-typing';
 import { PATTERN_GAME_NAMES } from './pattern-games.mjs';
-import { createChessUI } from './chess-ui.mjs?v=20261027-replay';
+import { createChessUI } from './chess-ui.mjs?v=20261028-amount';
 import { ChessStore } from './chess-storage.mjs';
 import { createDistractionSamples } from './distraction-sounds.mjs';
 import {
@@ -75,7 +76,7 @@ const refs = Object.fromEntries([
   'overload-screen', 'typing-screen', 'setup-form', 'setup-screen', 'chess-screen', 'quiz-screen', 'feedback-screen', 'summary-screen', 'history-screen',
   'memory-read-screen', 'memory-answer-screen', 'task-briefing-screen', 'task-workspace-screen', 'error-detection-briefing-screen', 'error-detection-screen', 'fraud-inspection-screen', 'cash-setup-options', 'memory-setup-options', 'task-setup-options', 'error-detection-setup-options', 'fraud-setup-options',
   'question-count', 'time-limit', 'cash-builder-toggle', 'customer-bill-request-toggle', 'auto-continue-toggle', 'distraction-noise-toggle', 'question-progress', 'timer', 'amount-due',
-  'tender-breakdown', 'customer-bill-request', 'customer-bill-request-text', 'customer-bill-request-status', 'flag-bill-request', 'answer-form', 'answer-amount', 'cash-builder-section', 'cash-builder-heading',
+  'tender-breakdown', 'customer-bill-request', 'customer-bill-request-text', 'customer-bill-request-status', 'flag-bill-request', 'answer-form', 'answer-amount', 'amount-input-message', 'cash-builder-section', 'cash-builder-heading',
   'cash-builder-purpose', 'cash-builder', 'selected-total', 'builder-status', 'clear-builder', 'quick-cash-entry', 'apply-quick-cash', 'feedback-heading',
   'feedback-kicker', 'feedback-lead', 'feedback-details', 'next-question', 'session-metrics',
   'start-another', 'summary-history', 'open-history', 'back-to-setup', 'history-metrics',
@@ -1420,7 +1421,8 @@ function updateCashBuilder() {
 
   const type = selectedAnswerType();
   updateCashBuilderPurpose(type);
-  const declaredAmount = type === 'Exact' ? 0 : parseAmountToCents(refs['answer-amount'].value);
+  const typedAmount = readAmountCents(refs['answer-amount'].value);
+  const declaredAmount = type === 'Exact' ? 0 : typedAmount.status === 'ok' ? typedAmount.cents : null;
   if (state.customerRequestFlagged && state.question?.customerBillRequest?.canFlag) {
     refs['builder-status'].textContent = 'The impossible request is flagged. You may submit after calculating the correct change.';
   } else if (!type) {
@@ -1447,6 +1449,7 @@ function renderQuestion() {
   refs['answer-form'].reset();
   renderCashWorking();
   refs['answer-amount'].disabled = true;
+  refs['amount-input-message'].textContent = '';
   refs['cash-builder-section'].hidden = !state.cashBuilderEnabled;
   resetBuilder();
   state.cashActions = { add: 0, remove: 0, quick: 0, clear: 0 };
@@ -1517,12 +1520,18 @@ function collectAnswer() {
     setMessage('Choose Exact, Change, or Short before submitting.');
     return null;
   }
-  const amountCents = type === 'Exact' ? 0 : parseAmountToCents(refs['answer-amount'].value);
-  if (amountCents === null) {
-    setMessage('Enter a valid dollar amount with no more than two decimal places.');
+  const typedAmount = type === 'Exact' ? { status: 'ok', cents: 0 } : readAmountCents(refs['answer-amount'].value);
+  if (typedAmount.status !== 'ok') {
+    // A blank box or a lone "." is no answer, not $0.00.
+    const message = typedAmount.status === 'empty'
+      ? 'Enter the amount before submitting.'
+      : 'Enter a valid dollar amount with no more than two decimal places.';
+    setMessage(message);
+    refs['amount-input-message'].textContent = message;
     refs['answer-amount'].focus();
     return null;
   }
+  const amountCents = typedAmount.cents;
   return {
     type,
     amountCents,
@@ -1543,7 +1552,7 @@ function renderCashWorking() {
         for (const [value, text] of [['addition', '+ Add'], ['subtraction', '− Subtract']]) {
           const option = document.createElement('option'); option.value = value; option.textContent = text; input.append(option);
         }
-      } else { input.type = 'text'; input.inputMode = 'decimal'; input.placeholder = '0.00'; input.autocomplete = 'off'; }
+      } else { input.type = 'text'; input.inputMode = 'decimal'; input.placeholder = '0.00'; input.autocomplete = 'off'; attachAmountFilter(input, { onRemoved: setMessage }); }
       wrap.append(input); row.append(wrap);
     }
     target.append(row);
@@ -6149,7 +6158,9 @@ document.addEventListener('keydown', (event) => {
   event.preventDefault();
   input.checked = true;
   input.dispatchEvent(new Event('change', { bubbles: true }));
-  // Change and Short need an amount: move to the amount box so the keypad digits and Enter finish the answer.
+  setMessage(`${choice} selected.`);
+  // Picking an answer never moves focus into the cash builder. Change and Short move to the amount box (or stay in
+  // it) so keypad digits and Enter finish the answer; Exact turns the amount box off, so focus goes to its choice.
   const amount = refs['answer-amount'];
   (choice !== 'Exact' && !amount.disabled && amount.getClientRects().length ? amount : input).focus({ preventScroll: true });
 });
@@ -6177,11 +6188,14 @@ document.addEventListener('keydown', (event) => {
   target.focus({ preventScroll: true });
 });
 document.querySelectorAll('input[name="answerType"]').forEach((input) => input.addEventListener('change', () => {
-  const exact = selectedAnswerType() === 'Exact';
-  refs['answer-amount'].disabled = exact;
-  if (exact) refs['answer-amount'].value = '';
+  // Switching answers keeps the typed amount and the cash builder counts; Exact only turns the amount box off.
+  refs['answer-amount'].disabled = selectedAnswerType() === 'Exact';
   updateCashBuilder();
 }));
+attachAmountFilter(refs['answer-amount'], {
+  onRemoved: (message) => { refs['amount-input-message'].textContent = message; setMessage(message); },
+});
+attachAmountFilter(document.getElementById('cash-working-total'), { onRemoved: setMessage });
 refs['answer-amount'].addEventListener('input', updateCashBuilder);
 refs['clear-builder'].addEventListener('click', () => { state.cashActions.clear += 1; resetBuilder(); });
 refs['apply-quick-cash'].addEventListener('click', applyQuickCashEntry);

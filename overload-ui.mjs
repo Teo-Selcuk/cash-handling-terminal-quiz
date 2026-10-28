@@ -1,5 +1,5 @@
 import { TASKS, OverloadRun, resolveOverloadSettings } from './overload-core.mjs?v=20261003-accounts';
-import { roundEndAction } from './round-shortcuts.mjs?v=20261027-replay';
+import { roundEndAction } from './round-shortcuts.mjs?v=20261028-amount';
 const names=Object.fromEntries(TASKS.map(t=>[t.id,t.name]));
 const fmt=v=>v===null?'—':String(Number(Number(v).toFixed(2)));
 const el=(tag,text,cls)=> {const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};

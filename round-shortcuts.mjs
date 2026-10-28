@@ -1,7 +1,7 @@
 // End-of-round keyboard shortcuts shared by every game: replay with the same settings, or go back to the main menu.
 // Enter (or keypad Enter) and R replay; Escape and M return to the main menu.
 
-import { isTextEntry } from './numpad-shortcuts.mjs?v=20261025-keypad';
+import { isTextEntry } from './numpad-shortcuts.mjs?v=20261028-amount';
 
 export const REPLAY_KEYS = Object.freeze(['Enter', 'r', 'R']);
 export const MENU_KEYS = Object.freeze(['Escape', 'm', 'M']);

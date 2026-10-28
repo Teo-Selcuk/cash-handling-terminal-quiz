@@ -48,6 +48,17 @@ replaces `AGENTS.md`; keep every agent rule here so there is one source of truth
   count in its header and Minimize/Expand all buttons. Tests that need a table must open it first
   (`openAllTables` in `tests/browser-all-tables-checks.mjs`) and find moved tables by `data-table-source`.
 - Setup screen game cards share one width and height; long text wraps inside.
+- Cash handling answer choices: picking Exact, Change, or Short (keypad `/ * -` or a click) never moves
+  focus into the cash builder and never changes a bill or coin count. Change and Short move focus to the
+  amount box (or keep it there); Exact turns the amount box off and focuses its choice. Switching choices
+  keeps the typed amount and the cash builder counts. The keypad keys also work inside the amount box
+  (`data-option-shortcuts="true"`), because `/ * -` are never valid amount characters.
+- Cash amount boxes (the answer amount and the optional working fields) use `attachAmountFilter` from
+  `amount-input.mjs`: digits and one decimal point, at most 2 decimal places, at most 10 characters.
+  Invalid typed characters are blocked; pasted text keeps only valid characters, keeps the first point,
+  and shows a message. A typed comma becomes the decimal point when there is none yet. A blank box or a
+  lone "." is no answer, not $0.00 (`readAmountCents`). Bill and coin counts use +/- buttons, not typed
+  fields; any typed count field would use `{ decimal: false }` (digits only).
 - Speed goals: a round passes a goal when success rate >= 90% and average answer
   time <= the goal time (exact limits pass). Passing a goal unlocks the next;
   a level unlocks only after the previous level's goals pass.

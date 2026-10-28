@@ -16,11 +16,19 @@ export function isTextEntry(element) {
   return tag === 'input' && TEXT_INPUT_TYPES.has(String(element.type ?? 'text').toLowerCase());
 }
 
-/** The answer a key press picks, or null. `active` is whether a cash question is waiting for an answer. */
+/** True for a box marked `data-option-shortcuts="true"`: it never takes / * -, so the keypad keys may pick an answer there. */
+function allowsOptionShortcuts(element) {
+  return element?.dataset?.optionShortcuts === 'true';
+}
+
+/**
+ * The answer a key press picks, or null. `active` is whether a cash question is waiting for an answer. Keys work on
+ * the page, on an answer choice, and in a numbers-only box marked `data-option-shortcuts="true"` (the amount box).
+ */
 export function numpadChoice(event, { active = false, keys = CASH_NUMPAD_KEYS } = {}) {
   if (!active || !event || event.defaultPrevented || event.repeat || event.isComposing) return null;
   if (event.ctrlKey || event.altKey || event.metaKey) return null;
-  if (isTextEntry(event.target)) return null;
+  if (isTextEntry(event.target) && !allowsOptionShortcuts(event.target)) return null;
   if (keys[event.code]) return keys[event.code];
   // Some keyboards and remote sessions leave `code` blank; the keypad still reports location 3.
   if (event.location === 3) return keys[KEYPAD_CODE_BY_KEY[event.key]] ?? null;

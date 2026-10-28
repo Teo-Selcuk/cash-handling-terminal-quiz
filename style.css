@@ -1318,6 +1318,8 @@ body:has(.interactive-chart.is-maximized) #history-screen .history-charts { cont
 .key-hint { display: inline-block; margin-left: 0.35rem; padding: 0 0.3rem; border: 1px solid currentColor; border-radius: 0.25rem; font: 600 0.7rem/1.4 ui-monospace, Consolas, monospace; opacity: 0.85; white-space: nowrap; }
 .shortcut-help { margin: 0.5rem 0 0; color: var(--muted); font-size: 0.8125rem; }
 .shortcut-help kbd { padding: 0 0.25rem; border: 1px solid var(--line); border-radius: 0.2rem; font-family: ui-monospace, Consolas, monospace; }
+.field-message { margin: 0.25rem 0 0; color: var(--muted); font-size: 0.8125rem; }
+.field-message:empty { display: none; }
 
 /* Per-game chart tag and Example toggle. */
 .chart-game-tag { margin: 0 0 0.15rem; color: var(--brand); font-size: 0.75rem; font-weight: 750; letter-spacing: 0.04em; text-transform: uppercase; }
