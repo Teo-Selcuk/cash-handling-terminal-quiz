@@ -1,23 +1,21 @@
-import { accountStorage as localStorage, initializeAccounts } from './firebase-accounts.mjs?v=20261025-holds';
-import { canPlayGame } from './account-access.mjs?v=20261025-holds';
+import { accountStorage as localStorage, initializeAccounts } from './firebase-accounts.mjs?v=20261020-sync';
+import { canPlayGame } from './account-access.mjs';
 import { analyzeCashMistakes } from './cash-mistakes.mjs?v=20261011-fair-credit';
-import { enhanceHistoryTables } from './history-tables.mjs?v=20261025-holds';
-import { chartExplanation, summaryChartExplanation, createExplanation } from './history-explanations.mjs?v=20261025-holds';
+import { enhanceHistoryTables } from './history-tables.mjs?v=20261023-round3';
+import { chartExplanation, summaryChartExplanation, createExplanation } from './history-explanations.mjs?v=20261023-round3';
 import { resolveLabelColor } from './chart-contrast.mjs?v=20261023-round3';
 import { chartExample, summaryChartExample, createExample } from './chart-examples.mjs?v=20261023-round3';
-import { chartGameTag, chartFitsGame } from './chart-games.mjs?v=20261025-holds';
+import { chartGameTag, chartFitsGame } from './chart-games.mjs?v=20261023-round3';
 import { numpadChoice, numpadListAction, listKeyHint } from './numpad-shortcuts.mjs?v=20261025-keypad';
-import { buildProjection, projectionRows, chessProjectionRows } from './progress-projection.mjs?v=20261025-holds';
-import { goalProgress, goalMetric, availableProgressiveLevels, PROGRESSIVE_LEVELS, fraudProgressiveOverrides, GOAL_SETTINGS_KEY, GOAL_WINDOW_LIMITS, GOAL_SUCCESS_LIMITS, resolveGoalSettings } from './speed-goals.mjs?v=20261025-holds';
+import { buildProjection, projectionRows, chessProjectionRows } from './progress-projection.mjs?v=20261023-round3';
+import { goalProgress, goalMetric, availableProgressiveLevels, PROGRESSIVE_LEVELS, fraudProgressiveOverrides, GOAL_SETTINGS_KEY, GOAL_WINDOW_LIMITS, GOAL_SUCCESS_LIMITS, resolveGoalSettings } from './speed-goals.mjs?v=20261021-goals';
 import { createOverloadUI } from './overload-ui.mjs?v=20261003-accounts';
 import { summarizeOverload, overloadRecommendation } from './overload-analytics.mjs?v=20261003-accounts';
-import { createHoldsVerificationUI } from './holds-verification-ui.mjs?v=20261025-holds';
-import { HOLDS_GAME, HOLDS_PRESETS, summarizeHoldsHistory } from './holds-verification.mjs?v=20261025-holds';
 import { decideCheck, scoreHoldDecision, ITEM_TYPES, ITEM_REASONS, ACTIONS, HOLD_TYPES, availabilityText } from './check-holds.mjs?v=20261003-accounts';
 import { renderHoldTraining, readHoldAnswer } from './hold-training-ui.mjs?v=20261003-accounts';
 import { TYPING_PRESETS, resolveTypingSettings, createTypingPrompt, scoreTyping, summarizeTyping } from './typing-core.mjs?v=20261002-typing';
 import { PATTERN_GAME_NAMES } from './pattern-games.mjs';
-import { createChessUI } from './chess-ui.mjs?v=20261025-holds';
+import { createChessUI } from './chess-ui.mjs?v=20261023-round3';
 import { ChessStore } from './chess-storage.mjs';
 import { createDistractionSamples } from './distraction-sounds.mjs';
 import {
@@ -31,8 +29,8 @@ import { PRACTICE_GAMES, rankPracticeCandidates, recommendPractice, practiceSett
 import {
   buildChartSpecs, buildConditionalReport, buildErrorAnalytics, buildAdvancedErrorAnalytics, buildGameFilters, buildProgressModel, comparePeriods,
   filterHistory, recommendNextChallenge, progressionSegments,
-} from './progress-analytics.mjs?v=20261025-holds';
-import { generateSampleHistory, generateSampleChessHistory } from './sample-history.mjs?v=20261025-holds';
+} from './progress-analytics.mjs?v=20261021-fast';
+import { generateSampleHistory, generateSampleChessHistory } from './sample-history.mjs?v=20261008-advanced-errors';
 import {
   DENOMINATIONS,
   DIFFICULTY_CONFIG,
@@ -71,9 +69,9 @@ const PRESET_KEY = 'cash-handling-terminal-quiz-presets-v1';
 const CURRENT_CHALLENGE_KEY = 'cash-handling-terminal-quiz-current-challenge-v1';
 const SAMPLE_HISTORY_KEY = 'cash-handling-terminal-quiz-sample-history-v1';
 const CHART_APPEARANCE_KEY = 'cash-handling-terminal-quiz-chart-appearance-v1';
-const screens = ['holds-verification', 'overload', 'typing', 'setup', 'chess', 'quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'error-detection-briefing', 'error-detection', 'fraud-inspection', 'feedback', 'summary', 'history'];
+const screens = ['overload', 'typing', 'setup', 'chess', 'quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'error-detection-briefing', 'error-detection', 'fraud-inspection', 'feedback', 'summary', 'history'];
 const refs = Object.fromEntries([
-  'holds-verification-screen', 'overload-screen', 'typing-screen', 'setup-form', 'setup-screen', 'chess-screen', 'quiz-screen', 'feedback-screen', 'summary-screen', 'history-screen',
+  'overload-screen', 'typing-screen', 'setup-form', 'setup-screen', 'chess-screen', 'quiz-screen', 'feedback-screen', 'summary-screen', 'history-screen',
   'memory-read-screen', 'memory-answer-screen', 'task-briefing-screen', 'task-workspace-screen', 'error-detection-briefing-screen', 'error-detection-screen', 'fraud-inspection-screen', 'cash-setup-options', 'memory-setup-options', 'task-setup-options', 'error-detection-setup-options', 'fraud-setup-options',
   'question-count', 'time-limit', 'cash-builder-toggle', 'customer-bill-request-toggle', 'auto-continue-toggle', 'distraction-noise-toggle', 'question-progress', 'timer', 'amount-due',
   'tender-breakdown', 'customer-bill-request', 'customer-bill-request-text', 'customer-bill-request-status', 'flag-bill-request', 'answer-form', 'answer-amount', 'cash-builder-section', 'cash-builder-heading',
@@ -525,7 +523,7 @@ function showScreen(name) {
   if (name === 'setup') { renderSpeedGoals(refs['speed-goals-setup'], getHistory(), selectedGame()); renderProgressiveLevels(selectedGame()); }
   const activeScreen = refs[`${name}-screen`];
   if (isCompactViewport()) activeScreen.scrollIntoView({ block: 'start', inline: 'nearest' });
-  const roundInProgress = ['holds-verification', 'typing', 'quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'error-detection-briefing', 'error-detection', 'fraud-inspection'].includes(name);
+  const roundInProgress = ['typing', 'quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'error-detection-briefing', 'error-detection', 'fraud-inspection'].includes(name);
   refs['open-history'].disabled = roundInProgress;
   if (!roundInProgress) stopTimer();
   if (name === 'quiz') {
@@ -598,7 +596,7 @@ function setHistoryDataSource(source) {
   renderHistory();
 }
 
-const GOAL_GAME_NAMES = { cash: 'Cash handling', memory: 'Number memory', task: 'Task simulation', 'error-detection': 'Error detection', 'fraud-inspection': 'Check & ID Fraud Inspection', typing: 'Typing speed', overload: 'Multitasker', 'holds-verification': 'Holds & Verification' };
+const GOAL_GAME_NAMES = { cash: 'Cash handling', memory: 'Number memory', task: 'Task simulation', 'error-detection': 'Error detection', 'fraud-inspection': 'Check & ID Fraud Inspection', typing: 'Typing speed', overload: 'Multitasker' };
 // Goal targets in each game's unit: seconds per answer, seconds per action, or words per minute.
 const goalTargetText = (target, unit) => unit === 'WPM' ? `${target} WPM or faster` : `${target}s or faster`;
 const GOAL_RULE_TEXT = {
@@ -985,8 +983,6 @@ function updateGameSetup() {
   }
   document.getElementById('overload-setup-options').hidden = game !== 'overload';
   document.querySelectorAll('#overload-setup-options input, #overload-setup-options select').forEach(node => { node.disabled = game !== 'overload'; });
-  document.getElementById('holds-setup-options').hidden = game !== HOLDS_GAME;
-  document.querySelectorAll('#holds-setup-options input, #holds-setup-options select').forEach(node => { node.disabled = game !== HOLDS_GAME; });
   document.getElementById('typing-setup-options').hidden = game !== 'typing';
   document.querySelectorAll('#typing-setup-options input, #typing-setup-options select, #typing-setup-options button').forEach(node => { node.disabled = game !== 'typing'; });
   if (game === 'chess') return;
@@ -1003,14 +999,6 @@ function updateGameSetup() {
     for (const id of ['cash-setup-options', 'memory-setup-options', 'task-setup-options', 'error-detection-setup-options', 'fraud-setup-options', 'preset-editor', 'custom-difficulty-card']) refs[id].hidden = true;
     for (const level of ['Easy', 'Medium', 'Hard']) refs[`${level.toLowerCase()}-description`].textContent = `${TYPING_PRESETS[level].characters} characters in ${TYPING_PRESETS[level].seconds}s${level === 'Hard' ? ', symbols and mixed case' : ''}`;
     loadTypingSetup();
-    renderPracticeRecommendations(document.getElementById('setup-recommendations'), game, selectedDifficulty());
-    return;
-  }
-  if (game === HOLDS_GAME) {
-    if (selectedDifficulty() === 'Custom') document.querySelector('input[name="difficulty"][value="Easy"]').checked = true;
-    for (const id of ['cash-setup-options', 'memory-setup-options', 'task-setup-options', 'error-detection-setup-options', 'fraud-setup-options', 'preset-editor', 'custom-difficulty-card']) refs[id].hidden = true;
-    for (const level of ['Easy', 'Medium', 'Hard']) refs[`${level.toLowerCase()}-description`].textContent = `${HOLDS_PRESETS[level].questionCount} questions, ${HOLDS_PRESETS[level].optionCount} choices, ${HOLDS_PRESETS[level].timeLimitSeconds}s each`;
-    holdsUI.applyDifficulty(selectedDifficulty());
     renderPracticeRecommendations(document.getElementById('setup-recommendations'), game, selectedDifficulty());
     return;
   }
@@ -1078,7 +1066,6 @@ function presetFor(game, difficulty) {
 
 function sessionPreset() {
   if (state.game === 'overload') return overloadUI.settings;
-  if (state.game === HOLDS_GAME) return holdsUI.settings;
   if (state.game === 'typing') return state.typingSettings;
   if (state.game === 'fraud-inspection') return state.fraudSettings;
   if (state.game === 'cash' && state.progressiveLevel && state.progressivePreset) return state.progressivePreset;
@@ -1106,7 +1093,6 @@ function renderPracticeRecommendations(target, game, difficulty, history = getHi
     if (plan.challenge) { const apply = document.createElement('button'); apply.type = 'button'; apply.textContent = 'Use practice plan'; apply.onclick = () => applyPracticePlan(plan); target.append(apply); }
     return;
   }
-  if (game === HOLDS_GAME) { target.textContent = summarizeHoldsHistory(history).recommendation; return; }
   if (game === 'typing') { target.textContent = 'Build accuracy first, then increase characters or shorten the timer. Saved typing results appear in History | Progress.'; return; }
   if (game === 'fraud-inspection') {
     const fraudSummary = summarizeFraudHistory(history);
@@ -5780,7 +5766,6 @@ function applyHistoryQuickRange(kind) {
 
 function openHistory() {
   if (state.activeScreen === 'overload') { overloadUI.stop(); historyView.filters = { game: 'overload' }; }
-  if (state.activeScreen === 'holds-verification') { holdsUI.stop(); historyView.filters = { game: HOLDS_GAME }; }
   if (['typing', 'quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'error-detection'].includes(state.activeScreen)) {
     setMessage('Finish the current round before opening history.');
     return;
@@ -5980,11 +5965,6 @@ const overloadUI = createOverloadUI({ showScreen, onSave(record) {
   state.game = 'overload'; state.sessionId = record.sessionId; state.difficulty = record.difficulty; state.questionCount = 1;
   state.results = record.outcome === 'Not answered' ? [] : [record]; persistRecord(record);
 }, onHistory() { historyView.filters = { game: 'overload' }; renderHistory(); showScreen('history'); } });
-const holdsUI = createHoldsVerificationUI({ showScreen, getDifficulty: () => selectedDifficulty(), onSave(record, results) {
-  state.game = HOLDS_GAME; state.sessionId = record.sessionId; state.difficulty = record.difficulty; state.questionCount = holdsUI.settings.questionCount;
-  state.results = results.slice(); persistRecord(record);
-}, onHistory() { historyView.filters = { game: HOLDS_GAME }; renderHistory(); showScreen('history'); },
-onSetup() { updateGameSetup(); showScreen('setup'); } });
 const MULTITASKER_SETTINGS_KEY='cash-handling-multitasker-settings-v1';
 function restoreMultitaskerSettings(){try{const saved=JSON.parse(localStorage.getItem(MULTITASKER_SETTINGS_KEY)??'null');if(saved)overloadUI.applySettings(saved);}catch{}}
 restoreMultitaskerSettings();
@@ -5994,7 +5974,6 @@ refs['setup-form'].addEventListener('submit', (event) => {
   event.preventDefault();
   if (!requireGameAccess(selectedGame())) return;
   if (selectedGame() === 'overload') { stopTimer(); resetDistractionAudioSetup(); overloadUI.start(); return; }
-  if (selectedGame() === HOLDS_GAME) { stopTimer(); resetDistractionAudioSetup(); clearPracticePlan(); holdsUI.start(); return; }
   if (selectedGame() === 'chess') {
     state.game = 'chess';
     chessUI.start().catch(error => setMessage(error.message));
@@ -6333,7 +6312,6 @@ refs['open-history'].addEventListener('click', openHistory);
 refs['summary-history'].addEventListener('click', openHistory);
 refs['back-to-setup'].addEventListener('click', () => {
   overloadUI.stop();
-  holdsUI.stop();
   clearPracticePlan();
   resetDistractionAudioSetup();
   updateGameSetup();
@@ -6570,17 +6548,12 @@ function requireGameAccess(game) {
   document.getElementById('account-email').focus();
   return false;
 }
-// Check & ID Fraud Inspection and Holds & Verification are only playable when signed in.
-const signedInChoices=['fraud-inspection',HOLDS_GAME].map(game=>document.querySelector(`input[name="game"][value="${game}"]`));
+const fraudChoice=document.querySelector('input[name="game"][value="fraud-inspection"]');
 function updateGameAccess(){
-  let locked=false,lockedChecked=false;
-  for(const choice of signedInChoices){
-    choice.disabled=!canPlayGame(choice.value,localStorage.uid);
-    choice.closest('label').classList.toggle('game-locked',choice.disabled);
-    locked||=choice.disabled;lockedChecked||=choice.disabled&&choice.checked;
-  }
-  document.getElementById('fraud-access-note').hidden=!locked;
-  if(lockedChecked){document.querySelector('input[name="game"][value="cash"]').checked=true;updateGameSetup();}
+  fraudChoice.disabled=!canPlayGame('fraud-inspection',localStorage.uid);
+  fraudChoice.closest('label').classList.toggle('game-locked',fraudChoice.disabled);
+  document.getElementById('fraud-access-note').hidden=!fraudChoice.disabled;
+  if(fraudChoice.disabled&&fraudChoice.checked){document.querySelector('input[name="game"][value="cash"]').checked=true;updateGameSetup();}
 }
 updateGameAccess();
 // Sign-in and sign-out switch accounts without a reload, so game access follows the account live.

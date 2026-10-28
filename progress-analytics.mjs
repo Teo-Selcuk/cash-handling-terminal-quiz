@@ -11,12 +11,7 @@ const GAME_NAMES = Object.freeze({
   typing: 'Typing speed', cash: 'Cash handling', memory: 'Number memory', task: 'Task simulation', 'error-detection': 'Error detection',
   'fraud-inspection': 'Check & ID Fraud Inspection',
   overload: 'Multitasker',
-  'holds-verification': 'Holds & Verification',
 });
-// Holds & Verification records keep their raw labels; these read them the same way from raw and normalized rows.
-const HOLDS_TOPIC_NAMES = Object.freeze({ holds: 'Holds', verification: 'Verification', mixed: 'Mixed rules' });
-const holdsTypeOf = (row) => known(row?.holdsCategoryLabel) ? String(row.holdsCategoryLabel) : null;
-const holdsAreaOf = (row) => known(row?.holdsTopic) ? HOLDS_TOPIC_NAMES[row.holdsTopic] ?? String(row.holdsTopic) : null;
 const GAME_BY_NAME = new Map(Object.entries(GAME_NAMES).map(([key, value]) => [value.toLowerCase(), key]));
 const known = (value) => value !== null && value !== undefined && value !== '';
 const boolean = (value) => typeof value === 'boolean' ? value : null;
@@ -317,8 +312,6 @@ function gameMatches(record, filters) {
     && (!Array.isArray(fraud.issueCategories) || !fraud.issueCategories.length
       || fraud.issueCategories.some((id) => record.fraudExpectedCategories?.includes(id)))
     && (fraud.cleanCase === undefined || record.fraudCleanCase === fraud.cleanCase);
-  if (record.game === 'holds-verification') return selected(holdsTypeOf(record), filters.holds?.categories) && selected(holdsAreaOf(record), filters.holds?.topics)
-    && range(record.timeLimitSeconds, filters.holds?.timeLimitSeconds);
   if (record.game === 'typing') return selected(record.typingMode, filters.typing?.modes) && range(record.typingCharacters, filters.typing?.characters) && range(record.wpm, filters.typing?.wpm);
   if (record.game === 'overload') return selected(record.sessionMode, filters.overload?.modes) && range(record.overloadPeakTasks,filters.overload?.tasks) && range(record.overloadScore,filters.overload?.score) && range(record.overloadDifficulty,filters.overload?.difficulty) && (!filters.overload?.miniGames?.length||filters.overload.miniGames.every(task=>record.overloadTasks?.includes(task)));
   return true;
@@ -397,11 +390,6 @@ export function buildGameFilters(history, game = 'all') {
     rangeField('error.expectedAnomalyCount', 'Expected anomalies', 'anomalies', selectedRecords, 'expectedAnomalyCount'), { id: 'error.cleanPuzzle', label: 'Clean puzzle', type: 'boolean', available: countAvailable(selectedRecords, 'cleanPuzzle') },
     rangeField('error.selectedAnomalyCount', 'Selected anomalies', 'anomalies', selectedRecords, 'selectedAnomalyCount'), rangeField('error.missedAnomalyCount', 'Missed anomalies', 'anomalies', selectedRecords, 'missedAnomalyCount'),
     rangeField('error.falseFlagCount', 'False flags', 'flags', selectedRecords, 'falseFlagCount'), rangeField('error.timeLimitSeconds', 'Time limit', 'seconds', selectedRecords, 'timeLimitSeconds'),
-  );
-  if (game === 'holds-verification') fields.push(
-    facetField('holds.categories', 'Question type', selectedRecords, (record) => [holdsTypeOf(record)]),
-    facetField('holds.topics', 'Topic', selectedRecords, (record) => [holdsAreaOf(record)]),
-    rangeField('holds.timeLimitSeconds', 'Seconds per question', 'seconds', selectedRecords, 'timeLimitSeconds'),
   );
   if (game === 'fraud-inspection') fields.push(
     facetField('fraud.itemTypes', 'Check / item type', selectedRecords, record => [record.checkItemType]),
@@ -1092,18 +1080,6 @@ function buildErrorAnalyticsUncached(history, { previousRecords = [], comparison
     if (record.game === 'task') addTaskEvidence(record, byCategoryGroups, byRawInputGroups, numericResponses, mistakesForAttempt, mistakeCounts);
     if (record.game === 'error-detection') addErrorDetectionEvidence(record, byCategoryGroups, byRawInputGroups, mistakesForAttempt, mistakeCounts);
     if (record.game === 'fraud-inspection') addFraudEvidence(record, byCategoryGroups, byRawInputGroups, mistakesForAttempt, mistakeCounts);
-    if (record.game === 'holds-verification' && holdsTypeOf(record)) {
-      const type = holdsTypeOf(record);
-      const error = record.outcome !== 'Correct';
-      addErrorOpportunity(byCategoryGroups, { key: `holds:${type}`, label: type, game: record.game, error, record });
-      const variant = String(record.holdsQuestionKey ?? record.holdsTemplate ?? 'question').split(':').slice(0, 2).join(' · ');
-      addErrorOpportunity(byRawInputGroups, { key: `holds:${type}:${variant}`, label: `${type} · ${variant}`, game: record.game, error, record });
-      if (error) {
-        const label = `${type}: ${record.outcome === 'Timed Out' ? 'timed out' : 'wrong choice'}`;
-        mistakesForAttempt.push({ key: `holds:${type}`, label, detail: `Expected: ${record.expectedAnswer ?? 'unknown'}. Chose: ${record.userAnswer || 'no answer'}.` });
-        mistakeCounts.set(label, (mistakeCounts.get(label) ?? 0) + 1);
-      }
-    }
     if (record.game === 'overload') {
       for(const event of record.overloadActivity??[]) {
         const task=OVERLOAD_TASKS.find(t=>t.id===event.task);if(!task)continue;
@@ -1524,7 +1500,6 @@ function conditionAxes(game) {
     ['Endorsement', row => row.endorsementIssue],
     ['Issue count', (row) => row.fraudExpectedIssueCount], ['Actual issue', (row) => row.fraudExpectedCategories],
     ['Clean case', (row) => row.fraudCleanCase === null ? null : row.fraudCleanCase ? 'Clean' : 'Has issues']];
-  if (game === 'holds-verification') return [...common, ['Question type', holdsTypeOf], ['Topic', holdsAreaOf]];
   if(game==='overload')return [...common,['Mode',row=>row.sessionMode],['Peak tasks',row=>row.overloadPeakTasks],['Difficulty reached',row=>row.overloadDifficulty],['Mini-games',row=>row.overloadTasks]];
   return common;
 }
@@ -1673,11 +1648,6 @@ export function buildChartSpecs(history, game = 'all') {
     chart('error-selection-distance', 'Average clue selections to fix by family', groupedMeanPoints(records, (row) => row.puzzleFamily, (row) => row.selectionDistance), { metric: 'selections' }),
     chart('cipher-rule-distance', 'Cipher Ring selection distance by rule layers', groupedMeanPoints(records.filter((row) => String(row.puzzleFamily).includes('cipher')), (row) => row.ruleLayers, (row) => row.selectionDistance), { metric: 'selections' }),
   );
-  if (game === 'holds-verification') specs.push(
-    chart('holds-category-accuracy', 'Accuracy by question type', groupedPoints(records, holdsTypeOf)),
-    chart('holds-topic-accuracy', 'Accuracy for holds versus verification', groupedPoints(records, holdsAreaOf)),
-    chart('holds-category-time', 'Answer time by question type', groupedPoints(records, holdsTypeOf, 'time'), { metric: 'time' }),
-  );
   if (game === 'fraud-inspection') {
     specs.push(
       chart('hold-decision-progression', 'Hold / acceptance accuracy over time', records.filter(row => row.holdScenario).map(row => ({key:row.attemptId,label:new Date(row.timestamp).toLocaleString(),value:row.isAnswered?row.holdDecisionAccuracyPercent:null,count:1,attemptIds:[row.attemptId]})), {kind:'line'}),
@@ -1740,10 +1710,6 @@ function weaknessGroups(records, game) {
     add('family', 'Puzzle family', (record) => record.puzzleFamily, (value) => ({ game: 'error-detection', error: { puzzleFamilies: [value] } }), 'family');
     add('clues', 'Clue count', (record) => record.clueCount, (value) => ({ game: 'error-detection', error: { clueCount: { min: Number(value), max: Number(value) } } }), 'clues');
     add('rules', 'Rule layers', (record) => record.ruleLayers, (value) => ({ game: 'error-detection', error: { ruleLayers: { min: Number(value), max: Number(value) } } }), 'ruleLayers');
-  }
-  if (game === 'holds-verification') {
-    add('category', 'Question type', holdsTypeOf, (value) => ({ game, holds: { categories: [value] } }), 'holdsCategory');
-    add('topic', 'Topic', holdsAreaOf, (value) => ({ game, holds: { topics: [value] } }), 'holdsTopic');
   }
   if (game === 'fraud-inspection') {
     add('run-mode', 'Run mode', (record) => record.fraudRunMode, (value) => ({ game, fraud: { runModes: [value] } }), 'runMode');

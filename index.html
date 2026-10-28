@@ -7,35 +7,33 @@
     <meta name="theme-color" content="#12343b">
     <title>Cash, Memory &amp; Detail Trainer</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="style.css?v=20261025-holds">
+    <link rel="stylesheet" href="style.css?v=20261023-round3">
     <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
     <!-- Start every startup module download at once instead of discovering imports one level at a time. -->
-    <link rel="modulepreload" href="app.js?v=20261025-holds">
-    <link rel="modulepreload" href="firebase-accounts.mjs?v=20261025-holds">
+    <link rel="modulepreload" href="app.js?v=20261025-keypad">
+    <link rel="modulepreload" href="firebase-accounts.mjs?v=20261020-sync">
     <link rel="modulepreload" href="account-data.mjs?v=20261020-fast">
     <link rel="modulepreload" href="firebase-config.mjs">
-    <link rel="modulepreload" href="account-access.mjs?v=20261025-holds">
+    <link rel="modulepreload" href="account-access.mjs">
     <link rel="modulepreload" href="cash-mistakes.mjs?v=20261011-fair-credit">
-    <link rel="modulepreload" href="history-tables.mjs?v=20261025-holds">
-    <link rel="modulepreload" href="history-explanations.mjs?v=20261025-holds">
+    <link rel="modulepreload" href="history-tables.mjs?v=20261023-round3">
+    <link rel="modulepreload" href="history-explanations.mjs?v=20261023-round3">
     <link rel="modulepreload" href="chart-contrast.mjs?v=20261023-round3">
     <link rel="modulepreload" href="chart-examples.mjs?v=20261023-round3">
-    <link rel="modulepreload" href="chart-games.mjs?v=20261025-holds">
+    <link rel="modulepreload" href="chart-games.mjs?v=20261023-round3">
     <link rel="modulepreload" href="numpad-shortcuts.mjs?v=20261025-keypad">
-    <link rel="modulepreload" href="progress-projection.mjs?v=20261025-holds">
-    <link rel="modulepreload" href="progress-analytics.mjs?v=20261025-holds">
+    <link rel="modulepreload" href="progress-projection.mjs?v=20261023-round3">
+    <link rel="modulepreload" href="progress-analytics.mjs?v=20261021-fast">
     <link rel="modulepreload" href="overload-core.mjs?v=20261003-accounts">
     <link rel="modulepreload" href="overload-analytics.mjs?v=20261003-accounts">
     <link rel="modulepreload" href="quiz-core.mjs?v=20261017-round2">
     <link rel="modulepreload" href="pattern-games.mjs">
-    <link rel="modulepreload" href="speed-goals.mjs?v=20261025-holds">
+    <link rel="modulepreload" href="speed-goals.mjs?v=20261021-goals">
     <link rel="modulepreload" href="overload-ui.mjs?v=20261003-accounts">
-    <link rel="modulepreload" href="holds-verification-ui.mjs?v=20261025-holds">
-    <link rel="modulepreload" href="holds-verification.mjs?v=20261025-holds">
     <link rel="modulepreload" href="check-holds.mjs?v=20261003-accounts">
     <link rel="modulepreload" href="hold-training-ui.mjs?v=20261003-accounts">
     <link rel="modulepreload" href="typing-core.mjs?v=20261002-typing">
-    <link rel="modulepreload" href="chess-ui.mjs?v=20261025-holds">
+    <link rel="modulepreload" href="chess-ui.mjs?v=20261023-round3">
     <link rel="modulepreload" href="chess-core.mjs">
     <link rel="modulepreload" href="assets/chess/chess.mjs">
     <link rel="modulepreload" href="chess-board.mjs?v=20261017-round2">
@@ -46,7 +44,7 @@
     <link rel="modulepreload" href="distraction-sounds.mjs">
     <link rel="modulepreload" href="fraud-inspection.mjs?v=20261003-accounts">
     <link rel="modulepreload" href="adaptive-practice.mjs?v=20261017-perf">
-    <link rel="modulepreload" href="sample-history.mjs?v=20261025-holds">
+    <link rel="modulepreload" href="sample-history.mjs?v=20261008-advanced-errors">
     <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js">
     <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js">
     <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js">
@@ -118,7 +116,6 @@
               <label class="choice-card"><input type="radio" name="game" value="task"><span><strong>Task simulation</strong><small>Watch a workflow, then repeat its tabs, fields, and selections from memory.</small></span></label>
               <label class="choice-card"><input type="radio" name="game" value="error-detection"><span><strong>Error detection</strong><small>15 rotating games: sequences, mirrors, rotations, binary patterns, grids, and more. Each has Easy, Medium, and Hard puzzles.</small></span></label>
               <label class="choice-card"><input type="radio" name="game" value="fraud-inspection"><span><strong>Check &amp; ID Fraud Inspection</strong><small>Inspect fictional teller documents, find every issue, and recognize clean cases.</small></span></label>
-              <label class="choice-card"><input type="radio" name="game" value="holds-verification"><span><strong>Holds &amp; Verification</strong><small>Tricky multiple-choice questions on Reg CC hold amounts, hold types, and teller verification steps.</small></span></label>
               <label class="choice-card"><input type="radio" name="game" value="typing"><span><strong>Typing speed</strong><small>Race the clock with words or random characters, and optional hidden prompts.</small></span></label>
               <label class="choice-card"><input type="radio" name="game" value="overload"><span><strong>Multitasker</strong><small>Manage independent deadlines across one to nine simultaneous tasks.</small></span></label>
               <label class="choice-card"><input type="radio" name="game" value="chess"><span><strong>Chess</strong><small>Play the computer, practice openings and tactics, and review your moves.</small></span></label>
@@ -263,7 +260,6 @@
           </details>
 
           <fieldset id="overload-setup-options" hidden><legend>Multitasker settings</legend></fieldset>
-          <fieldset id="holds-setup-options" hidden><legend>Holds &amp; Verification settings</legend></fieldset>
           <fieldset id="typing-setup-options" hidden>
             <legend>Typing speed settings</legend>
             <p>Match every character, including case, spaces, and punctuation. Hard adds mixed case, numbers, and symbols. Long word or phrase prompts may end partway through a word to match your character count.</p>
@@ -666,7 +662,6 @@
       </section>
 
       <section class="screen" id="overload-screen" hidden></section>
-      <section class="screen holds-verification-screen" id="holds-verification-screen" hidden aria-labelledby="holds-prompt"></section>
       <section class="screen" id="typing-screen" hidden aria-labelledby="typing-heading">
         <div class="screen-title-row"><h2 id="typing-heading" tabindex="-1">Typing speed</h2><span id="typing-timer" class="timer"></span></div>
         <p id="typing-progress"></p>
@@ -741,7 +736,6 @@
           <button type="button" data-history-game="task" aria-pressed="false">Task Simulation</button>
           <button type="button" data-history-game="error-detection" aria-pressed="false">Error Detection</button>
           <button type="button" data-history-game="fraud-inspection" aria-pressed="false">Check &amp; ID Inspection</button>
-          <button type="button" data-history-game="holds-verification" aria-pressed="false">Holds &amp; Verification</button>
           <button type="button" data-history-game="typing" aria-pressed="false">Typing Speed</button>
           <button type="button" data-history-game="overload" aria-pressed="false">Multitasker</button>
           <button type="button" data-history-game="chess" aria-pressed="false">Chess</button>
@@ -979,6 +973,6 @@
     </dialog>
 
     <footer>Browser edition. The original PowerShell quiz remains in this repository.</footer>
-    <script type="module" src="app.js?v=20261025-holds"></script>
+    <script type="module" src="app.js?v=20261025-keypad"></script>
   </body>
 </html>

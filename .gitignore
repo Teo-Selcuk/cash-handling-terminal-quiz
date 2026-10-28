@@ -26,3 +26,8 @@ ui-debug.log
 debug.log
 
 .claude/
+
+# Holds & Verification game: kept on this computer only, not published
+holds-verification.mjs
+holds-verification-ui.mjs
+local-only/

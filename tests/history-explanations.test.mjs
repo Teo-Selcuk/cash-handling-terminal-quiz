@@ -10,7 +10,7 @@ const sentences = (text) => text.split(/(?<=[.!?])\s+/).filter(Boolean).length;
 
 test('every chart on every game page has a full plain-language explanation and reads its numbers', () => {
   const history = generateSampleHistory({ seed: 3 });
-  const specs = ['all', 'cash', 'memory', 'task', 'error-detection', 'fraud-inspection', 'typing', 'overload', 'holds-verification'].flatMap((game) => buildChartSpecs(history, game));
+  const specs = ['all', 'cash', 'memory', 'task', 'error-detection', 'fraud-inspection', 'typing', 'overload'].flatMap((game) => buildChartSpecs(history, game));
   const chess = generateSampleChessHistory?.({ seed: 3 });
   if (chess) specs.push(...chessChartSpecs(chess.games ?? [], chess.lessons ?? []));
   assert.ok(specs.length > 40);

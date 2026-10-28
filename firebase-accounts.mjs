@@ -1,6 +1,6 @@
 import { AccountStorage, shouldReplace, SYNC_KEYS } from './account-data.mjs?v=20261020-fast';
 import { firebaseConfig } from './firebase-config.mjs';
-import { isApprovedUid } from './account-access.mjs?v=20261025-holds';
+import { isApprovedUid } from './account-access.mjs';
 
 const remoteIds=new Set();
 let markConnected;const connected=new Promise(resolve=>{markConnected=resolve;});

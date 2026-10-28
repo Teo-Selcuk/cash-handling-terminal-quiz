@@ -4,7 +4,7 @@ import { generateSampleHistory } from '../sample-history.mjs';
 import { documentId, recordId } from '../account-data.mjs';
 import { routeEmulators } from './browser-firebase-checks.mjs';
 const HISTORY_KEY = 'cash-handling-terminal-quiz-history-v1';
-const accountModule = './firebase-accounts.mjs?v=20261025-holds';
+const accountModule = './firebase-accounts.mjs?v=20261020-sync';
 const email = 'approved@example.com';
 
 // A large offline backlog uploads in the background while the user plays, then reaches a second device.

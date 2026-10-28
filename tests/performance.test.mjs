@@ -97,7 +97,7 @@ test('filtered and de-duplicated lists are copies, so callers can sort or edit t
 test('History data for every game is ready fast after the first view', () => {
   clearAnalyticsCache();
   const records = sample();
-  const games = ['all', 'cash', 'memory', 'task', 'error-detection', 'fraud-inspection', 'typing', 'overload', 'holds-verification'];
+  const games = ['all', 'cash', 'memory', 'task', 'error-detection', 'fraud-inspection', 'typing', 'overload'];
   const build = (game) => {
     const rows = filterHistory(records, { game });
     buildErrorAnalytics(rows, { comparisonDisabled: true });

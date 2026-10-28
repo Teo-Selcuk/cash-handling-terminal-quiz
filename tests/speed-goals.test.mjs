@@ -112,7 +112,7 @@ test('progressive levels open with the goal ladder', () => {
 import { DEFAULT_GOAL_WINDOW, resolveGoalSettings, GOAL_WINDOW_LIMITS } from '../speed-goals.mjs';
 
 test('defaults: cash needs 150 consecutive attempts, every other timed game 80, typing and Multitasker 10', () => {
-  assert.deepEqual(DEFAULT_GOAL_WINDOW, { cash: 150, memory: 80, task: 80, 'error-detection': 80, 'fraud-inspection': 80, typing: 10, overload: 10, 'holds-verification': 80 });
+  assert.deepEqual(DEFAULT_GOAL_WINDOW, { cash: 150, memory: 80, task: 80, 'error-detection': 80, 'fraud-inspection': 80, typing: 10, overload: 10 });
   for (const game of ['typing', 'overload']) assert.equal(goalProgress([], game).settings.window, 10);
   assert.equal(goalProgress([], 'cash').settings.window, 150);
   for (const game of ['memory', 'task', 'error-detection', 'fraud-inspection']) assert.equal(goalProgress([], game).settings.window, 80);

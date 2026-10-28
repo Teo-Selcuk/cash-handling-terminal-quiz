@@ -1,11 +1,10 @@
 import { createTypingPrompt, scoreTyping } from './typing-core.mjs?v=20261002-typing';
 import { sampleOverloadRecord } from './overload-analytics.mjs?v=20261003-accounts';
-import { createHoldsQuestion, HOLDS_GAME, HOLDS_GAME_NAME } from './holds-verification.mjs?v=20261025-holds';
 import { ChessSession } from './chess-core.mjs';
 import { CHESS_LESSONS } from './chess-lessons.mjs';
 const DAY_MS = 86400000;
 const DIFFICULTIES = ['Easy', 'Medium', 'Hard', 'Custom'];
-const GAMES = ['cash', 'memory', 'task', 'error-detection', 'fraud-inspection', 'typing', 'overload', 'holds-verification'];
+const GAMES = ['cash', 'memory', 'task', 'error-detection', 'fraud-inspection', 'typing', 'overload'];
 const DENOMINATIONS = [10000, 5000, 2000, 1000, 500, 100, 25, 10, 5, 1];
 const FRAUD_CATEGORIES = [
   'payee-mismatch', 'amount-mismatch', 'date-issue', 'check-alteration', 'handwriting-issue',
@@ -278,18 +277,6 @@ export function generateSampleChessHistory({ now = new Date(), seed = 42, count 
 }
 
 /** Make isolated fake local-history rows. No browser storage is read or written. */
-// Holds & Verification samples use real generated questions, so every chart and table has true labels.
-function holdsRecord(common, random) {
-  const difficulty = ['Easy', 'Medium', 'Hard'].includes(common.difficulty) ? common.difficulty : 'Medium';
-  const question = createHoldsQuestion({ difficulty, random });
-  const correctText = question.options.find((option) => option.id === question.correctOptionId).text;
-  const wrong = question.options.find((option) => option.id !== question.correctOptionId);
-  return { ...common, game: HOLDS_GAME, gameType: HOLDS_GAME_NAME, difficulty, sessionMode: 'Holds and verification',
-    expectedAnswer: correctText, userAnswer: common.outcome === 'Correct' ? correctText : common.outcome === 'Incorrect' ? wrong.text : '',
-    holdsTopicSetting: 'all', holdsCategory: question.category, holdsCategoryLabel: question.categoryLabel, holdsTopic: question.topic,
-    holdsTemplate: question.template, holdsQuestionKey: question.key, holdsPrompt: question.prompt, holdsFacts: question.facts, holdsOptionCount: question.options.length };
-}
-
 export function generateSampleHistory({ now = new Date(), count = 1680, seed = Math.floor(Math.random() * 0xFFFFFFFF) } = {}) {
   const total = clamp(Math.floor(Number(count) || 1200), 1, 10000);
   const random = randomSource(seed);
@@ -327,7 +314,7 @@ export function generateSampleHistory({ now = new Date(), count = 1680, seed = M
     const row = game === 'cash' ? cashRecord(common, random, index)
       : game === 'memory' ? memoryRecord(common, random)
         : game === 'task' ? taskRecord(common, random)
-          : game === 'error-detection' ? errorRecord(common, random) : game === 'typing' ? typingRecord(common, random) : game === 'overload' ? sampleOverloadRecord(common,random,index) : game === HOLDS_GAME ? holdsRecord(common, random) : fraudRecord(common, random);
+          : game === 'error-detection' ? errorRecord(common, random) : game === 'typing' ? typingRecord(common, random) : game === 'overload' ? sampleOverloadRecord(common,random,index) : fraudRecord(common, random);
     rows.push(row);
   }
   return rows;

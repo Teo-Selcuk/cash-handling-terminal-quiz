@@ -42,7 +42,7 @@ jobs:
       - name: Assemble the static site
         run: |
           mkdir -p _site
-          cp index.html style.css app.js cash-mistakes.mjs history-tables.mjs history-explanations.mjs speed-goals.mjs typing-core.mjs quiz-core.mjs pattern-games.mjs distraction-sounds.mjs adaptive-practice.mjs progress-analytics.mjs fraud-inspection.mjs check-holds.mjs hold-training-ui.mjs sample-history.mjs chart-contrast.mjs chart-examples.mjs chart-games.mjs numpad-shortcuts.mjs progress-projection.mjs holds-verification.mjs holds-verification-ui.mjs _site/
+          cp index.html style.css app.js cash-mistakes.mjs history-tables.mjs history-explanations.mjs speed-goals.mjs typing-core.mjs quiz-core.mjs pattern-games.mjs distraction-sounds.mjs adaptive-practice.mjs progress-analytics.mjs fraud-inspection.mjs check-holds.mjs hold-training-ui.mjs sample-history.mjs chart-contrast.mjs chart-examples.mjs chart-games.mjs numpad-shortcuts.mjs progress-projection.mjs _site/
           cp firebase-*.mjs account-data.mjs account-access.mjs _site/
           cp chess-*.mjs _site/
           cp overload-*.mjs _site/
