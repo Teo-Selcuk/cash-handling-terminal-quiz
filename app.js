@@ -5,12 +5,13 @@ import { enhanceHistoryTables } from './history-tables.mjs?v=20261023-round3';
 import { chartExplanation, summaryChartExplanation, createExplanation } from './history-explanations.mjs?v=20261023-round3';
 import { resolveLabelColor } from './chart-contrast.mjs?v=20261023-round3';
 import { chartExample, summaryChartExample, createExample } from './chart-examples.mjs?v=20261023-round3';
-import { chartGameTag, chartFitsGame } from './chart-games.mjs?v=20261023-round3';
+import { chartGameTag, chartFitsGame, gamesInAttempts, gameBreakdownText, gamesIncludedText } from './chart-games.mjs?v=20261031-toast';
 import { numpadChoice, numpadListAction, listKeyHint } from './numpad-shortcuts.mjs?v=20261028-amount';
 import { attachAmountFilter, readAmountCents } from './amount-input.mjs?v=20261028-amount';
 import { roundEndAction } from './round-shortcuts.mjs?v=20261028-amount';
-import { buildProjection, projectionRows, chessProjectionRows } from './progress-projection.mjs?v=20261023-round3';
-import { goalProgress, goalMetric, availableProgressiveLevels, PROGRESSIVE_LEVELS, fraudProgressiveOverrides, GOAL_SETTINGS_KEY, GOAL_WINDOW_LIMITS, GOAL_SUCCESS_LIMITS, resolveGoalSettings } from './speed-goals.mjs?v=20261021-goals';
+import { answerToastContent } from './answer-toast.mjs?v=20261031-toast';
+import { buildProjection, projectionRows, chessProjectionRows } from './progress-projection.mjs?v=20261031-toast';
+import { goalProgress, goalMetric, availableProgressiveLevels, PROGRESSIVE_LEVELS, fraudProgressiveOverrides, GOAL_SETTINGS_KEY, GOAL_WINDOW_LIMITS, GOAL_SUCCESS_LIMITS, resolveGoalSettings } from './speed-goals.mjs?v=20261031-toast';
 import { createOverloadUI } from './overload-ui.mjs?v=20261028-amount';
 import { summarizeOverload, overloadRecommendation } from './overload-analytics.mjs?v=20261003-accounts';
 import { decideCheck, scoreHoldDecision, ITEM_TYPES, ITEM_REASONS, ACTIONS, HOLD_TYPES, availabilityText } from './check-holds.mjs?v=20261003-accounts';
@@ -31,7 +32,7 @@ import { PRACTICE_GAMES, rankPracticeCandidates, recommendPractice, practiceSett
 import {
   buildChartSpecs, buildConditionalReport, buildErrorAnalytics, buildAdvancedErrorAnalytics, buildGameFilters, buildProgressModel, comparePeriods,
   filterHistory, recommendNextChallenge, progressionSegments,
-} from './progress-analytics.mjs?v=20261021-fast';
+} from './progress-analytics.mjs?v=20261031-toast';
 import { generateSampleHistory, generateSampleChessHistory } from './sample-history.mjs?v=20261008-advanced-errors';
 import {
   DENOMINATIONS,
@@ -84,6 +85,7 @@ const refs = Object.fromEntries([
   'history-error-analysis', 'history-error-data-label', 'history-error-metrics', 'history-error-highlights', 'history-error-comparison', 'history-error-charts',
   'history-error-category-table', 'history-error-raw-table', 'history-error-combination-table', 'history-error-difficulty-table', 'history-error-numeric-table', 'history-error-distribution', 'error-analysis-sort',
   'history-rows', 'download-csv', 'clear-history', 'message', 'submit-answer', 'theme-toggle',
+  'answer-toast', 'answer-toast-kicker', 'answer-toast-title', 'answer-toast-lines',
   'history-data-source', 'history-sample-banner', 'history-regenerate-sample', 'history-empty-real', 'history-view-sample',
   'history-game-tabs', 'history-quick-ranges', 'history-common-filters', 'history-game-filters', 'clear-history-filters',
   'history-charts', 'history-insights', 'history-comparison', 'history-recommendations', 'previous-challenges', 'history-attempt-summary',
@@ -197,10 +199,11 @@ function openChartData(title, table) {
   enhanceHistoryTables(refs['chart-data-dialog']);
   refs['chart-data-dialog'].showModal();
 }
-function chartSpecDataTable(spec) {
+/** `gameOf` (All games only) adds a Games column naming the games behind each row. */
+function chartSpecDataTable(spec, gameOf = null) {
   const metric = spec.series[0].metric;
   const scatter = spec.kind === 'scatter';
-  const headers = scatter ? ['Category', 'Response time', 'Value', 'Evidence', '95% interval'] : ['Category', 'Value', 'Evidence', '95% interval'];
+  const headers = [...(scatter ? ['Category', 'Response time', 'Value', 'Evidence', '95% interval'] : ['Category', 'Value', 'Evidence', '95% interval']), ...(gameOf ? ['Games'] : [])];
   const rows = spec.series[0].points.map((point) => {
     const correct = point.correct ?? point.detail?.correct;
     const evidence = metric === 'accuracy' && point.measure !== 'mean' && correct !== undefined
@@ -208,7 +211,8 @@ function chartSpecDataTable(spec) {
         ? `${point.errors} / ${point.opportunities} errors across ${point.attemptCount ?? point.attemptIds.length} attempts`
         : `${point.attemptIds.length} ${spec.evidenceUnit ?? 'attempts'}`;
     return [point.label, ...(scatter ? [point.x === null || point.x === undefined ? 'Not recorded' : `${Number(point.x).toFixed(1)}s`] : []),
-      chartValue({ value: scatter ? point.y : point.value }, metric), evidence, point.interval ? `${point.interval[0]}–${point.interval[1]}%` : '—'];
+      chartValue({ value: scatter ? point.y : point.value }, metric), evidence, point.interval ? `${point.interval[0]}–${point.interval[1]}%` : '—',
+      ...(gameOf ? [gameBreakdownText(gamesInAttempts(point.attemptIds, gameOf)) || '—'] : [])];
   });
   return makeChartDataTable(headers, rows);
 }
@@ -258,6 +262,7 @@ const state = {
   fraudReaderIndex: 0,
   fraudReaderFeedback: false,
   fraudRoundAdvanceTimer: null,
+  answerToastTimer: null,
   fraudStoppedEarly: false,
   fraudLastScore: null,
   fraudCurrentStreak: 0,
@@ -1667,6 +1672,29 @@ function populateFeedback(record, score) {
   }
 }
 
+/**
+ * Auto-continue opens the next question at once, so a note in the top-right corner says whether the answer was right
+ * or wrong. A wrong answer or timeout also shows the right answer. It never takes focus and hides itself after a few seconds.
+ */
+function showAnswerToast(record, extra = {}) {
+  const content = answerToastContent(record, { game: state.game, ...extra });
+  const toast = refs['answer-toast'];
+  window.clearTimeout(state.answerToastTimer);
+  toast.dataset.result = content.result;
+  refs['answer-toast-kicker'].textContent = content.kicker;
+  refs['answer-toast-title'].textContent = content.title;
+  refs['answer-toast-lines'].replaceChildren();
+  for (const [term, description] of content.lines) {
+    const dt = document.createElement('dt');
+    const dd = document.createElement('dd');
+    dt.textContent = term;
+    dd.textContent = description;
+    refs['answer-toast-lines'].append(dt, dd);
+  }
+  toast.hidden = false;
+  state.answerToastTimer = window.setTimeout(() => { toast.hidden = true; state.answerToastTimer = null; }, content.durationMs);
+}
+
 function submitCurrentAnswer(timedOut = false) {
   if (state.answerSubmitted) return;
   const answer = timedOut ? null : collectAnswer();
@@ -1683,6 +1711,7 @@ function submitCurrentAnswer(timedOut = false) {
   persistRecord(record);
   if (state.results.length === state.questionCount) stopContinuousDistractionNoise();
   if (state.autoContinue) {
+    showAnswerToast(record);
     showNextQuestion();
     return;
   }
@@ -1851,6 +1880,7 @@ function submitMemoryAnswer(timedOut = false) {
   persistRecord(record);
   if (state.results.length === state.questionCount) stopContinuousDistractionNoise();
   if (state.autoContinue) {
+    showAnswerToast(record);
     showNextMemoryQuestion();
     return;
   }
@@ -2142,6 +2172,7 @@ function submitErrorDetectionAttempt(timedOut = false) {
   persistRecord(record);
   if (state.results.length === state.questionCount) stopContinuousDistractionNoise();
   if (state.autoContinue) {
+    showAnswerToast(record);
     showNextErrorDetectionQuestion();
     return;
   }
@@ -2816,6 +2847,17 @@ function submitFraudInspectionAttempt(timedOut = false) {
   refs['next-question'].textContent = state.fraudStoppedEarly ? 'View run results' : 'Next case (Enter)';
   showScreen('feedback');
   if (shouldAutoAdvance && !state.fraudStoppedEarly) {
+    const issueText = (labels) => (labels.length ? labels.join(' · ') : 'No issues found');
+    const categoryLabels = new Map(FRAUD_INSPECTION_CATEGORIES.map((category) => [category.id, category.label]));
+    const holdMissed = score.holdScore && !score.holdScore.correct;
+    showAnswerToast(record, {
+      correctAnswer: issueText(state.fraudChallenge.expectedIssues.map((issue) => issue.label)),
+      yourAnswer: issueText(selected.map((id) => categoryLabels.get(id) ?? id)),
+      more: holdMissed ? [
+        ['Hold decision', `${ACTIONS[score.holdScore.expected.action]} · ${HOLD_TYPES[score.holdScore.expected.holdType]}`],
+        ['Hold mistakes', score.holdScore.errors.join(' · ')],
+      ] : [],
+    });
     window.clearTimeout(state.fraudRoundAdvanceTimer);
     state.fraudRoundAdvanceTimer = window.setTimeout(showNextFraudInspectionCase, state.fraudSettings.instantFeedback ? 1400 : 650);
   }
@@ -3722,6 +3764,10 @@ function submitTaskAttempt(timedOut = false) {
   persistRecord(record);
   if (state.results.length === state.questionCount) stopContinuousDistractionNoise();
   if (state.autoContinue) {
+    showAnswerToast(record, {
+      correctAnswer: state.taskChallenge.steps.map((step, index) => `${index + 1}. ${step.instruction}`).join(' '),
+      yourAnswer: `${score.completedSteps} of ${score.expectedSteps} steps in order`,
+    });
     showNextTaskQuestion();
     return;
   }
@@ -3846,11 +3892,20 @@ function chartExampleToggle(id, example) {
   return note;
 }
 /** A small tag naming the game a chart belongs to, so same-named charts in two games are told apart. */
-function chartGameTagElement(game) {
+function chartGameTagElement(game, games = []) {
   const tag = document.createElement('p');
   tag.className = 'chart-game-tag';
-  tag.textContent = chartGameTag(game);
+  tag.textContent = chartGameTag(game, games);
   return tag;
+}
+// All games charts mix games, so each attempt's game is looked up to name the games behind a chart and each mark.
+const attemptGameLookups = new WeakMap();
+function attemptGameLookup(records) {
+  if (!attemptGameLookups.has(records)) {
+    const games = new Map(records.map((record) => [record.attemptId, record.game]));
+    attemptGameLookups.set(records, (attemptId) => games.get(attemptId));
+  }
+  return attemptGameLookups.get(records);
 }
 
 function accuracyLevelText(level) {
@@ -3860,7 +3915,9 @@ function accuracyLevelText(level) {
     : `${level.accuracyPercent}% (${level.correct} of ${level.answered} correct)`;
 }
 
-function renderHistoryVisuals(summary) {
+function renderHistoryVisuals(summary, records = []) {
+  const game = historyView.filters.game;
+  const games = game === 'all' ? gamesInAttempts(records.map((record) => record.attemptId), attemptGameLookup(records)) : [];
   const outcomeCard = refs['history-outcome-diagram'].closest('.visual-card');
   const accuracyCard = refs['history-accuracy-chart'].closest('.visual-card');
   applyChartAppearance(outcomeCard, 'outcomes');
@@ -3868,8 +3925,8 @@ function renderHistoryVisuals(summary) {
   for (const [card, id] of [[outcomeCard, 'outcomes'], [accuracyCard, 'accuracy-by-difficulty']]) {
     card.querySelectorAll(':scope > .explanation, :scope > .chart-example').forEach((note) => note.remove());
     card.querySelector('.summary-chart-actions').after(chartExplanationToggle(id, summaryChartExplanation(id, summary)), chartExampleToggle(id, summaryChartExample(id, summary)));
-    card.dataset.game = historyView.filters.game;
-    card.querySelector('.chart-game-tag').textContent = chartGameTag(historyView.filters.game);
+    card.dataset.game = game;
+    card.querySelector('.chart-game-tag').textContent = chartGameTag(game, games);
   }
   const palette = chartSettings('outcomes').palette;
   outcomeCard.querySelectorAll('[data-chart-data], [data-chart-settings]').forEach((button) => {
@@ -4516,6 +4573,15 @@ function renderChartCard(spec, records) {
     view.xMax = view.xMin + next;
     view.notice = `Showing ${view.xMin.toFixed(1)}–${view.xMax.toFixed(1)} seconds.`;
   };
+  const allGames = historyView.filters.game === 'all';
+  const gameOf = allGames ? attemptGameLookup(records) : null;
+  const chartGames = allGames ? gamesInAttempts(spec.attemptIds, gameOf) : [];
+  // On All games, each mark also names the games its attempts came from, for example "(Cash handling 8, Number memory 4)".
+  const markGames = (attemptIds) => {
+    if (!allGames) return '';
+    const text = gameBreakdownText(gamesInAttempts(attemptIds, gameOf));
+    return text ? ` (${text})` : '';
+  };
   const card = document.createElement('article');
   card.className = `interactive-chart visual-card${view.expanded ? ' is-maximized' : ''}`;
   card.dataset.chartKind = spec.kind;
@@ -4560,12 +4626,18 @@ function renderChartCard(spec, records) {
   control('Earlier', () => { view.start = Math.max(0, view.start - Math.max(1, Math.floor(view.count / 2))); }, isScatter || view.start === 0);
   control('Later', () => { view.start = Math.min(Math.max(0, allPoints.length - view.count), view.start + Math.max(1, Math.floor(view.count / 2))); }, isScatter || view.start >= allPoints.length - view.count);
   control('Reset', () => { Object.assign(view, { start: 0, count: allPoints.length, xMin: 0, xMax: fullXMax, visible: true, compare: false, notice: 'Showing all chart data.' }); });
-  control('Data table', () => openChartData(spec.title, chartSpecDataTable(spec)), false, false);
+  control('Data table', () => openChartData(spec.title, chartSpecDataTable(spec, gameOf)), false, false);
   control(view.compare ? 'Hide comparison' : 'Compare periods', () => { view.compare = !view.compare; });
   control('Appearance', () => openChartSettings(spec.id, spec.title), false, false);
   control(view.expanded ? 'Restore size' : 'Maximize', () => { view.expanded = !view.expanded; });
-  heading.append(chartGameTagElement(historyView.filters.game), title, controls);
+  heading.append(chartGameTagElement(historyView.filters.game, chartGames), title, controls);
   card.append(heading, chartExplanationToggle(spec.id, chartExplanation(spec)), chartExampleToggle(spec.id, chartExample(spec)));
+  if (chartGames.length) {
+    const included = document.createElement('p');
+    included.className = 'chart-note chart-games-included';
+    included.textContent = gamesIncludedText(chartGames);
+    card.append(included);
+  }
   const status = document.createElement('p');
   status.className = 'chart-note chart-hover';
   status.textContent = view.notice ?? `${spec.attemptIds.length} eligible filtered attempt${spec.attemptIds.length === 1 ? '' : 's'}.`;
@@ -4756,9 +4828,9 @@ function renderChartCard(spec, records) {
     const width = plotWidth / Math.max(points.length, 1);
     const height = Math.max(2, plot.bottom - y);
     const colorClass = chartColorClass(spec, point, index);
-    const evidence = Number.isFinite(point.opportunities) && Number.isFinite(point.errors)
+    const evidence = (Number.isFinite(point.opportunities) && Number.isFinite(point.errors)
       ? `${point.errors} of ${point.opportunities} error opportunities across ${point.attemptCount ?? point.attemptIds.length} attempts`
-      : spec.evidenceUnit ? `from ${point.attemptIds.length} ${spec.evidenceUnit}` : `from ${point.attemptIds.length} attempt${point.attemptIds.length === 1 ? '' : 's'}`;
+      : spec.evidenceUnit ? `from ${point.attemptIds.length} ${spec.evidenceUnit}` : `from ${point.attemptIds.length} attempt${point.attemptIds.length === 1 ? '' : 's'}`) + markGames(point.attemptIds);
     const mark = chartSvgElement('g', { class: `analytics-mark ${colorClass}`, role: 'button', tabindex: '0', 'aria-label': `${point.label}: ${chartValue(point, series.metric)} ${evidence}` });
     mark.style.setProperty('--chart-color', chartHueColor(value, hueMinimum, hueMaximum, series.metric, spec.id));
     const shape = chartSvgElement(spec.kind === 'line' || spec.kind === 'scatter' ? 'circle' : 'rect', spec.kind === 'line' || spec.kind === 'scatter'
@@ -4843,7 +4915,7 @@ function renderChartCard(spec, records) {
   // The table alternative stays closed until someone asks for it, so it is built on first open instead of for every chart.
   const buildTableAlternative = () => {
     const table = document.createElement('table');
-    table.innerHTML = '<thead><tr><th>Category</th><th>Value</th><th>Evidence</th><th>95% interval</th></tr></thead>';
+    table.innerHTML = `<thead><tr><th>Category</th><th>Value</th><th>Evidence</th><th>95% interval</th>${allGames ? '<th>Games</th>' : ''}</tr></thead>`;
     const body = document.createElement('tbody');
     points.forEach((point) => {
       const row = document.createElement('tr');
@@ -4852,7 +4924,8 @@ function renderChartCard(spec, records) {
         ? `${correct} / ${point.count}` : Number.isFinite(point.opportunities) && Number.isFinite(point.errors)
           ? `${point.errors} / ${point.opportunities} errors across ${point.attemptCount ?? point.attemptIds.length} attempts`
           : `${point.attemptIds.length} ${spec.evidenceUnit ?? 'attempts'}`;
-      [point.label, chartValue(point, series.metric), evidence, point.interval ? `${point.interval[0]}–${point.interval[1]}%` : '—'].forEach((value) => {
+      [point.label, chartValue(point, series.metric), evidence, point.interval ? `${point.interval[0]}–${point.interval[1]}%` : '—',
+        ...(allGames ? [gameBreakdownText(gamesInAttempts(point.attemptIds, gameOf)) || '—'] : [])].forEach((value) => {
         const cell = document.createElement('td');
         cell.textContent = value;
         row.append(cell);
@@ -5752,7 +5825,7 @@ function renderHistory() {
   const model = buildProgressModel(records);
   const errorAnalytics = renderErrorAnalysis(records, history);
   renderProgressMetrics(model);
-  renderHistoryVisuals(summarizeHistory(records));
+  renderHistoryVisuals(summarizeHistory(records), records);
   renderRecommendedChallenge(records);
   renderHistoryComparison(history, records);
   renderHistoryCharts(records);
@@ -5921,7 +5994,7 @@ function submitTyping(timedOut = false) {
   state.results.push(record); persistRecord(record);
   if (state.results.length === state.questionCount) stopContinuousDistractionNoise();
   typingElement('answer').disabled = true;
-  if (state.autoContinue) { showNextTypingRound(); return; }
+  if (state.autoContinue) { showAnswerToast(record); showNextTypingRound(); return; }
   refs['feedback-kicker'].textContent = 'Typing speed result';
   refs['feedback-heading'].textContent = timedOut ? 'Time expired' : score.correct ? 'Exact match' : 'Review your text';
   refs['feedback-heading'].dataset.result = record.outcome === 'Correct' ? 'correct' : 'incorrect';

@@ -1323,6 +1323,8 @@ body:has(.interactive-chart.is-maximized) #history-screen .history-charts { cont
 
 /* Per-game chart tag and Example toggle. */
 .chart-game-tag { margin: 0 0 0.15rem; color: var(--brand); font-size: 0.75rem; font-weight: 750; letter-spacing: 0.04em; text-transform: uppercase; }
+/* All games: which games a chart combines, with attempt counts. */
+.chart-games-included { margin: 0.35rem 0 0.15rem; color: var(--ink); text-align: left; }
 .visual-card > .explanation:not([open]), .visual-card > .chart-example:not([open]) { display: inline-block; margin-right: 1rem; vertical-align: top; }
 .chart-example { margin: 0.5rem 0 0; color: var(--ink); font-size: 0.875rem; min-width: 0; max-width: 100%; }
 .chart-example > summary { display: inline-flex; align-items: center; gap: 0.4rem; min-height: 2.25rem; cursor: pointer; color: var(--brand); font-weight: 700; list-style: none; }
@@ -1343,3 +1345,20 @@ body:has(.interactive-chart.is-maximized) #history-screen .history-charts { cont
 .plain-bullets .plain-bullets { margin: 0.15rem 0 0.25rem; font-size: inherit; list-style-type: circle; }
 .explanation-terms { margin: 0; padding-left: 1.25rem; list-style: disc outside; }
 .explanation-terms li { margin: 0.2rem 0; overflow-wrap: anywhere; }
+
+/* Auto-continue answer result note: top-right corner, never takes focus or blocks clicks. */
+.answer-toast { position: fixed; z-index: 40; top: 1rem; right: 1rem; width: min(22rem, calc(100vw - 2rem)); max-height: calc(100vh - 2rem); padding: 0.75rem 1rem; overflow: hidden; border: 1px solid var(--line); border-left: 0.375rem solid var(--outcome-timeout); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); color: var(--ink); pointer-events: none; animation: answer-toast-in 160ms ease-out; }
+.answer-toast[hidden] { display: none; }
+.answer-toast[data-result="correct"] { border-left-color: var(--success); }
+.answer-toast[data-result="incorrect"] { border-left-color: var(--danger); }
+.answer-toast-kicker { margin: 0; color: var(--muted); font-size: 0.75rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+.answer-toast-title { margin: 0.1rem 0 0.35rem; font-size: 1.125rem; font-weight: 800; }
+.answer-toast[data-result="correct"] .answer-toast-title { color: var(--success); }
+.answer-toast[data-result="incorrect"] .answer-toast-title, .answer-toast[data-result="timeout"] .answer-toast-title { color: var(--danger); }
+.answer-toast-lines { display: grid; gap: 0.2rem 0.6rem; grid-template-columns: max-content minmax(0, 1fr); margin: 0; font-size: 0.875rem; }
+.answer-toast-lines dt { color: var(--muted); font-weight: 700; }
+.answer-toast-lines dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+/* Slide only (no fade), so the note is readable even if the animation is paused. */
+@keyframes answer-toast-in { from { transform: translateY(-0.5rem); } to { transform: none; } }
+@media (prefers-reduced-motion: reduce) { .answer-toast { animation: none; } }
+@media (max-width: 36rem) { .answer-toast { top: 0.5rem; right: 1rem; left: 1rem; width: auto; } .answer-toast-lines { grid-template-columns: minmax(0, 1fr); } }

@@ -1,6 +1,6 @@
 // Per-game speed goals and progressive levels. Goal progress is derived from the
 // saved attempt history, so it persists wherever that history persists.
-import { normalizeHistoryRecord, deduplicateHistory } from './progress-analytics.mjs?v=20261021-fast';
+import { normalizeHistoryRecord, deduplicateHistory } from './progress-analytics.mjs?v=20261031-toast';
 
 export const GOAL_SUCCESS_PERCENT = 90;
 export const GOAL_MINIMUM_QUESTIONS = 5;

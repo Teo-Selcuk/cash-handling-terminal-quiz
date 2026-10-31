@@ -1590,7 +1590,9 @@ export function buildChartSpecs(history, game = 'all') {
   ];
   const weaknesses = findWeaknesses(records, game);
   if (weaknesses.length) specs.push(chart('weakest-variables', 'Weakest recorded variables', weaknesses.slice(0, 8).map((weakness) => ({
-    key: weakness.key, label: weakness.label, value: weakness.accuracyPercent, count: weakness.attempts, attemptIds: weakness.attemptIds, detail: weakness,
+    // All games lists weak spots from several games, so each bar names its game.
+    key: weakness.key, label: game === 'all' ? `${GAME_NAMES[weakness.game]} · ${weakness.label}` : weakness.label,
+    value: weakness.accuracyPercent, count: weakness.attempts, attemptIds: weakness.attemptIds, detail: weakness,
   }))));
   const strongGroups = groupedPoints(records, (record) => game === 'all' ? record.gameName : record.difficulty)
     .filter((point) => point.value !== null).sort((left, right) => right.value - left.value || right.count - left.count).slice(0, 8);

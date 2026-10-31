@@ -218,8 +218,8 @@ test('cash answer buttons show their key hint and a help line; clicking still wo
 
 test('every chart carries its game name and unfit charts are left off that game', () => {
   const app = read('app.js');
-  assert.match(app, /heading\.append\(chartGameTagElement\(historyView\.filters\.game\), title, controls\)/);
-  assert.match(app, /card\.querySelector\('\.chart-game-tag'\)\.textContent = chartGameTag\(historyView\.filters\.game\)/);
+  assert.match(app, /heading\.append\(chartGameTagElement\(historyView\.filters\.game, chartGames\), title, controls\)/);
+  assert.match(app, /card\.querySelector\('\.chart-game-tag'\)\.textContent = chartGameTag\(game, games\)/);
   assert.equal((read('index.html').match(/class="eyebrow chart-game-tag"/g) ?? []).length, 2);
   for (const game of Object.keys(GAME_LABELS)) assert.ok(chartGameTag(game).length > 2);
   assert.equal(chartGameTag('cash'), 'Cash handling');
@@ -388,4 +388,31 @@ test('Error detection and fraud choices show keypad hints and a help line; click
   assert.match(app, /button\.addEventListener\('click', \(\) => toggleErrorDetail\(detail\.id\)\)/);
   assert.match(app, /button\.addEventListener\('click', \(\) => toggleFraudIssue\(id\)\)/);
   assert.match(app, /!state\.answerSubmitted && !event\.target\.closest\?\.\('dialog\[open\]'\) && !document\.querySelector\('dialog\[open\]'\)/);
+});
+
+test('All games charts name the games they combine, on the tag, each mark and the data tables', async () => {
+  const { gamesInAttempts, gameBreakdownText, gamesIncludedText } = await import('../chart-games.mjs');
+  const games = { a: 'cash', b: 'cash', c: 'memory', d: 'typing', e: undefined };
+  const found = gamesInAttempts(['a', 'b', 'c', 'd', 'e', 'a'], (id) => games[id]);
+  assert.deepEqual(found, [
+    { game: 'cash', label: 'Cash handling', count: 2 },
+    { game: 'memory', label: 'Number memory', count: 1 },
+    { game: 'typing', label: 'Typing speed', count: 1 },
+  ]);
+  assert.equal(chartGameTag('all', found), 'All games: Cash handling, Number memory, Typing speed');
+  assert.equal(chartGameTag('all'), 'All games');
+  assert.equal(chartGameTag('cash', found), 'Cash handling', 'one game keeps its own name');
+  assert.equal(gameBreakdownText(found), 'Cash handling 2, Number memory 1, Typing speed 1');
+  assert.equal(gamesIncludedText(found), 'Games in this chart: Cash handling 2 attempts, Number memory 1 attempt, Typing speed 1 attempt.');
+  assert.equal(gamesIncludedText([]), '');
+  const app = read('app.js');
+  assert.match(app, /\+ markGames\(point\.attemptIds\);/);
+  assert.match(app, /chartSpecDataTable\(spec, gameOf\)/);
+  assert.match(app, /renderHistoryVisuals\(summarizeHistory\(records\), records\)/);
+  const history = generateSampleHistory({ seed: 5, now: new Date('2026-10-23T12:00:00Z') });
+  const weakest = buildChartSpecs(history, 'all').find((spec) => spec.id === 'weakest-variables');
+  assert.ok(weakest.series[0].points.every((point) => Object.values(GAME_LABELS).some((label) => point.label.toLowerCase().startsWith(`${label.toLowerCase()} · `))),
+    'each All games weak spot names its game');
+  const cashWeakest = buildChartSpecs(history, 'cash').find((spec) => spec.id === 'weakest-variables');
+  assert.ok(cashWeakest.series[0].points.every((point) => !point.label.startsWith('Cash handling · ')), 'one game keeps its short labels');
 });

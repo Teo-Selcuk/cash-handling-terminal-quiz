@@ -93,7 +93,23 @@ export async function checkAutoContinue(browser, base) {
         const screen = round === 3 ? 'summary' : ({ cash: 'quiz', memory: 'memory-read', task: 'task-briefing', 'error-detection': 'error-detection-briefing' })[game];
         await page.locator(`#${screen}-screen`).waitFor({ state: 'visible', timeout: 5000 });
         assert.equal(await page.locator('#feedback-screen').isVisible(), false);
+        // The right/wrong note sits in the top-right corner, names the question, and states the right answer when wrong.
+        const toast = await page.evaluate(() => {
+          const element = document.getElementById('answer-toast');
+          const box = element.getBoundingClientRect();
+          return { visible: !element.hidden && box.width > 0, result: element.dataset.result, kicker: element.querySelector('.answer-toast-kicker').textContent,
+            title: element.querySelector('.answer-toast-title').textContent, labels: [...element.querySelectorAll('dt')].map((term) => term.textContent),
+            rightGap: innerWidth - box.right, top: box.top, focused: element.contains(document.activeElement) };
+        });
+        assert.ok(toast.visible, `${game} round ${round}: answer note shows`);
+        assert.match(toast.kicker, new RegExp(`Question ${round}$`));
+        assert.ok(['Correct', 'Wrong'].includes(toast.title), `${game} round ${round}: ${toast.title}`);
+        if (toast.result === 'incorrect') assert.equal(toast.labels[0], 'Correct answer', `${game}: a wrong answer states the right answer`);
+        if (game === 'memory') assert.equal(toast.title, 'Correct');
+        assert.ok(toast.rightGap >= 0 && toast.rightGap <= 24 && toast.top <= 24, `${game}: note sits in the top-right corner`);
+        assert.equal(toast.focused, false, `${game}: note never takes focus`);
       }
+      await page.locator('#answer-toast').waitFor({ state: 'hidden', timeout: 6000 });
       await page.reload();
       await page.locator('#open-history').click();
       const outcomes = await page.locator('#history-rows tr td:nth-child(4)').allTextContents();
@@ -120,6 +136,8 @@ export async function checkTimeouts(browser, base) {
         await page.clock.runFor((minutes * 60 + seconds) * 1000 + 100);
       }
       await page.locator('#summary-screen').waitFor({ state: 'visible' });
+      assert.match(await page.locator('#answer-toast .answer-toast-title').textContent(), /^Time's up/);
+      assert.equal(await page.locator('#answer-toast dt').first().textContent(), 'Correct answer', `${game}: a timeout states the right answer`);
       await page.reload();
       await page.locator('#open-history').click();
       assert.deepEqual(await page.locator('#history-rows tr td:nth-child(4)').allTextContents(), ['Timed Out', 'Timed Out', 'Timed Out']);

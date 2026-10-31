@@ -7,10 +7,10 @@
     <meta name="theme-color" content="#12343b">
     <title>Cash, Memory &amp; Detail Trainer</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="style.css?v=20261028-amount">
+    <link rel="stylesheet" href="style.css?v=20261031-toast">
     <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
     <!-- Start every startup module download at once instead of discovering imports one level at a time. -->
-    <link rel="modulepreload" href="app.js?v=20261028-amount">
+    <link rel="modulepreload" href="app.js?v=20261031-toast">
     <link rel="modulepreload" href="firebase-accounts.mjs?v=20261020-sync">
     <link rel="modulepreload" href="account-data.mjs?v=20261020-fast">
     <link rel="modulepreload" href="firebase-config.mjs">
@@ -20,17 +20,18 @@
     <link rel="modulepreload" href="history-explanations.mjs?v=20261023-round3">
     <link rel="modulepreload" href="chart-contrast.mjs?v=20261023-round3">
     <link rel="modulepreload" href="chart-examples.mjs?v=20261023-round3">
-    <link rel="modulepreload" href="chart-games.mjs?v=20261023-round3">
+    <link rel="modulepreload" href="chart-games.mjs?v=20261031-toast">
     <link rel="modulepreload" href="numpad-shortcuts.mjs?v=20261028-amount">
     <link rel="modulepreload" href="amount-input.mjs?v=20261028-amount">
     <link rel="modulepreload" href="round-shortcuts.mjs?v=20261028-amount">
-    <link rel="modulepreload" href="progress-projection.mjs?v=20261023-round3">
-    <link rel="modulepreload" href="progress-analytics.mjs?v=20261021-fast">
+    <link rel="modulepreload" href="answer-toast.mjs?v=20261031-toast">
+    <link rel="modulepreload" href="progress-projection.mjs?v=20261031-toast">
+    <link rel="modulepreload" href="progress-analytics.mjs?v=20261031-toast">
     <link rel="modulepreload" href="overload-core.mjs?v=20261003-accounts">
     <link rel="modulepreload" href="overload-analytics.mjs?v=20261003-accounts">
     <link rel="modulepreload" href="quiz-core.mjs?v=20261017-round2">
     <link rel="modulepreload" href="pattern-games.mjs">
-    <link rel="modulepreload" href="speed-goals.mjs?v=20261021-goals">
+    <link rel="modulepreload" href="speed-goals.mjs?v=20261031-toast">
     <link rel="modulepreload" href="overload-ui.mjs?v=20261028-amount">
     <link rel="modulepreload" href="check-holds.mjs?v=20261003-accounts">
     <link rel="modulepreload" href="hold-training-ui.mjs?v=20261003-accounts">
@@ -158,7 +159,7 @@
 
           <label class="toggle-row" for="auto-continue-toggle">
             <input id="auto-continue-toggle" name="autoContinue" type="checkbox">
-            <span><strong>Auto-continue after answering or timeout</strong><small>Automatically advance after answers or timeouts. Each game keeps its usual transition, such as the next question, study screen, or briefing; the final round shows your results. Leave unchecked to review feedback before clicking Next.</small></span>
+            <span><strong>Auto-continue after answering or timeout</strong><small>Automatically advance after answers or timeouts. Each game keeps its usual transition, such as the next question, study screen, or briefing; the final round shows your results. A note in the top-right corner shows for a few seconds whether each answer was right or wrong, with the right answer when it was wrong. Leave unchecked to review feedback before clicking Next.</small></span>
           </label>
 
           <fieldset class="distraction-audio-settings">
@@ -978,6 +979,11 @@
     </dialog>
 
     <footer>Browser edition. The original PowerShell quiz remains in this repository.</footer>
-    <script type="module" src="app.js?v=20261028-amount"></script>
+    <aside id="answer-toast" class="answer-toast" role="status" aria-live="polite" aria-atomic="true" hidden>
+      <p class="answer-toast-kicker" id="answer-toast-kicker"></p>
+      <p class="answer-toast-title" id="answer-toast-title"></p>
+      <dl class="answer-toast-lines" id="answer-toast-lines"></dl>
+    </aside>
+    <script type="module" src="app.js?v=20261031-toast"></script>
   </body>
 </html>
