@@ -416,3 +416,31 @@ test('All games charts name the games they combine, on the tag, each mark and th
   const cashWeakest = buildChartSpecs(history, 'cash').find((spec) => spec.id === 'weakest-variables');
   assert.ok(cashWeakest.series[0].points.every((point) => !point.label.startsWith('Cash handling · ')), 'one game keeps its short labels');
 });
+
+test('All games names the one game a chart, table or note is about', async () => {
+  const { withGameName, gamesIncludedText } = await import('../chart-games.mjs');
+  const memoryOnly = [{ game: 'memory', label: 'Number memory', count: 232 }];
+  assert.equal(chartGameTag('all', memoryOnly), 'Number memory only');
+  assert.equal(gamesIncludedText(memoryOnly), 'Only Number memory attempts are in this chart (232).');
+  assert.equal(withGameName('Error rate by digit position', 'memory'), 'Number memory: Error rate by digit position');
+  assert.equal(withGameName('Timeout', 'overload', ' · '), 'Multitasker · Timeout');
+  assert.equal(withGameName('Number memory: Digit position accuracy', 'memory'), 'Number memory: Digit position accuracy', 'no double name');
+  assert.equal(withGameName('Check & ID Fraud Inspection', 'fraud-inspection'), 'Check & ID Fraud Inspection', 'case does not matter');
+  assert.equal(withGameName('Accuracy', 'all'), 'Accuracy');
+  const app = read('app.js');
+  assert.match(app, /const chartTitle = chartGames\.length === 1 \? withGameName\(spec\.title, chartGames\[0\]\.game\) : spec\.title;/);
+  assert.match(app, /title\.textContent = chartTitle;/);
+  assert.match(app, /title\.textContent = named\(id\.startsWith\('memory-'\) \? 'memory' : 'cash', \[label\]\)\[0\];/);
+  assert.match(app, /\$\{allGamesLabel\(group\.label, group\.game\)\}: \$\{formatErrorRate\(group\)\}/);
+  assert.match(read('index.html'), /<caption>Check &amp; ID fraud inspection: accuracy when each issue type appeared<\/caption>/);
+  // Error-rate bars from several games each name their game; one game keeps short labels.
+  const history = generateSampleHistory({ seed: 5, now: new Date('2026-10-23T12:00:00Z') });
+  const mixed = buildErrorAnalytics(history, { comparisonDisabled: true });
+  const names = Object.values(GAME_LABELS).map((label) => label.toLowerCase());
+  for (const spec of [mixed.charts.category, mixed.charts.rawInput]) {
+    assert.ok(spec.series[0].points.length > 0);
+    assert.ok(spec.series[0].points.every((point) => names.some((name) => point.label.toLowerCase().startsWith(`${name} · `))), `${spec.id}: each bar names its game`);
+  }
+  const single = buildErrorAnalytics(history.filter((record) => record.game === 'memory'), { comparisonDisabled: true });
+  assert.ok(single.charts.category.series[0].points.every((point) => !point.label.startsWith('Number memory · ')), 'one game keeps short bar labels');
+});

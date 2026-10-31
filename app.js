@@ -5,13 +5,13 @@ import { enhanceHistoryTables } from './history-tables.mjs?v=20261023-round3';
 import { chartExplanation, summaryChartExplanation, createExplanation } from './history-explanations.mjs?v=20261023-round3';
 import { resolveLabelColor } from './chart-contrast.mjs?v=20261023-round3';
 import { chartExample, summaryChartExample, createExample } from './chart-examples.mjs?v=20261023-round3';
-import { chartGameTag, chartFitsGame, gamesInAttempts, gameBreakdownText, gamesIncludedText } from './chart-games.mjs?v=20261031-toast';
+import { chartGameTag, chartFitsGame, gamesInAttempts, gameBreakdownText, gamesIncludedText, withGameName } from './chart-games.mjs?v=20261031-games';
 import { numpadChoice, numpadListAction, listKeyHint } from './numpad-shortcuts.mjs?v=20261028-amount';
 import { attachAmountFilter, readAmountCents } from './amount-input.mjs?v=20261028-amount';
 import { roundEndAction } from './round-shortcuts.mjs?v=20261028-amount';
 import { answerToastContent } from './answer-toast.mjs?v=20261031-toast';
-import { buildProjection, projectionRows, chessProjectionRows } from './progress-projection.mjs?v=20261031-toast';
-import { goalProgress, goalMetric, availableProgressiveLevels, PROGRESSIVE_LEVELS, fraudProgressiveOverrides, GOAL_SETTINGS_KEY, GOAL_WINDOW_LIMITS, GOAL_SUCCESS_LIMITS, resolveGoalSettings } from './speed-goals.mjs?v=20261031-toast';
+import { buildProjection, projectionRows, chessProjectionRows } from './progress-projection.mjs?v=20261031-games';
+import { goalProgress, goalMetric, availableProgressiveLevels, PROGRESSIVE_LEVELS, fraudProgressiveOverrides, GOAL_SETTINGS_KEY, GOAL_WINDOW_LIMITS, GOAL_SUCCESS_LIMITS, resolveGoalSettings } from './speed-goals.mjs?v=20261031-games';
 import { createOverloadUI } from './overload-ui.mjs?v=20261028-amount';
 import { summarizeOverload, overloadRecommendation } from './overload-analytics.mjs?v=20261003-accounts';
 import { decideCheck, scoreHoldDecision, ITEM_TYPES, ITEM_REASONS, ACTIONS, HOLD_TYPES, availabilityText } from './check-holds.mjs?v=20261003-accounts';
@@ -32,7 +32,7 @@ import { PRACTICE_GAMES, rankPracticeCandidates, recommendPractice, practiceSett
 import {
   buildChartSpecs, buildConditionalReport, buildErrorAnalytics, buildAdvancedErrorAnalytics, buildGameFilters, buildProgressModel, comparePeriods,
   filterHistory, recommendNextChallenge, progressionSegments,
-} from './progress-analytics.mjs?v=20261031-toast';
+} from './progress-analytics.mjs?v=20261031-games';
 import { generateSampleHistory, generateSampleChessHistory } from './sample-history.mjs?v=20261008-advanced-errors';
 import {
   DENOMINATIONS,
@@ -4576,6 +4576,8 @@ function renderChartCard(spec, records) {
   const allGames = historyView.filters.game === 'all';
   const gameOf = allGames ? attemptGameLookup(records) : null;
   const chartGames = allGames ? gamesInAttempts(spec.attemptIds, gameOf) : [];
+  // On All games, a chart drawn from one game puts that game in its title, for example "Number memory: Error rate by digit position".
+  const chartTitle = chartGames.length === 1 ? withGameName(spec.title, chartGames[0].game) : spec.title;
   // On All games, each mark also names the games its attempts came from, for example "(Cash handling 8, Number memory 4)".
   const markGames = (attemptIds) => {
     if (!allGames) return '';
@@ -4592,12 +4594,12 @@ function renderChartCard(spec, records) {
   if (view.expanded) {
     card.setAttribute('role', 'dialog');
     card.setAttribute('aria-modal', 'true');
-    card.setAttribute('aria-label', `${spec.title} enlarged chart`);
+    card.setAttribute('aria-label', `${chartTitle} enlarged chart`);
   }
   const heading = document.createElement('div');
   heading.className = 'visual-heading';
   const title = document.createElement('h4');
-  title.textContent = spec.title;
+  title.textContent = chartTitle;
   const controls = document.createElement('div');
   controls.className = 'chart-controls';
   const control = (label, action, disabled = false, rerender = true) => {
@@ -4626,9 +4628,9 @@ function renderChartCard(spec, records) {
   control('Earlier', () => { view.start = Math.max(0, view.start - Math.max(1, Math.floor(view.count / 2))); }, isScatter || view.start === 0);
   control('Later', () => { view.start = Math.min(Math.max(0, allPoints.length - view.count), view.start + Math.max(1, Math.floor(view.count / 2))); }, isScatter || view.start >= allPoints.length - view.count);
   control('Reset', () => { Object.assign(view, { start: 0, count: allPoints.length, xMin: 0, xMax: fullXMax, visible: true, compare: false, notice: 'Showing all chart data.' }); });
-  control('Data table', () => openChartData(spec.title, chartSpecDataTable(spec, gameOf)), false, false);
+  control('Data table', () => openChartData(chartTitle, chartSpecDataTable(spec, gameOf)), false, false);
   control(view.compare ? 'Hide comparison' : 'Compare periods', () => { view.compare = !view.compare; });
-  control('Appearance', () => openChartSettings(spec.id, spec.title), false, false);
+  control('Appearance', () => openChartSettings(spec.id, chartTitle), false, false);
   control(view.expanded ? 'Restore size' : 'Maximize', () => { view.expanded = !view.expanded; });
   heading.append(chartGameTagElement(historyView.filters.game, chartGames), title, controls);
   card.append(heading, chartExplanationToggle(spec.id, chartExplanation(spec)), chartExampleToggle(spec.id, chartExample(spec)));
@@ -4661,7 +4663,7 @@ function renderChartCard(spec, records) {
     card.append(empty);
     return card;
   }
-  const svg = chartSvgElement('svg', { class: 'analytics-svg', viewBox: '0 0 760 330', role: 'img', 'aria-label': `${spec.title}. Use chart controls to zoom. Each mark can be selected to inspect exact attempts.`, 'data-chart-window': isScatter ? `${view.xMin.toFixed(2)}:${view.xMax.toFixed(2)}` : `${view.start}:${view.count}` });
+  const svg = chartSvgElement('svg', { class: 'analytics-svg', viewBox: '0 0 760 330', role: 'img', 'aria-label': `${chartTitle}. Use chart controls to zoom. Each mark can be selected to inspect exact attempts.`, 'data-chart-window': isScatter ? `${view.xMin.toFixed(2)}:${view.xMax.toFixed(2)}` : `${view.start}:${view.count}` });
   const plot = { left: 72, right: 24, top: 24, bottom: 254 };
   const plotWidth = 760 - plot.left - plot.right;
   const plotHeight = plot.bottom - plot.top;
@@ -4837,8 +4839,8 @@ function renderChartCard(spec, records) {
       ? { cx: x, cy: y, r: Math.max(4, Math.min(8, width * 0.18)) }
       : { x: x - Math.max(3, width * 0.32), y, width: Math.max(5, width * 0.64), height, rx: 2 });
     const pointDetail = isScatter
-      ? `${spec.title}: ${point.label}; X ${Number(point.x).toFixed(1)} seconds; Y ${chartValue(point, series.metric)}`
-      : `${spec.title}: ${point.label} (${chartValue(point, series.metric)}; ${evidence})`;
+      ? `${chartTitle}: ${point.label}; X ${Number(point.x).toFixed(1)} seconds; Y ${chartValue(point, series.metric)}`
+      : `${chartTitle}: ${point.label} (${chartValue(point, series.metric)}; ${evidence})`;
     const activate = () => spec.onPoint ? spec.onPoint(point.attemptIds) : openAttemptDetails(records, point.attemptIds, pointDetail);
     mark.addEventListener('click', activate);
     mark.addEventListener('keydown', (event) => {
@@ -5059,8 +5061,13 @@ function formatInterval(interval) {
   return interval ? `${interval[0]}–${interval[1]}%` : '—';
 }
 
+/** On All games, a skill or answer from one game is named with that game, for example "Multitasker · Timeout". */
+function allGamesLabel(label, game, separator = ' · ') {
+  return historyView.filters.game === 'all' ? withGameName(label, game, separator) : label;
+}
+
 function formatSkillEvidence(group) {
-  return `${group.label}: ${formatErrorRate(group)} across ${group.attemptCount} attempts${group.eligibleForRanking ? '' : ' · limited sample'}`;
+  return `${allGamesLabel(group.label, group.game)}: ${formatErrorRate(group)} across ${group.attemptCount} attempts${group.eligibleForRanking ? '' : ' · limited sample'}`;
 }
 
 function renderErrorAnalysis(records, history) {
@@ -5103,9 +5110,9 @@ function renderErrorAnalysis(records, history) {
   highlight.push(commonMistake ? `Most common mistake: ${commonMistake.label} (${commonMistake.count} occurrences).` : 'Most common mistake: No detailed mistakes recorded in this range.');
   const largestMean = [...analytics.byCategory, ...analytics.byRawInput].filter((group) => group.meanPercentageError !== null)
     .sort((left, right) => right.meanPercentageError - left.meanPercentageError)[0];
-  highlight.push(largestMean ? `Highest average numeric percentage error: ${largestMean.label} (${largestMean.meanPercentageError}% across ${largestMean.percentages.length} numeric answers).` : 'Average numerical error by skill: Not available for categorical answers.');
+  highlight.push(largestMean ? `Highest average numeric percentage error: ${allGamesLabel(largestMean.label, largestMean.game)} (${largestMean.meanPercentageError}% across ${largestMean.percentages.length} numeric answers).` : 'Average numerical error by skill: Not available for categorical answers.');
   const largest = analytics.numeric.largestNumericError;
-  highlight.push(largest ? `Largest absolute numeric error: ${largest.label}, ${numericAnswerText(largest.absoluteError, largest.unit)} away from ${numericAnswerText(largest.expectedValue, largest.unit)}; percentage error ${largest.percentageErrorLabel}.` : 'Largest numeric error: No supported numeric answers in this range.');
+  highlight.push(largest ? `Largest absolute numeric error: ${allGamesLabel(largest.label, largest.game)}, ${numericAnswerText(largest.absoluteError, largest.unit)} away from ${numericAnswerText(largest.expectedValue, largest.unit)}; percentage error ${largest.percentageErrorLabel}.` : 'Largest numeric error: No supported numeric answers in this range.');
   highlight.push(`Recent error rate: ${analytics.recent.errorRatePercent === null ? 'not enough attempts' : `${analytics.recent.errorRatePercent}% (${analytics.recent.errors}/${analytics.recent.attempts}) across the latest 30 filtered attempts`}. Long-term filtered rate: ${summary.errorRatePercent === null ? 'not enough attempts' : `${summary.errorRatePercent}% (${summary.errors}/${summary.attempts})`}.`);
   refs['history-error-highlights'].replaceChildren(...highlight.map((text) => {
     const item = document.createElement('p');
@@ -5130,7 +5137,7 @@ function renderErrorAnalysis(records, history) {
     const change = document.createElement('p');
     change.className = 'chart-note';
     const direction = item.errorRateDeltaPoints < 0 ? `improved ${Math.abs(item.errorRateDeltaPoints)} percentage points` : item.errorRateDeltaPoints > 0 ? `increased ${item.errorRateDeltaPoints} percentage points` : 'unchanged';
-    change.textContent = `${item.label}: ${item.previousErrorRatePercent}% (${item.previousOpportunities}) → ${item.currentErrorRatePercent}% (${item.currentOpportunities}); ${direction}.`;
+    change.textContent = `${allGamesLabel(item.label, item.game)}: ${item.previousErrorRatePercent}% (${item.previousOpportunities}) → ${item.currentErrorRatePercent}% (${item.currentOpportunities}); ${direction}.`;
     refs['history-error-comparison'].append(change);
   }
 
@@ -5300,19 +5307,21 @@ function renderAdvancedErrorAnalysis(records) {
   if (!records.some(row => ['memory', 'cash'].includes(row.game))) return;
   const hasMemory = records.some(r => r.game === 'memory');
   const hasCash = records.some(r => r.game === 'cash');
+  // On All games this section mixes Number memory and Cash handling, so each note, table and chart names its game.
+  const named = (game, lines) => lines.map(line => allGamesLabel(line, game, ': '));
   const heading = document.createElement('h4'); heading.textContent = 'Detailed digit and arithmetic analysis'; target.append(heading);
   target.append(bulletList([
-    ...(hasMemory ? [
+    ...(hasMemory ? named('memory', [
       'Digits are compared from the left. A missing digit counts as a wrong digit.',
       'Extra digits and a misplaced decimal point are counted on their own.',
       'Value credit means values fully right ÷ values shown. Digit accuracy is counted separately.',
-    ] : []),
+    ]) : []),
     `Blank time-outs and old records without details are left out (${memory.unavailable} memory, ${cash.unavailable} cash).`,
-    ...(hasCash ? [
+    ...(hasCash ? named('cash', [
       'A "likely cause" is a pattern your wrong answer fits. It is a guess, not proof.',
       'A "confirmed step error" means a saved step had the wrong result for its own numbers. One early slip can carry into later steps.',
       'A bill or coin mix-up means the size of the miss matches the gap between two bills or coins (made-up $2 and $4 values are included).',
-    ] : []),
+    ]) : []),
   ], 'advanced-error-notes'));
   const tablesNote = document.createElement('p'); tablesNote.className = 'advanced-error-tables-note';
   tablesNote.textContent = 'The tables for this section are in "All tables" at the bottom of the page.';
@@ -5320,19 +5329,19 @@ function renderAdvancedErrorAnalysis(records) {
   const table = (id, label, headers, rows, format) => {
     // The heading names the table; the table itself moves to "All tables", and the empty section is hidden by CSS.
     const section = document.createElement('section'); section.id = id; section.className = 'table-slot-section';
-    const title = document.createElement('h4'); title.textContent = label; section.append(title);
+    const title = document.createElement('h4'); title.textContent = named(id.startsWith('memory-') ? 'memory' : 'cash', [label])[0]; section.append(title);
     const body = document.createElement('div'); section.append(body); target.append(section);
     appendAnalyticsTable(body, headers, rows, 'No supported answers in the current selection.', row => makeAnalyticsRow(format(row)));
   };
   const counts = g => [g.label, `${g.errors} / ${g.opportunities}`, `${g.errorRatePercent}%`, `${g.accuracyPercent}%`];
   if (hasMemory) {
-    target.append(bulletList([
+    target.append(bulletList(named('memory', [
       `Total points: ${memory.points.toFixed(2)} of ${memory.scoredAttempts} rounds.`,
       `Values fully right: ${memory.correctValues} of ${memory.totalValues}.`,
       `Digits right: ${memory.correctDigits} of ${memory.totalDigits} (${memory.totalDigits ? (100 * memory.correctDigits / memory.totalDigits).toFixed(2) : '—'}%).`,
       `Rounds without scoring details: ${records.filter(r => r.game === 'memory' && r.isAnswered).length - memory.scoredAttempts}.`,
       'The outcome and error charts count any round that was not perfect. Accuracy and points give part credit for each right value.',
-    ], 'advanced-error-notes'));
+    ]), 'advanced-error-notes'));
     const axisSignal = (groups, name) => {
       const observed = groups.filter(g => g.attemptIds.length >= 5).sort((a,b) => Number(a.key)-Number(b.key));
       if (observed.length < 2) return `${name}: needs at least two sizes with five tries each.`;
@@ -5340,20 +5349,20 @@ function renderAdvancedErrorAnalysis(records) {
       const difference = Math.round((high.errorRatePercent - low.errorRatePercent) * 100) / 100;
       return `${name}: ${low.errorRatePercent}% wrong at ${low.label} (${low.attemptIds.length} tries), ${high.errorRatePercent}% wrong at ${high.label} (${high.attemptIds.length} tries). That is ${difference === 0 ? 'no change' : `${Math.abs(difference)} points ${difference > 0 ? 'more' : 'fewer'} mistakes`}.`;
     };
-    target.append(bulletList([
+    target.append(bulletList(named('memory', [
       axisSignal(memory.valueCounts, 'More values'),
       axisSignal(memory.lengths, 'Longer values'),
       'These compare only the smallest and largest sizes. Level and timers can differ too, so check the load table for fair matches.',
-    ], 'advanced-error-notes'));
+    ]), 'advanced-error-notes'));
     table('memory-credit-history', 'Round credit history', ['Timestamp', 'Difficulty', 'Outcome', 'Score', 'Values correct', 'Digits correct', 'Digit accuracy'], records.filter(r => r.game === 'memory' && r.isAnswered), r => {
       const credit = memoryCredit(r);
       return [r.timestamp, r.difficulty, r.outcome, credit ? `${credit.attemptScore.toFixed(2)}/1.00` : 'Unavailable', credit ? `${credit.correctValueCount}/${credit.totalValueCount}` : 'Unavailable', credit?.totalDigitCount != null ? `${credit.correctDigitCount}/${credit.totalDigitCount}` : 'Unavailable', credit?.digitAccuracyPercent != null ? `${credit.digitAccuracyPercent}%` : 'Unavailable'];
     });
-    target.append(bulletList([
+    target.append(bulletList(named('memory', [
       `Most missed digit spot: ${memory.mostMissed ? `${memory.mostMissed.label} (${memory.mostMissed.errorRatePercent}% wrong)` : 'needs five tries at each spot'}.`,
       `Most accurate digit spot: ${memory.mostAccurate ? `${memory.mostAccurate.label} (${memory.mostAccurate.accuracyPercent}% right)` : 'needs five tries at each spot'}.`,
       `Missing digits: ${memory.missing}. Extra digits: ${memory.extra}.`,
-    ], 'advanced-error-notes'));
+    ]), 'advanced-error-notes'));
     table('memory-position-analysis', 'Digit position accuracy', ['Position', 'Errors / digits', 'Error rate', 'Accuracy'], memory.positions, counts);
     table('memory-value-position-analysis', 'Value position accuracy', ['Value position', 'Wrong / values', 'Error rate', 'Accuracy'], memory.valuePositions, counts);
     table('memory-load-analysis', 'Difficulty and memory load comparison', ['Difficulty | Values | Digits per value | Total digits', 'Wrong / values', 'Error rate', 'Accuracy', 'Attempts'], memory.loads, g => [...counts(g), g.attemptIds.length]);
@@ -5404,7 +5413,7 @@ function renderAdvancedErrorAnalysis(records) {
   if (positionTrends.length) {
     const label = document.createElement('label'); label.textContent = 'Digit position trend '; label.className = 'field';
     const select = document.createElement('select'); select.setAttribute('aria-label', 'Digit position trend');
-    positionTrends.forEach(spec => { const option = document.createElement('option'); option.value = spec.id; option.textContent = spec.title; select.append(option); });
+    positionTrends.forEach(spec => { const option = document.createElement('option'); option.value = spec.id; option.textContent = named('memory', [spec.title])[0]; select.append(option); });
     select.value = positionTrends.some(spec => spec.id === historyView.memoryTrendPosition) ? historyView.memoryTrendPosition : positionTrends[0].id;
     label.append(select); target.append(label);
     const trend = document.createElement('div'); target.append(trend);

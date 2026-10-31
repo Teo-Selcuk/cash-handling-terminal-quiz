@@ -9,12 +9,24 @@ export const GAME_LABELS = Object.freeze({
 export const gameLabel = (game) => GAME_LABELS[game] ?? GAME_LABELS.all;
 
 /**
- * The tag shown on every chart, for example "Cash handling". An All games chart mixes games, so its tag also names
- * the games it combines (`games` from `gamesInAttempts`), for example "All games: Cash handling, Number memory".
+ * The tag shown on every chart, for example "Cash handling". On All games (`games` from `gamesInAttempts`), a chart
+ * that uses one game says so ("Number memory only"); a chart that mixes games names them all
+ * ("All games: Cash handling, Number memory").
  */
-export const chartGameTag = (game, games = []) => (game === 'all' && games.length
-  ? `${GAME_LABELS.all}: ${games.map((entry) => entry.label).join(', ')}`
-  : gameLabel(game));
+export function chartGameTag(game, games = []) {
+  if (game !== 'all' || !games.length) return gameLabel(game);
+  return games.length === 1 ? `${games[0].label} only` : `${GAME_LABELS.all}: ${games.map((entry) => entry.label).join(', ')}`;
+}
+
+/**
+ * Puts a game's name in front of a title or label shown on All games, for example "Number memory: Digit position
+ * accuracy". Text that already starts with the game's name, and unknown games, are left as they are.
+ */
+export function withGameName(text, game, separator = ': ') {
+  const label = GAME_LABELS[game];
+  if (!label || game === 'all' || String(text).toLowerCase().startsWith(label.toLowerCase())) return text;
+  return `${label}${separator}${text}`;
+}
 
 /**
  * The games behind a set of attempts, most attempts first: [{ game, label, count }].
@@ -33,9 +45,13 @@ export function gamesInAttempts(attemptIds, gameOf) {
 /** Plain words for the games behind a chart mark, for example "Cash handling 8, Number memory 4". */
 export const gameBreakdownText = (games) => games.map((entry) => `${entry.label} ${entry.count}`).join(', ');
 
-/** The note under an All games chart, for example "Games in this chart: Cash handling 40 attempts, Typing speed 8 attempts." */
+/**
+ * The note under an All games chart, for example "Games in this chart: Cash handling 40 attempts, Typing speed 8 attempts."
+ * or, for a chart from one game, "Only Number memory attempts are in this chart (232)."
+ */
 export function gamesIncludedText(games) {
   if (!games.length) return '';
+  if (games.length === 1) return `Only ${games[0].label} attempts are in this chart (${games[0].count}).`;
   return `Games in this chart: ${games.map((entry) => `${entry.label} ${entry.count} attempt${entry.count === 1 ? '' : 's'}`).join(', ')}.`;
 }
 

@@ -1149,7 +1149,7 @@ function buildErrorAnalyticsUncached(history, { previousRecords = [], comparison
         improvementPoints: delta === null ? null : -delta,
         label: `Previous ${numberCompared} relevant ${suffix}`,
         categoryChanges: currentGroups.filter((group) => group.eligibleForRanking && changes.has(group.key) && changes.get(group.key).eligibleForRanking)
-          .map((group) => ({ key: group.key, label: group.label, currentErrorRatePercent: group.errorRatePercent,
+          .map((group) => ({ key: group.key, label: group.label, game: group.game, currentErrorRatePercent: group.errorRatePercent,
             previousErrorRatePercent: changes.get(group.key).errorRatePercent,
             errorRateDeltaPoints: round2(group.errorRatePercent - changes.get(group.key).errorRatePercent),
             currentOpportunities: group.opportunities, previousOpportunities: changes.get(group.key).opportunities }))
@@ -1164,9 +1164,12 @@ function buildErrorAnalyticsUncached(history, { previousRecords = [], comparison
     id, title, kind, axisLabel, attemptIds: [...new Set(points.flatMap((point) => point.attemptIds ?? []))],
     series: [{ metric, points }],
   });
-  const categoryPoints = byCategory.map((group) => ({ key: group.key, label: group.label, value: group.errorRatePercent, count: group.opportunities, opportunities: group.opportunities,
+  // With several games mixed (All games), each bar names the game it comes from, for example "Multitasker · Timeout".
+  const mixedGames = new Set(completed.map((record) => record.game)).size > 1;
+  const groupLabel = (group) => (mixedGames && GAME_NAMES[group.game] ? `${GAME_NAMES[group.game]} · ${group.label}` : group.label);
+  const categoryPoints = byCategory.map((group) => ({ key: group.key, label: groupLabel(group), value: group.errorRatePercent, count: group.opportunities, opportunities: group.opportunities,
     errors: group.errors, attemptCount: group.attemptCount, attemptIds: group.attemptIds, interval: group.interval }));
-  const rawInputPoints = byRawInput.map((group) => ({ key: group.key, label: group.label, value: group.errorRatePercent, count: group.opportunities, opportunities: group.opportunities,
+  const rawInputPoints = byRawInput.map((group) => ({ key: group.key, label: groupLabel(group), value: group.errorRatePercent, count: group.opportunities, opportunities: group.opportunities,
     errors: group.errors, attemptCount: group.attemptCount, attemptIds: group.attemptIds, interval: group.interval }));
   const trendPoints = rateTrend(records);
   const magnitudePoints = sortedNumeric.map((row, index) => ({ key: row.attemptId, label: `Attempt ${index + 1}`, value: row.percentageError, count: 1,
