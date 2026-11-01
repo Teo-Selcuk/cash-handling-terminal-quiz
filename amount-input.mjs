@@ -1,4 +1,5 @@
-// Numeric-only money entry for the Cash handling game: digits and one decimal point, at most two decimal places.
+// Numeric-only answer entry: digits and one decimal point, at most two decimal places for money. Every game that
+// asks for a typed number (Cash handling, Number memory, Task simulation, Multitasker math) uses these rules.
 // The rules are pure so they can be tested without a browser; `attachAmountFilter` wires them to an input box.
 
 export const AMOUNT_MAX_DECIMALS = 2;
@@ -7,9 +8,10 @@ export const AMOUNT_MAX_LENGTH = 10;
 /**
  * Keeps only the characters a money amount may hold. `caret` (optional) is a position in `value`; the result maps it
  * to the same place in the cleaned text. Rules: digits always; the first "." only (when `decimal` is true); at most
- * `maxDecimals` digits after it; at most `maxLength` characters. `removed` is true when anything was dropped.
+ * `maxDecimals` digits after it; a "-" only as the first character (when `negative` is true); at most `maxLength`
+ * characters. `removed` is true when anything was dropped.
  */
-export function sanitizeAmount(value, { caret = null, decimal = true, maxDecimals = AMOUNT_MAX_DECIMALS, maxLength = AMOUNT_MAX_LENGTH } = {}) {
+export function sanitizeAmount(value, { caret = null, decimal = true, negative = false, maxDecimals = AMOUNT_MAX_DECIMALS, maxLength = AMOUNT_MAX_LENGTH } = {}) {
   const text = String(value ?? '');
   let kept = '';
   let mappedCaret = 0;
@@ -22,6 +24,7 @@ export function sanitizeAmount(value, { caret = null, decimal = true, maxDecimal
     let keep = false;
     if (/[0-9]/.test(char)) keep = !hasPoint || decimals < maxDecimals;
     else if (char === '.' && decimal) keep = !hasPoint;
+    else if (char === '-' && negative) keep = kept === '';
     if (keep && kept.length >= maxLength) { keep = false; tooLong = true; }
     if (!keep) { removed = true; continue; }
     if (char === '.') hasPoint = true;
@@ -51,15 +54,25 @@ export function readAmountCents(value) {
   return Number.isSafeInteger(cents) ? { status: 'ok', cents } : { status: 'invalid' };
 }
 
+/** The message shown when characters were removed; `label` names what the box holds ("Amounts", "Values", ...). */
+export function removedMessage({ label, decimal = true, negative = false, maxDecimals = AMOUNT_MAX_DECIMALS } = {}) {
+  const name = label ?? (decimal ? 'Amounts' : 'Counts');
+  const places = Number.isFinite(maxDecimals) ? `, with up to ${maxDecimals === 2 ? 'two' : maxDecimals} decimal places` : '';
+  const rule = decimal ? `digits and one decimal point${places}` : 'digits only';
+  return `Some characters were removed. ${name} use ${rule}.${negative ? ' A minus sign may come first.' : ''}`;
+}
+
 /**
  * Filters an input box as the user types, pastes, drops or autofills. Invalid typed characters are blocked before
  * they appear; pasted or inserted text keeps only its valid characters. A typed "," becomes the decimal point when
  * the box has none yet (mobile keyboards that use a comma); pasted commas are dropped as thousands separators.
- * `onRemoved(message)` reports what was removed so the page can announce it.
+ * Options: `decimal` (allow one "."), `maxDecimals`, `negative` (allow a leading "-"), `maxLength`, and `label` for
+ * the message. `onRemoved(message)` reports what was removed so the page can announce it.
  */
-export function attachAmountFilter(input, { decimal = true, onRemoved = () => {} } = {}) {
-  const options = { decimal };
-  const limitMessage = `Amounts can be at most ${AMOUNT_MAX_LENGTH} characters.`;
+export function attachAmountFilter(input, { decimal = true, negative = false, maxDecimals = AMOUNT_MAX_DECIMALS, maxLength = AMOUNT_MAX_LENGTH, label, onRemoved = () => {} } = {}) {
+  const options = { decimal, negative, maxDecimals, maxLength };
+  const limitMessage = `${label ?? 'Amounts'} can be at most ${maxLength} characters.`;
+  const message = removedMessage({ label, decimal, negative, maxDecimals });
   input.addEventListener('beforeinput', (event) => {
     if (event.inputType !== 'insertText' || event.data === null) return;
     let data = event.data;
@@ -83,8 +96,6 @@ export function attachAmountFilter(input, { decimal = true, onRemoved = () => {}
     if (!clean.removed) return;
     input.value = clean.value;
     input.setSelectionRange?.(clean.caret, clean.caret);
-    onRemoved(clean.tooLong ? limitMessage : decimal
-      ? 'Some characters were removed. Amounts use digits and one decimal point, with up to two decimal places.'
-      : 'Some characters were removed. Counts use digits only.');
+    onRemoved(clean.tooLong ? limitMessage : message);
   });
 }

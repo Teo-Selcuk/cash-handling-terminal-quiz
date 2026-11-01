@@ -7,10 +7,10 @@
     <meta name="theme-color" content="#12343b">
     <title>Cash, Memory &amp; Detail Trainer</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="style.css?v=20261031-games">
+    <link rel="stylesheet" href="style.css?v=20261101-numeric">
     <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
     <!-- Start every startup module download at once instead of discovering imports one level at a time. -->
-    <link rel="modulepreload" href="app.js?v=20261031-games">
+    <link rel="modulepreload" href="app.js?v=20261101-numeric">
     <link rel="modulepreload" href="firebase-accounts.mjs?v=20261020-sync">
     <link rel="modulepreload" href="account-data.mjs?v=20261020-fast">
     <link rel="modulepreload" href="firebase-config.mjs">
@@ -22,7 +22,7 @@
     <link rel="modulepreload" href="chart-examples.mjs?v=20261023-round3">
     <link rel="modulepreload" href="chart-games.mjs?v=20261031-games">
     <link rel="modulepreload" href="numpad-shortcuts.mjs?v=20261028-amount">
-    <link rel="modulepreload" href="amount-input.mjs?v=20261028-amount">
+    <link rel="modulepreload" href="amount-input.mjs?v=20261101-numeric">
     <link rel="modulepreload" href="round-shortcuts.mjs?v=20261028-amount">
     <link rel="modulepreload" href="answer-toast.mjs?v=20261031-toast">
     <link rel="modulepreload" href="progress-projection.mjs?v=20261031-games">
@@ -32,7 +32,7 @@
     <link rel="modulepreload" href="quiz-core.mjs?v=20261017-round2">
     <link rel="modulepreload" href="pattern-games.mjs">
     <link rel="modulepreload" href="speed-goals.mjs?v=20261031-games">
-    <link rel="modulepreload" href="overload-ui.mjs?v=20261028-amount">
+    <link rel="modulepreload" href="overload-ui.mjs?v=20261101-numeric">
     <link rel="modulepreload" href="check-holds.mjs?v=20261003-accounts">
     <link rel="modulepreload" href="hold-training-ui.mjs?v=20261003-accounts">
     <link rel="modulepreload" href="typing-core.mjs?v=20261002-typing">
@@ -488,7 +488,7 @@
               <label><input type="radio" name="answerType" value="Change" aria-keyshortcuts="Numpad*"><span>Change <kbd class="key-hint" aria-hidden="true">Num *</kbd></span></label>
               <label><input type="radio" name="answerType" value="Short" aria-keyshortcuts="Numpad-"><span>Short <kbd class="key-hint" aria-hidden="true">Num -</kbd></span></label>
             </div>
-            <p class="shortcut-help" id="cash-shortcut-help">Number keypad: <kbd>/</kbd> Exact · <kbd>*</kbd> Change · <kbd>-</kbd> Short. Change and Short then move to the amount box; type it and press Enter. The keys also work inside the amount box, and you can switch choices at any time without losing what you typed. No keypad? Click a choice.</p>
+            <p class="shortcut-help" id="cash-shortcut-help">Number keypad: <kbd>/</kbd> Exact · <kbd>*</kbd> Change · <kbd>-</kbd> Short. Change and Short then move to the amount box; type it and press Enter. The keys also work inside the amount box and the working boxes, and you can switch choices at any time without losing what you typed. No keypad? Click a choice.</p>
           </fieldset>
 
           <label for="answer-amount">Change or shortage amount
@@ -517,7 +517,7 @@
           <details class="cash-working">
             <summary>Record your working (optional)</summary>
             <p>Your own cash total and up to three calculations help locate mistakes after submission. Blank steps are excluded from analysis.</p>
-            <label>Cash total you counted ($)<input id="cash-working-total" type="text" inputmode="decimal" placeholder="0.00" autocomplete="off"></label>
+            <label>Cash total you counted ($)<input id="cash-working-total" type="text" inputmode="decimal" placeholder="0.00" autocomplete="off" data-option-shortcuts="true"></label>
             <div id="cash-working-steps"></div>
           </details>
           <button class="primary-button" id="submit-answer" type="submit">Submit answer</button>
@@ -984,6 +984,6 @@
       <p class="answer-toast-title" id="answer-toast-title"></p>
       <dl class="answer-toast-lines" id="answer-toast-lines"></dl>
     </aside>
-    <script type="module" src="app.js?v=20261031-games"></script>
+    <script type="module" src="app.js?v=20261101-numeric"></script>
   </body>
 </html>

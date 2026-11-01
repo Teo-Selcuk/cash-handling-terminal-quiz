@@ -76,7 +76,11 @@ export async function checkOverload(browser, site) {
       await page.getByRole('button', { name: 'End run', exact: true }).click();
     }
     await setup(1, ['math'], 'standard');
-    await page.locator('.overload-panel input').fill('incorrect'); await page.locator('.overload-panel input').press('Enter');
+    const math = page.locator('.overload-panel input');
+    await math.pressSequentially('x-1a-2.5');
+    assert.equal(await math.inputValue(), '-125', 'math answers take digits and one leading minus only');
+    const [a, operator, b] = (await page.locator('.overload-prompt').textContent()).match(/(\d+)\s*([+−×])\s*(\d+)/).slice(1);
+    await math.fill(String((operator === '+' ? +a + +b : operator === '×' ? +a * +b : +a - +b) + 1)); await math.press('Enter');
     await page.locator('.overload-result').waitFor(); assert.equal((await history()).at(-1).overloadEndingReason, 'mistake');
     for (const mode of ['endurance', 'custom']) { await setup(2, undefined, mode); await page.getByRole('button', { name: 'End run', exact: true }).click(); assert.equal((await history()).at(-1).sessionMode, mode); }
     for (const width of [320, 768, 1440]) {

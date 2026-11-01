@@ -1,12 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { sanitizeAmount, readAmountCents, attachAmountFilter, AMOUNT_MAX_LENGTH } from '../amount-input.mjs';
+import { sanitizeAmount, readAmountCents, attachAmountFilter, removedMessage, AMOUNT_MAX_LENGTH } from '../amount-input.mjs';
 import { numpadChoice } from '../numpad-shortcuts.mjs';
 
 const read = (file) => readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
 const app = read('app.js');
 const html = read('index.html');
+const overload = read('overload-ui.mjs');
 
 // A small stand-in for an <input>: enough for the filter's beforeinput and input listeners.
 class FakeInput extends EventTarget {
@@ -45,7 +46,7 @@ test('keypad / * - pick Exact, Change, and Short on the page, on a choice, and i
     assert.equal(numpadChoice(key('NumpadMultiply', target), { active: true }), 'Change');
     assert.equal(numpadChoice(key('NumpadSubtract', target), { active: true }), 'Short');
   }
-  // Other text boxes (fast cash entry, working notes) keep their keys.
+  // The fast cash entry box takes "*" (2*10), so it keeps its keys.
   assert.equal(numpadChoice(key('NumpadSubtract', { tagName: 'INPUT', type: 'text', dataset: {} }), { active: true }), null);
   assert.equal(numpadChoice(key('Minus', amountBox), { active: true }), null, 'the main keyboard minus is not a shortcut');
   assert.match(html, /id="answer-amount"[^>]*data-option-shortcuts="true"/);
@@ -150,4 +151,55 @@ test('the amount box shows the decimal keypad on phones and every amount box on 
   assert.match(html, /id="amount-input-message"[^>]*aria-live="polite"/);
   assert.match(app, /attachAmountFilter\(refs\['answer-amount'\]/);
   assert.match(app, /input\.inputMode = 'decimal'; input\.placeholder = '0\.00'; input\.autocomplete = 'off'; attachAmountFilter\(input/);
+});
+
+test('the working boxes take the keypad answer keys too, and a click on Change or Short moves to the amount box', () => {
+  // The working boxes hold numbers only, so / * - pick an answer there instead of being typed.
+  assert.match(html, /id="cash-working-total"[^>]*data-option-shortcuts="true"/);
+  const working = app.slice(app.indexOf('function renderCashWorking()'), app.indexOf('function readCashWorking()'));
+  assert.match(working, /input\.dataset\.optionShortcuts = 'true';/);
+  const select = { tagName: 'SELECT', dataset: { optionShortcuts: 'true' } };
+  assert.equal(numpadChoice(key('NumpadMultiply', select), { active: true }), 'Change');
+  // Mouse and touch picks only (detail > 0); keyboard picks keep focus on the choices.
+  const click = app.slice(app.indexOf("document.querySelector('.answer-choices').addEventListener('click'"), app.indexOf('// Keypad shortcuts for the list games'));
+  assert.match(click, /if \(event\.detail === 0\) return;/);
+  assert.match(click, /amount\.disabled/, 'Exact turns the amount box off, so its choice keeps focus');
+  assert.match(click, /amount\.focus\(\{ preventScroll: true \}\)/);
+});
+
+test('number memory answers take digits and one decimal point, any number of decimal places', () => {
+  assert.equal(sanitizeAmount('12.34567', { maxDecimals: Infinity }).value, '12.34567');
+  const { input, messages } = filtered('', { maxDecimals: Infinity, maxLength: 7, label: 'Values' });
+  for (const char of '1a2 -+*/,3.4x5') type(input, char);
+  assert.equal(input.value, '12.345');
+  assert.deepEqual(messages, []);
+  paste(input, 'b6');
+  assert.equal(input.value, '12.3456');
+  assert.equal(messages[0], 'Some characters were removed. Values use digits and one decimal point.');
+  assert.match(app, /attachAmountFilter\(input, \{ decimal: state\.memoryChallenge\.decimals, maxDecimals: Infinity, maxLength: input\.maxLength, label: 'Values'/);
+});
+
+test('task simulation number fields take digits only; text fields with letters stay free', () => {
+  const { input, messages } = filtered('', { decimal: false, label: 'Numbers' });
+  for (const char of '4a1.,-2 9') type(input, char);
+  assert.equal(input.value, '4129');
+  paste(input, 'x');
+  assert.equal(messages[0], 'Some characters were removed. Numbers use digits only.');
+  assert.match(app, /if \(inputMode === 'numeric'\) attachTaskNumberFilter\(input\);/);
+  assert.match(app, /attachTaskNumberFilter\(reference\);\s*bindTaskControl\(reference, 'set-text'\)/);
+  // Case and invoice references hold letters (CS-1234, INV-1234) and keep the plain text box.
+  assert.match(app, /id: 'task-case-reference', label: 'Case reference', value: '', disabled, inputMode: 'text'/);
+});
+
+test('multitasker math answers take digits and one leading minus for answers below zero', () => {
+  const options = { decimal: false, negative: true };
+  assert.equal(sanitizeAmount('-12', options).value, '-12');
+  assert.equal(sanitizeAmount('--1-2', options).value, '-12', 'only one minus, and only first');
+  assert.equal(sanitizeAmount('-12', { decimal: false }).value, '12', 'other boxes never take a minus');
+  const { input } = filtered('', options);
+  for (const char of 'x-1a-2.5') type(input, char);
+  assert.equal(input.value, '-125');
+  assert.match(removedMessage({ label: 'Math answers', ...options }), /Math answers use digits only\. A minus sign may come first\./);
+  assert.match(overload, /import \{ attachAmountFilter \} from '\.\/amount-input\.mjs\?v=/);
+  assert.match(overload, /attachAmountFilter\(input,\{decimal:false,negative:true/);
 });

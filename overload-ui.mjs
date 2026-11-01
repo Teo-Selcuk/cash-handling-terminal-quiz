@@ -1,5 +1,6 @@
 import { TASKS, OverloadRun, resolveOverloadSettings } from './overload-core.mjs?v=20261003-accounts';
 import { roundEndAction } from './round-shortcuts.mjs?v=20261028-amount';
+import { attachAmountFilter } from './amount-input.mjs?v=20261101-numeric';
 const names=Object.fromEntries(TASKS.map(t=>[t.id,t.name]));
 const fmt=v=>v===null?'—':String(Number(Number(v).toFixed(2)));
 const el=(tag,text,cls)=> {const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
@@ -84,7 +85,9 @@ export function createOverloadUI({onSave,onHistory,showScreen,onMenu=()=>{}}) {
     header.append(identity,remaining);card.append(header,bar);const prompt=el('p',t.prompt,'overload-prompt');card.append(prompt);
     const content=el('div',undefined,'overload-task-content');card.append(content);
     if(p.task==='math') {
-      const form=el('form'),input=el('input'),submit=el('button','Answer');input.type='text';input.inputMode='numeric';input.setAttribute('aria-label','Math answer');submit.type='submit';form.append(input,submit);form.addEventListener('submit',e=>{e.preventDefault();respond(p,input.value,t.id);});content.append(form);
+      const form=el('form'),input=el('input'),submit=el('button','Answer');input.type='text';input.inputMode='numeric';input.setAttribute('aria-label','Math answer');
+      // Whole-number answers: digits, with a leading minus because a subtraction can come out below zero.
+      attachAmountFilter(input,{decimal:false,negative:true,maxLength:6,label:'Math answers',onRemoved:message=>{status.textContent=message;}});submit.type='submit';form.append(input,submit);form.addEventListener('submit',e=>{e.preventDefault();respond(p,input.value,t.id);});content.append(form);
     } else if(p.task==='color'||p.task==='arrows') {
       if(p.task==='color') {prompt.style.color={red:'#c33131',blue:'#2467c0',green:'#227044',gold:'#8d6900'}[t.raw.displayColor];prompt.classList.add('overload-color-word');card.append(el('p','Choose the INK color, regardless of the word.','setup-note'));}
       else prompt.textContent={up:'↑',down:'↓',left:'←',right:'→'}[t.prompt];

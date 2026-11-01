@@ -7,12 +7,12 @@ import { resolveLabelColor } from './chart-contrast.mjs?v=20261023-round3';
 import { chartExample, summaryChartExample, createExample } from './chart-examples.mjs?v=20261023-round3';
 import { chartGameTag, chartFitsGame, gamesInAttempts, gameBreakdownText, gamesIncludedText, withGameName } from './chart-games.mjs?v=20261031-games';
 import { numpadChoice, numpadListAction, listKeyHint } from './numpad-shortcuts.mjs?v=20261028-amount';
-import { attachAmountFilter, readAmountCents } from './amount-input.mjs?v=20261028-amount';
+import { attachAmountFilter, readAmountCents } from './amount-input.mjs?v=20261101-numeric';
 import { roundEndAction } from './round-shortcuts.mjs?v=20261028-amount';
 import { answerToastContent } from './answer-toast.mjs?v=20261031-toast';
 import { buildProjection, projectionRows, chessProjectionRows } from './progress-projection.mjs?v=20261031-games';
 import { goalProgress, goalMetric, availableProgressiveLevels, PROGRESSIVE_LEVELS, fraudProgressiveOverrides, GOAL_SETTINGS_KEY, GOAL_WINDOW_LIMITS, GOAL_SUCCESS_LIMITS, resolveGoalSettings } from './speed-goals.mjs?v=20261031-games';
-import { createOverloadUI } from './overload-ui.mjs?v=20261028-amount';
+import { createOverloadUI } from './overload-ui.mjs?v=20261101-numeric';
 import { summarizeOverload, overloadRecommendation } from './overload-analytics.mjs?v=20261003-accounts';
 import { decideCheck, scoreHoldDecision, ITEM_TYPES, ITEM_REASONS, ACTIONS, HOLD_TYPES, availabilityText } from './check-holds.mjs?v=20261003-accounts';
 import { renderHoldTraining, readHoldAnswer } from './hold-training-ui.mjs?v=20261003-accounts';
@@ -1558,6 +1558,8 @@ function renderCashWorking() {
           const option = document.createElement('option'); option.value = value; option.textContent = text; input.append(option);
         }
       } else { input.type = 'text'; input.inputMode = 'decimal'; input.placeholder = '0.00'; input.autocomplete = 'off'; attachAmountFilter(input, { onRemoved: setMessage }); }
+      // These boxes never take / * -, so the keypad answer keys still pick Exact, Change, or Short from here.
+      input.dataset.optionShortcuts = 'true';
       wrap.append(input); row.append(wrap);
     }
     target.append(row);
@@ -1767,6 +1769,7 @@ function renderMemoryAnswerInputs(valueCount) {
     input.maxLength = state.memoryChallenge.maximumDigits + (state.memoryChallenge.decimals ? 1 : 0);
     input.placeholder = 'Type the value you remember';
     input.required = true;
+    attachAmountFilter(input, { decimal: state.memoryChallenge.decimals, maxDecimals: Infinity, maxLength: input.maxLength, label: 'Values', onRemoved: setMessage });
     input.setAttribute('aria-describedby', `${inputId}-help`);
     helper.id = `${inputId}-help`;
     label.append(helper, input);
@@ -3050,6 +3053,11 @@ function bindTaskControl(control, type) {
   });
 }
 
+/** Task number fields (references, verification codes, totals) take whole numbers only: digits, nothing else. */
+function attachTaskNumberFilter(input) {
+  attachAmountFilter(input, { decimal: false, label: 'Numbers', onRemoved: setMessage });
+}
+
 function appendTaskTextField(parent, { id, label, value = '', disabled, inputMode = 'text', className = '' }) {
   const field = document.createElement('label');
   field.className = className;
@@ -3061,6 +3069,7 @@ function appendTaskTextField(parent, { id, label, value = '', disabled, inputMod
   input.autocomplete = 'off';
   input.value = String(taskStoredValue(id, value));
   input.disabled = disabled;
+  if (inputMode === 'numeric') attachTaskNumberFilter(input);
   field.append(input);
   bindTaskControl(input, 'set-text');
   parent.append(field);
@@ -3212,6 +3221,7 @@ function renderRecordsWorkspace(disabled) {
     complete.checked = Boolean(taskStoredValue(complete.id, row.complete));
     complete.disabled = disabled;
     complete.setAttribute('aria-label', `Complete ${row.name}'s record`);
+    attachTaskNumberFilter(reference);
     bindTaskControl(reference, 'set-text');
     bindTaskControl(status, 'select-option');
     bindTaskControl(priority, 'select-option');
@@ -6245,6 +6255,17 @@ document.addEventListener('keydown', (event) => {
   // it) so keypad digits and Enter finish the answer; Exact turns the amount box off, so focus goes to its choice.
   const amount = refs['answer-amount'];
   (choice !== 'Exact' && !amount.disabled && amount.getClientRects().length ? amount : input).focus({ preventScroll: true });
+});
+// A mouse or touch pick of Change or Short also moves to the amount box, like the keypad keys. Keyboard picks
+// (Space, arrow keys) arrive with detail 0 and keep focus on the choices so the arrows still move between them.
+document.querySelector('.answer-choices').addEventListener('click', (event) => {
+  if (event.detail === 0) return;
+  // Wait until the browser has checked the clicked choice and focused it.
+  setTimeout(() => {
+    const amount = refs['answer-amount'];
+    if (state.answerSubmitted || !selectedAnswerType() || amount.disabled || !amount.getClientRects().length) return;
+    amount.focus({ preventScroll: true });
+  });
 });
 // Keypad shortcuts for the list games: 1–9 (and "+" then 1–9) toggle numbered choices, 0 picks "nothing wrong",
 // keypad Enter submits. They work only while the round waits for an answer and no text box or dialog has focus.

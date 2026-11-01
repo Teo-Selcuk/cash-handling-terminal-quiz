@@ -75,6 +75,35 @@ export async function checkRound3(browser, base) {
     await context.close();
   }
   await checkNumpadPlay(browser, base);
+  await checkNumericAnswers(browser, base);
+}
+
+// Number answers in the other games: letters and symbols are never typed.
+async function checkNumericAnswers(browser, base) {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 1000 } });
+  const page = await context.newPage();
+  try {
+    await page.goto(base);
+    await page.locator('input[name="game"][value="memory"]').check();
+    await page.getByRole('button', { name: 'Start quiz', exact: true }).click();
+    await page.locator('#memory-answer-now').click();
+    await page.locator('#memory-answer-1').click();
+    await page.keyboard.type('1a2 -+*/,3.4x');
+    assert.equal(await page.locator('#memory-answer-1').inputValue(), '12.34', 'memory answers take digits and one decimal point');
+    // Records workspace (fixed randomness): the Reference fields are number answers.
+    await page.addInitScript(() => { Math.random = () => 0.1; });
+    await page.goto(base);
+    await page.locator('input[name="game"][value="task"]').check();
+    await page.getByRole('button', { name: 'Start quiz', exact: true }).click();
+    await page.locator('#task-start-demo').click();
+    await page.locator('#task-skip-demo').click();
+    const reference = page.locator('.task-reference:enabled').first();
+    await reference.click();
+    await page.keyboard.type('4a1.-2 9');
+    assert.equal(await reference.inputValue(), '4129', 'task number fields take digits only');
+  } finally {
+    await context.close();
+  }
 }
 
 // Plays a cash round with only the number keypad: / * - pick the answer, digits fill the amount, Enter submits.
@@ -115,8 +144,32 @@ async function checkNumpadPlay(browser, base) {
     await page.keyboard.press('Enter');
     await page.locator('#feedback-screen').waitFor();
     await page.locator('#next-question').click();
-    await page.locator('input[name="answerType"][value="Change"]').click();
-    assert.equal(await page.locator('input[name="answerType"]:checked').getAttribute('value'), 'Change', 'clicking still works');
+    // A click on any choice switches it; Change and Short then move to the amount box, Exact keeps its choice.
+    const picked = () => page.locator('input[name="answerType"]:checked').getAttribute('value');
+    const focused = () => page.evaluate(() => document.activeElement.id || document.activeElement.value);
+    for (const [choice, focus] of [['Change', 'answer-amount'], ['Short', 'answer-amount'], ['Exact', 'Exact'], ['Change', 'answer-amount']]) {
+      await page.locator(`.answer-choices label:has(input[value="${choice}"])`).click();
+      assert.equal(await picked(), choice, `clicking ${choice} picks it`);
+      await page.waitForFunction((id) => (document.activeElement.id || document.activeElement.value) === id, focus);
+    }
+    // Keyboard picks inside the choices keep focus there, so arrow keys still move between them.
+    await page.locator('input[name="answerType"][value="Change"]').focus();
+    await page.keyboard.press('ArrowRight');
+    assert.equal(await picked(), 'Short');
+    assert.equal(await focused(), 'Short', 'an arrow-key pick keeps focus on the choices');
+    // The working boxes hold numbers only, so the keypad keys pick an answer from there too.
+    await page.locator('.cash-working summary').click();
+    await page.locator('#cash-working-total').focus();
+    await page.keyboard.press('NumpadMultiply');
+    assert.equal(await picked(), 'Change', 'keypad * works from the counted-total box');
+    assert.equal(await focused(), 'answer-amount');
+    await page.locator('.cash-working-row [data-field="left"]').first().focus();
+    await page.keyboard.press('NumpadDivide');
+    assert.equal(await picked(), 'Exact', 'keypad / works from a working step box');
+    await page.locator('.cash-working-row [data-field="operation"]').first().focus();
+    await page.keyboard.press('NumpadSubtract');
+    assert.equal(await picked(), 'Short', 'keypad - works from the operation list');
+    assert.equal(await page.locator('.cash-working-row [data-field="left"]').first().inputValue(), '', 'no key was typed into the working box');
   } finally {
     await context.close();
   }
