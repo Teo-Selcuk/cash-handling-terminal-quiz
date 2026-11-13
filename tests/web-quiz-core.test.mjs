@@ -564,7 +564,7 @@ test('parses fast cash-builder shorthand with bill and coin acronyms', () => {
 test('documents compact cash-builder entries without dollar signs', async () => {
   const [html, app] = await Promise.all([
     readFile(new URL('../index.html', import.meta.url), 'utf8'),
-    readFile(new URL('../app.js', import.meta.url), 'utf8'),
+    readFile(new URL('../app.js?v=20261113-math', import.meta.url), 'utf8'),
   ]);
 
   assert.match(html, /2x10, 2x100/);
@@ -576,7 +576,7 @@ test('documents compact cash-builder entries without dollar signs', async () => 
 test('offers one optional auto-continue setting for answers and timeouts', async () => {
   const [html, app] = await Promise.all([
     readFile(new URL('../index.html', import.meta.url), 'utf8'),
-    readFile(new URL('../app.js', import.meta.url), 'utf8'),
+    readFile(new URL('../app.js?v=20261113-math', import.meta.url), 'utf8'),
   ]);
 
   assert.match(html, /id="auto-continue-toggle"/);
@@ -589,8 +589,8 @@ test('offers one optional auto-continue setting for answers and timeouts', async
 test('provides a fourth Error Detection puzzle game with a rule walkthrough, visual clues, and saved presets', async () => {
   const [html, app, css] = await Promise.all([
     readFile(new URL('../index.html', import.meta.url), 'utf8'),
-    readFile(new URL('../app.js', import.meta.url), 'utf8'),
-    readFile(new URL('../style.css', import.meta.url), 'utf8'),
+    readFile(new URL('../app.js?v=20261113-math', import.meta.url), 'utf8'),
+    readFile(new URL('../style.css?v=20261113-math', import.meta.url), 'utf8'),
   ]);
 
   assert.match(html, /value="error-detection"/);
@@ -625,8 +625,8 @@ test('provides a fourth Error Detection puzzle game with a rule walkthrough, vis
 test('provides a browser-only task simulation workflow without leaking instructions during recall', async () => {
   const [html, app, css] = await Promise.all([
     readFile(new URL('../index.html', import.meta.url), 'utf8'),
-    readFile(new URL('../app.js', import.meta.url), 'utf8'),
-    readFile(new URL('../style.css', import.meta.url), 'utf8'),
+    readFile(new URL('../app.js?v=20261113-math', import.meta.url), 'utf8'),
+    readFile(new URL('../style.css?v=20261113-math', import.meta.url), 'utf8'),
   ]);
 
   assert.match(html, /value="task"/);
@@ -655,7 +655,7 @@ test('provides a browser-only task simulation workflow without leaking instructi
 test('lets learners begin number-memory recall before the study timer expires', async () => {
   const [html, app] = await Promise.all([
     readFile(new URL('../index.html', import.meta.url), 'utf8'),
-    readFile(new URL('../app.js', import.meta.url), 'utf8'),
+    readFile(new URL('../app.js?v=20261113-math', import.meta.url), 'utf8'),
   ]);
 
   assert.match(html, /id="memory-answer-now"[^>]*type="button"/);
@@ -666,8 +666,8 @@ test('lets learners begin number-memory recall before the study timer expires', 
 
 test('keeps every compact task simulation phase visible and its controls usable', async () => {
   const [app, css] = await Promise.all([
-    readFile(new URL('../app.js', import.meta.url), 'utf8'),
-    readFile(new URL('../style.css', import.meta.url), 'utf8'),
+    readFile(new URL('../app.js?v=20261113-math', import.meta.url), 'utf8'),
+    readFile(new URL('../style.css?v=20261113-math', import.meta.url), 'utf8'),
   ]);
 
   assert.match(app, /function isCompactViewport\(\)/);
@@ -682,8 +682,8 @@ test('keeps every compact task simulation phase visible and its controls usable'
 test('guides compact task-demo scrolling before moving the animation marker', async () => {
   const [html, app, css] = await Promise.all([
     readFile(new URL('../index.html', import.meta.url), 'utf8'),
-    readFile(new URL('../app.js', import.meta.url), 'utf8'),
-    readFile(new URL('../style.css', import.meta.url), 'utf8'),
+    readFile(new URL('../app.js?v=20261113-math', import.meta.url), 'utf8'),
+    readFile(new URL('../style.css?v=20261113-math', import.meta.url), 'utf8'),
   ]);
 
   assert.match(html, /id="task-demo-guide"[^>]*role="status"/);
@@ -820,19 +820,19 @@ test('unanswered reached rounds have their own category and count against accura
 });
 
 test('cash-builder styling honors the hidden attribute when the mode is off', async () => {
-  const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
+  const css = await readFile(new URL('../style.css?v=20261113-math', import.meta.url), 'utf8');
   assert.match(css, /\.cash-builder\[hidden\]\s*\{[^}]*display:\s*none\s*!important/s);
 });
 
 test('cash-builder controls meet the 44px mobile touch-target minimum', async () => {
-  const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
+  const css = await readFile(new URL('../style.css?v=20261113-math', import.meta.url), 'utf8');
   assert.match(css, /\.quantity-button\s*\{[^}]*width:\s*2\.75rem;[^}]*height:\s*2\.75rem;/s);
 });
 
 test('makes learners total the tendered cash and explains which cash to build', async () => {
   const [html, app] = await Promise.all([
     readFile(new URL('../index.html', import.meta.url), 'utf8'),
-    readFile(new URL('../app.js', import.meta.url), 'utf8'),
+    readFile(new URL('../app.js?v=20261113-math', import.meta.url), 'utf8'),
   ]);
 
   assert.doesNotMatch(html, /id="amount-tendered"/);
@@ -846,8 +846,8 @@ test('makes learners total the tendered cash and explains which cash to build', 
 test('offers an opt-in customer bill-request flow with an invalid-request flag', async () => {
   const [html, app, css] = await Promise.all([
     readFile(new URL('../index.html', import.meta.url), 'utf8'),
-    readFile(new URL('../app.js', import.meta.url), 'utf8'),
-    readFile(new URL('../style.css', import.meta.url), 'utf8'),
+    readFile(new URL('../app.js?v=20261113-math', import.meta.url), 'utf8'),
+    readFile(new URL('../style.css?v=20261113-math', import.meta.url), 'utf8'),
   ]);
 
   assert.match(html, /id="customer-bill-request-toggle"/);
@@ -865,8 +865,8 @@ test('offers an opt-in customer bill-request flow with an invalid-request flag',
 test('uses the session preset for memory ranges and timing, including optional practice plans', async () => {
   const [html, app, css] = await Promise.all([
     readFile(new URL('../index.html', import.meta.url), 'utf8'),
-    readFile(new URL('../app.js', import.meta.url), 'utf8'),
-    readFile(new URL('../style.css', import.meta.url), 'utf8'),
+    readFile(new URL('../app.js?v=20261113-math', import.meta.url), 'utf8'),
+    readFile(new URL('../style.css?v=20261113-math', import.meta.url), 'utf8'),
   ]);
 
   assert.match(html, /id="preset-memory-value-min"[^>]*max="100"/);
@@ -897,7 +897,7 @@ test('uses the session preset for memory ranges and timing, including optional p
 test('offers saved, resettable presets for the selected game and difficulty', async () => {
   const [html, app] = await Promise.all([
     readFile(new URL('../index.html', import.meta.url), 'utf8'),
-    readFile(new URL('../app.js', import.meta.url), 'utf8'),
+    readFile(new URL('../app.js?v=20261113-math', import.meta.url), 'utf8'),
   ]);
 
   assert.match(html, /id="preset-editor"/);
@@ -928,8 +928,8 @@ test('exports history as escaped CSV with a header row', () => {
 test('offers one off-by-default continuous distraction-noise toggle for every browser practice mode', async () => {
   const [html, app, css] = await Promise.all([
     readFile(new URL('../index.html', import.meta.url), 'utf8'),
-    readFile(new URL('../app.js', import.meta.url), 'utf8'),
-    readFile(new URL('../style.css', import.meta.url), 'utf8'),
+    readFile(new URL('../app.js?v=20261113-math', import.meta.url), 'utf8'),
+    readFile(new URL('../style.css?v=20261113-math', import.meta.url), 'utf8'),
   ]);
 
   assert.match(html, /id="distraction-noise-toggle"[^>]*type="checkbox"/);

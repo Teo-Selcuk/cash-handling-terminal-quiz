@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
-const appPath = fileURLToPath(new URL('../app.js', import.meta.url));
+const appPath = fileURLToPath(new URL('../app.js?v=20261113-math', import.meta.url));
 
 test('browser application parses as an ES module before deployment', async () => {
   const source = await readFile(appPath, 'utf8');

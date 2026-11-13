@@ -1,10 +1,11 @@
 import { createTypingPrompt, scoreTyping } from './typing-core.mjs?v=20261002-typing';
 import { sampleOverloadRecord } from './overload-analytics.mjs?v=20261003-accounts';
+import { createMathQuestion, mathRecordFields, MATH_GAME } from './math-core.mjs?v=20261113-math';
 import { ChessSession } from './chess-core.mjs';
 import { CHESS_LESSONS } from './chess-lessons.mjs';
 const DAY_MS = 86400000;
 const DIFFICULTIES = ['Easy', 'Medium', 'Hard', 'Custom'];
-const GAMES = ['cash', 'memory', 'task', 'error-detection', 'fraud-inspection', 'typing', 'overload'];
+const GAMES = ['cash', 'memory', 'task', 'error-detection', 'fraud-inspection', 'typing', 'overload', 'math'];
 const DENOMINATIONS = [10000, 5000, 2000, 1000, 500, 100, 25, 10, 5, 1];
 const FRAUD_CATEGORIES = [
   'payee-mismatch', 'amount-mismatch', 'date-issue', 'check-alteration', 'handwriting-issue',
@@ -277,6 +278,14 @@ export function generateSampleChessHistory({ now = new Date(), seed = 42, count 
 }
 
 /** Make isolated fake local-history rows. No browser storage is read or written. */
+// Math samples use real generated problems, so operation charts and tables have true labels and answers.
+function mathRecord(common, random) {
+  const difficulty = ['Easy', 'Medium', 'Hard'].includes(common.difficulty) ? common.difficulty : 'Medium';
+  const question = createMathQuestion({ difficulty, random });
+  const userAnswer = common.outcome === 'Correct' ? String(question.answer) : common.outcome === 'Incorrect' ? String(question.answer + (random() < 0.5 ? -1 : 10)) : '';
+  return { ...common, ...mathRecordFields(question), difficulty, userAnswer };
+}
+
 export function generateSampleHistory({ now = new Date(), count = 1680, seed = Math.floor(Math.random() * 0xFFFFFFFF) } = {}) {
   const total = clamp(Math.floor(Number(count) || 1200), 1, 10000);
   const random = randomSource(seed);
@@ -314,7 +323,7 @@ export function generateSampleHistory({ now = new Date(), count = 1680, seed = M
     const row = game === 'cash' ? cashRecord(common, random, index)
       : game === 'memory' ? memoryRecord(common, random)
         : game === 'task' ? taskRecord(common, random)
-          : game === 'error-detection' ? errorRecord(common, random) : game === 'typing' ? typingRecord(common, random) : game === 'overload' ? sampleOverloadRecord(common,random,index) : fraudRecord(common, random);
+          : game === 'error-detection' ? errorRecord(common, random) : game === 'typing' ? typingRecord(common, random) : game === 'overload' ? sampleOverloadRecord(common,random,index) : game === MATH_GAME ? mathRecord(common, random) : fraudRecord(common, random);
     rows.push(row);
   }
   return rows;

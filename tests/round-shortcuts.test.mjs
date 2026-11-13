@@ -28,7 +28,7 @@ test('the key that ended the round, held keys, modifiers, typing and focused but
 
 test('every game end screen offers replay and main menu with the keys shown', () => {
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-  const app = readFileSync(new URL('../app.js', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('../app.js?v=20261113-math', import.meta.url), 'utf8');
   const overload = readFileSync(new URL('../overload-ui.mjs', import.meta.url), 'utf8');
   const chess = readFileSync(new URL('../chess-ui.mjs', import.meta.url), 'utf8');
   // Cash, memory, task, error detection, fraud inspection and typing all finish on the shared summary screen.

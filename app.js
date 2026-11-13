@@ -1,24 +1,25 @@
 import { accountStorage as localStorage, initializeAccounts } from './firebase-accounts.mjs?v=20261020-sync';
 import { canPlayGame } from './account-access.mjs';
 import { analyzeCashMistakes } from './cash-mistakes.mjs?v=20261011-fair-credit';
-import { enhanceHistoryTables } from './history-tables.mjs?v=20261023-round3';
-import { chartExplanation, summaryChartExplanation, createExplanation } from './history-explanations.mjs?v=20261023-round3';
+import { enhanceHistoryTables } from './history-tables.mjs?v=20261113-math';
+import { chartExplanation, summaryChartExplanation, createExplanation } from './history-explanations.mjs?v=20261113-math';
 import { resolveLabelColor } from './chart-contrast.mjs?v=20261023-round3';
 import { chartExample, summaryChartExample, createExample } from './chart-examples.mjs?v=20261023-round3';
-import { chartGameTag, chartFitsGame, gamesInAttempts, gameBreakdownText, gamesIncludedText, withGameName } from './chart-games.mjs?v=20261031-games';
+import { chartGameTag, chartFitsGame, gamesInAttempts, gameBreakdownText, gamesIncludedText, withGameName } from './chart-games.mjs?v=20261113-math';
 import { numpadChoice, numpadListAction, listKeyHint } from './numpad-shortcuts.mjs?v=20261028-amount';
 import { attachAmountFilter, readAmountCents } from './amount-input.mjs?v=20261101-numeric';
 import { roundEndAction } from './round-shortcuts.mjs?v=20261028-amount';
-import { answerToastContent } from './answer-toast.mjs?v=20261031-toast';
-import { buildProjection, projectionRows, chessProjectionRows } from './progress-projection.mjs?v=20261031-games';
-import { goalProgress, goalMetric, availableProgressiveLevels, PROGRESSIVE_LEVELS, fraudProgressiveOverrides, GOAL_SETTINGS_KEY, GOAL_WINDOW_LIMITS, GOAL_SUCCESS_LIMITS, resolveGoalSettings } from './speed-goals.mjs?v=20261031-games';
+import { answerToastContent } from './answer-toast.mjs?v=20261113-math';
+import { buildProjection, projectionRows, chessProjectionRows } from './progress-projection.mjs?v=20261113-math';
+import { goalProgress, goalMetric, availableProgressiveLevels, PROGRESSIVE_LEVELS, fraudProgressiveOverrides, GOAL_SETTINGS_KEY, GOAL_WINDOW_LIMITS, GOAL_SUCCESS_LIMITS, resolveGoalSettings } from './speed-goals.mjs?v=20261113-math';
 import { createOverloadUI } from './overload-ui.mjs?v=20261101-numeric';
 import { summarizeOverload, overloadRecommendation } from './overload-analytics.mjs?v=20261003-accounts';
 import { decideCheck, scoreHoldDecision, ITEM_TYPES, ITEM_REASONS, ACTIONS, HOLD_TYPES, availabilityText } from './check-holds.mjs?v=20261003-accounts';
 import { renderHoldTraining, readHoldAnswer } from './hold-training-ui.mjs?v=20261003-accounts';
+import { MATH_GAME, MATH_OPERATION_IDS, MATH_PRESETS, resolveMathSettings, createMathQuestion, scoreMathAnswer, mathRecordFields, summarizeMathHistory } from './math-core.mjs?v=20261113-math';
 import { TYPING_PRESETS, resolveTypingSettings, createTypingPrompt, scoreTyping, summarizeTyping } from './typing-core.mjs?v=20261002-typing';
 import { PATTERN_GAME_NAMES } from './pattern-games.mjs';
-import { createChessUI } from './chess-ui.mjs?v=20261028-amount';
+import { createChessUI } from './chess-ui.mjs?v=20261113-math';
 import { ChessStore } from './chess-storage.mjs';
 import { createDistractionSamples } from './distraction-sounds.mjs';
 import {
@@ -32,8 +33,8 @@ import { PRACTICE_GAMES, rankPracticeCandidates, recommendPractice, practiceSett
 import {
   buildChartSpecs, buildConditionalReport, buildErrorAnalytics, buildAdvancedErrorAnalytics, buildGameFilters, buildProgressModel, comparePeriods,
   filterHistory, recommendNextChallenge, progressionSegments,
-} from './progress-analytics.mjs?v=20261031-games';
-import { generateSampleHistory, generateSampleChessHistory } from './sample-history.mjs?v=20261008-advanced-errors';
+} from './progress-analytics.mjs?v=20261113-math';
+import { generateSampleHistory, generateSampleChessHistory } from './sample-history.mjs?v=20261113-math';
 import {
   DENOMINATIONS,
   DIFFICULTY_CONFIG,
@@ -72,9 +73,9 @@ const PRESET_KEY = 'cash-handling-terminal-quiz-presets-v1';
 const CURRENT_CHALLENGE_KEY = 'cash-handling-terminal-quiz-current-challenge-v1';
 const SAMPLE_HISTORY_KEY = 'cash-handling-terminal-quiz-sample-history-v1';
 const CHART_APPEARANCE_KEY = 'cash-handling-terminal-quiz-chart-appearance-v1';
-const screens = ['overload', 'typing', 'setup', 'chess', 'quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'error-detection-briefing', 'error-detection', 'fraud-inspection', 'feedback', 'summary', 'history'];
+const screens = ['math', 'overload', 'typing', 'setup', 'chess', 'quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'error-detection-briefing', 'error-detection', 'fraud-inspection', 'feedback', 'summary', 'history'];
 const refs = Object.fromEntries([
-  'overload-screen', 'typing-screen', 'setup-form', 'setup-screen', 'chess-screen', 'quiz-screen', 'feedback-screen', 'summary-screen', 'history-screen',
+  'math-screen', 'overload-screen', 'typing-screen', 'setup-form', 'setup-screen', 'chess-screen', 'quiz-screen', 'feedback-screen', 'summary-screen', 'history-screen',
   'memory-read-screen', 'memory-answer-screen', 'task-briefing-screen', 'task-workspace-screen', 'error-detection-briefing-screen', 'error-detection-screen', 'fraud-inspection-screen', 'cash-setup-options', 'memory-setup-options', 'task-setup-options', 'error-detection-setup-options', 'fraud-setup-options',
   'question-count', 'time-limit', 'cash-builder-toggle', 'customer-bill-request-toggle', 'auto-continue-toggle', 'distraction-noise-toggle', 'question-progress', 'timer', 'amount-due',
   'tender-breakdown', 'customer-bill-request', 'customer-bill-request-text', 'customer-bill-request-status', 'flag-bill-request', 'answer-form', 'answer-amount', 'amount-input-message', 'cash-builder-section', 'cash-builder-heading',
@@ -531,11 +532,15 @@ function showScreen(name) {
   if (name === 'setup') { renderSpeedGoals(refs['speed-goals-setup'], getHistory(), selectedGame()); renderProgressiveLevels(selectedGame()); }
   const activeScreen = refs[`${name}-screen`];
   if (isCompactViewport()) activeScreen.scrollIntoView({ block: 'start', inline: 'nearest' });
-  const roundInProgress = ['typing', 'quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'error-detection-briefing', 'error-detection', 'fraud-inspection'].includes(name);
+  const roundInProgress = ['math', 'typing', 'quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'error-detection-briefing', 'error-detection', 'fraud-inspection'].includes(name);
   refs['open-history'].disabled = roundInProgress;
   if (!roundInProgress) stopTimer();
   if (name === 'quiz') {
     window.setTimeout(() => document.querySelector('input[name="answerType"]')?.focus({ preventScroll: true }), 0);
+    return;
+  }
+  if (name === 'math') {
+    window.setTimeout(() => document.getElementById('math-answer').focus({ preventScroll: true }), 0);
     return;
   }
   if (name === 'memory-answer') {
@@ -604,7 +609,7 @@ function setHistoryDataSource(source) {
   renderHistory();
 }
 
-const GOAL_GAME_NAMES = { cash: 'Cash handling', memory: 'Number memory', task: 'Task simulation', 'error-detection': 'Error detection', 'fraud-inspection': 'Check & ID Fraud Inspection', typing: 'Typing speed', overload: 'Multitasker' };
+const GOAL_GAME_NAMES = { cash: 'Cash handling', memory: 'Number memory', task: 'Task simulation', 'error-detection': 'Error detection', 'fraud-inspection': 'Check & ID Fraud Inspection', typing: 'Typing speed', overload: 'Multitasker', math: 'Math practice' };
 // Goal targets in each game's unit: seconds per answer, seconds per action, or words per minute.
 const goalTargetText = (target, unit) => unit === 'WPM' ? `${target} WPM or faster` : `${target}s or faster`;
 const GOAL_RULE_TEXT = {
@@ -993,7 +998,17 @@ function updateGameSetup() {
   document.querySelectorAll('#overload-setup-options input, #overload-setup-options select').forEach(node => { node.disabled = game !== 'overload'; });
   document.getElementById('typing-setup-options').hidden = game !== 'typing';
   document.querySelectorAll('#typing-setup-options input, #typing-setup-options select, #typing-setup-options button').forEach(node => { node.disabled = game !== 'typing'; });
+  document.getElementById('math-setup-options').hidden = game !== MATH_GAME;
   if (game === 'chess') return;
+  if (game === MATH_GAME) {
+    if (selectedDifficulty() === 'Custom') document.querySelector('input[name="difficulty"][value="Easy"]').checked = true;
+    for (const id of ['cash-setup-options', 'memory-setup-options', 'task-setup-options', 'error-detection-setup-options', 'fraud-setup-options', 'preset-editor', 'custom-difficulty-card']) refs[id].hidden = true;
+    for (const level of ['Easy', 'Medium', 'Hard']) refs[`${level.toLowerCase()}-description`].textContent = mathPresetDescription(level);
+    applyMathDifficulty(selectedDifficulty());
+    renderPracticeRecommendations(document.getElementById('setup-recommendations'), game, selectedDifficulty());
+    renderActivePractice();
+    return;
+  }
   if (game === 'overload') {
     if (selectedDifficulty() === 'Custom') document.querySelector('input[name="difficulty"][value="Easy"]').checked = true;
     for (const id of ['cash-setup-options', 'memory-setup-options', 'task-setup-options', 'error-detection-setup-options', 'fraud-setup-options', 'preset-editor', 'custom-difficulty-card']) refs[id].hidden = true;
@@ -1074,6 +1089,7 @@ function presetFor(game, difficulty) {
 
 function sessionPreset() {
   if (state.game === 'overload') return overloadUI.settings;
+  if (state.game === MATH_GAME) return state.mathSettings;
   if (state.game === 'typing') return state.typingSettings;
   if (state.game === 'fraud-inspection') return state.fraudSettings;
   if (state.game === 'cash' && state.progressiveLevel && state.progressivePreset) return state.progressivePreset;
@@ -1101,6 +1117,7 @@ function renderPracticeRecommendations(target, game, difficulty, history = getHi
     if (plan.challenge) { const apply = document.createElement('button'); apply.type = 'button'; apply.textContent = 'Use practice plan'; apply.onclick = () => applyPracticePlan(plan); target.append(apply); }
     return;
   }
+  if (game === MATH_GAME) { target.textContent = summarizeMathHistory(history).recommendation; return; }
   if (game === 'typing') { target.textContent = 'Build accuracy first, then increase characters or shorten the timer. Saved typing results appear in History | Progress.'; return; }
   if (game === 'fraud-inspection') {
     const fraudSummary = summarizeFraudHistory(history);
@@ -1735,6 +1752,129 @@ function showNextQuestion() {
   showScreen('quiz');
   state.cashQuestionStartedAt = Date.now();
   startOptionalTimer(state.timeLimitSeconds, refs.timer, () => submitCurrentAnswer(true));
+  startContinuousDistractionNoise();
+}
+
+// Math practice: one typed whole-number answer per problem, with the same timer, feedback screen and
+// Auto-continue note as Cash handling.
+const MATH_SETTINGS_KEY = 'cash-handling-math-settings-v1';
+let appliedMathDifficulty = null;
+
+function selectedMathOperations() {
+  return [...document.querySelectorAll('#math-operations input:checked')].map((input) => input.value);
+}
+
+function mathPresetDescription(level) {
+  const preset = MATH_PRESETS[level];
+  return `${preset.questionCount} questions, ${preset.timeLimitSeconds}s each, + and − up to ${preset.addMax}, × and ÷ up to ${preset.factorMax}${preset.allowNegative ? ', negative answers' : ''}`;
+}
+
+// A difficulty fills the count and timer only when it changes, so typed values survive other setup refreshes.
+function applyMathDifficulty(difficulty) {
+  if (difficulty === appliedMathDifficulty) return;
+  appliedMathDifficulty = difficulty;
+  const preset = MATH_PRESETS[difficulty] ?? MATH_PRESETS.Easy;
+  document.getElementById('math-question-count').value = String(preset.questionCount);
+  document.getElementById('math-time-limit').value = String(preset.timeLimitSeconds);
+}
+
+function saveMathSettings() {
+  try { localStorage.setItem(MATH_SETTINGS_KEY, JSON.stringify({ operations: selectedMathOperations() })); } catch { /* settings stay for this visit */ }
+}
+
+function restoreMathSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(MATH_SETTINGS_KEY) ?? 'null');
+    const operations = Array.isArray(saved?.operations) ? saved.operations.filter((id) => MATH_OPERATION_IDS.includes(id)) : [];
+    if (!operations.length) return;
+    for (const input of document.querySelectorAll('#math-operations input')) input.checked = operations.includes(input.value);
+  } catch { /* keep every operation on */ }
+}
+
+function recordMathAnswer(question, typed, outcome, elapsedSeconds) {
+  return {
+    timestamp: new Date().toISOString(),
+    sessionId: state.sessionId,
+    ...mathRecordFields(question, state.mathSettings.operations),
+    difficulty: state.difficulty,
+    questionNumber: state.questionNumber,
+    timeLimitSeconds: state.timeLimitSeconds,
+    timeUsedSeconds: Number(elapsedSeconds.toFixed(1)),
+    userAnswer: typed,
+    outcome,
+  };
+}
+
+function populateMathFeedback(record) {
+  const correct = record.outcome === 'Correct';
+  refs['feedback-kicker'].textContent = record.outcome === 'Timed Out' ? 'Time expired' : 'Answer result';
+  refs['feedback-heading'].textContent = correct ? 'Correct' : record.outcome === 'Timed Out' ? 'Time expired' : 'Not quite';
+  refs['feedback-heading'].dataset.result = correct ? 'correct' : 'incorrect';
+  refs['feedback-lead'].textContent = correct
+    ? `${record.mathExpression} = ${record.mathAnswer}. Well done.`
+    : `The correct answer was ${record.mathExpression} = ${record.mathAnswer}.`;
+  refs['feedback-details'].replaceChildren();
+  for (const [term, description] of [
+    ['Problem', record.mathExpression],
+    ['Operation', record.mathOperationLabel],
+    ['Correct answer', String(record.mathAnswer)],
+    ['Your answer', record.userAnswer || 'No answer'],
+    ['Time used', `${record.timeUsedSeconds.toFixed(1)} seconds`],
+  ]) {
+    const dt = document.createElement('dt');
+    const dd = document.createElement('dd');
+    dt.textContent = term;
+    dd.textContent = description;
+    refs['feedback-details'].append(dt, dd);
+  }
+}
+
+function submitMathAnswer(timedOut = false) {
+  if (state.answerSubmitted || state.game !== MATH_GAME) return;
+  const input = document.getElementById('math-answer');
+  const typed = input.value.trim();
+  if (!timedOut && !/^-?\d+$/.test(typed)) {
+    const message = 'Type a whole number before submitting.';
+    document.getElementById('math-answer-message').textContent = message;
+    setMessage(message);
+    input.focus();
+    return;
+  }
+  state.answerSubmitted = true;
+  stopTimer();
+  const elapsedSeconds = Math.min(state.timeLimitSeconds, Math.max(0, (Date.now() - state.mathQuestionStartedAt) / 1000));
+  const score = scoreMathAnswer(state.mathQuestion, typed, timedOut);
+  const record = recordMathAnswer(state.mathQuestion, timedOut ? '' : typed, score.outcome, elapsedSeconds);
+  state.results.push(record);
+  persistRecord(record);
+  if (state.results.length === state.questionCount) stopContinuousDistractionNoise();
+  if (state.autoContinue) {
+    showAnswerToast(record, { correctAnswer: `${record.mathExpression} = ${record.mathAnswer}`, yourAnswer: record.userAnswer || 'No answer' });
+    showNextMathQuestion();
+    return;
+  }
+  populateMathFeedback(record);
+  showScreen('feedback');
+}
+
+function showNextMathQuestion() {
+  state.questionNumber += 1;
+  if (state.questionNumber > state.questionCount) {
+    renderSummary();
+    showScreen('summary');
+    return;
+  }
+  state.mathQuestion = createMathQuestion({ difficulty: state.difficulty, operations: state.mathSettings.operations });
+  persistUnansweredRound(recordMathAnswer(state.mathQuestion, '', 'Not answered', 0));
+  state.answerSubmitted = false;
+  document.getElementById('math-progress').textContent = `Question ${state.questionNumber} of ${state.questionCount} · ${state.difficulty.toUpperCase()}`;
+  document.getElementById('math-operation-label').textContent = state.mathQuestion.operationLabel;
+  document.getElementById('math-expression').textContent = state.mathQuestion.expression;
+  document.getElementById('math-answer').value = '';
+  document.getElementById('math-answer-message').textContent = '';
+  showScreen('math');
+  state.mathQuestionStartedAt = Date.now();
+  startTimer(state.timeLimitSeconds, document.getElementById('math-timer'), () => submitMathAnswer(true));
   startContinuousDistractionNoise();
 }
 
@@ -3802,6 +3942,11 @@ function makeMetrics(records) {
   const summary = summarizeHistory(records);
   const averageTime = summary.answered ? records.reduce((sum, record) => sum + Number(record.timeUsedSeconds || 0), 0) / summary.answered : 0;
   if (state.game === 'typing') return typingMetrics(records);
+  if (state.game === MATH_GAME) {
+    const math = summarizeMathHistory(records);
+    return [[`${summary.answered}`, 'Questions'], [`${summary.accuracyPercent}%`, 'Accuracy'], [`${averageTime.toFixed(1)}s`, 'Average time'],
+      ...math.operations.map((group) => [`${group.correct}/${group.answered}`, `${group.label} correct`])];
+  }
   if (state.game === 'memory') {
     const credits = records.map(memoryCredit).filter(Boolean);
     const sum = field => credits.reduce((total, row) => total + (row[field] ?? 0), 0);
@@ -3872,7 +4017,7 @@ function renderMetrics(target, metrics) {
 
 function renderSummary() {
   stopContinuousDistractionNoise();
-  refs['summary-heading'].textContent = state.game === 'typing' ? 'Your typing results' : state.game === 'memory'
+  refs['summary-heading'].textContent = state.game === MATH_GAME ? 'Your math results' : state.game === 'typing' ? 'Your typing results' : state.game === 'memory'
     ? 'Your memory results'
     : state.game === 'task'
       ? 'Your task simulation results'
@@ -4532,6 +4677,8 @@ function openAttemptDetails(records, attemptIds, heading) {
           ? [`${record.totalDigits} digits`, `Display ${record.readTimeSeconds}s`, `Answer time ${record.writeTimeSeconds}s`, `${record.correctValueCount}/${record.valueCount} values`, `Streak ${record.memoryStreak ?? '—'}`]
           : record.game === 'task'
             ? [`${record.stepsCompleted}/${record.stepsExpected} steps`, `${record.totalMistakes} mistakes`, (record.taskMistakeCategories ?? []).join(', ') || 'No mistake categories']
+            : record.game === MATH_GAME
+              ? [record.mathOperationLabel ?? 'Operation not recorded', record.mathExpression ? `${record.mathExpression} = ${record.mathAnswer}` : '']
             : record.game === 'error-detection'
               ? [`${record.expectedAnomalyCount} actual errors`, `${record.selectedAnomalyCount} selected`, `${record.missedAnomalyCount} missed`, `${record.falseFlagCount} false positives`, record.puzzleFamily]
               : [`${record.fraudExpectedIssueCount} actual errors`, `${record.fraudCorrectlyIdentifiedCount ?? Math.max(0, record.fraudExpectedIssueCount - record.fraudFalseNegativeCount)} identified`, `${record.fraudFalseNegativeCount} missed`, `${record.fraudFalsePositiveCount} false positives`, (record.fraudExpectedCategories ?? []).join(', ') || 'Clean case'];
@@ -5869,7 +6016,7 @@ function applyHistoryQuickRange(kind) {
 
 function openHistory() {
   if (state.activeScreen === 'overload') { overloadUI.stop(); historyView.filters = { game: 'overload' }; }
-  if (['typing', 'quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'error-detection'].includes(state.activeScreen)) {
+  if (['math', 'typing', 'quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'error-detection'].includes(state.activeScreen)) {
     setMessage('Finish the current round before opening history.');
     return;
   }
@@ -6071,6 +6218,7 @@ const overloadUI = createOverloadUI({ showScreen, onMenu: () => returnToMainMenu
 const MULTITASKER_SETTINGS_KEY='cash-handling-multitasker-settings-v1';
 function restoreMultitaskerSettings(){try{const saved=JSON.parse(localStorage.getItem(MULTITASKER_SETTINGS_KEY)??'null');if(saved)overloadUI.applySettings(saved);}catch{}}
 restoreMultitaskerSettings();
+restoreMathSettings();
 document.getElementById('overload-setup-options').addEventListener('change',()=>{try{localStorage.setItem(MULTITASKER_SETTINGS_KEY,JSON.stringify(overloadUI.readSettings()));}catch{}});
 
 refs['setup-form'].addEventListener('submit', (event) => {
@@ -6169,6 +6317,33 @@ refs['setup-form'].addEventListener('submit', (event) => {
     state.fraudBestStreak = 0;
     state.fraudDocumentZooms = new Map();
     startFraudInspection();
+    return;
+  }
+
+  if (game === MATH_GAME) {
+    const questionCount = Number(document.getElementById('math-question-count').value);
+    const timeLimitSeconds = Number(document.getElementById('math-time-limit').value);
+    const operations = selectedMathOperations();
+    if (!Number.isInteger(questionCount) || questionCount < 1 || questionCount > 100) {
+      setMessage('Choose between 1 and 100 math questions.');
+      document.getElementById('math-question-count').focus();
+      return;
+    }
+    if (!Number.isInteger(timeLimitSeconds) || timeLimitSeconds < 3 || timeLimitSeconds > 300) {
+      setMessage('Choose between 3 and 300 seconds per question.');
+      document.getElementById('math-time-limit').focus();
+      return;
+    }
+    if (!operations.length) {
+      setMessage('Turn on at least one operation.');
+      document.querySelector('#math-operations input')?.focus();
+      return;
+    }
+    state.mathSettings = resolveMathSettings({ difficulty, operations, questionCount, timeLimitSeconds });
+    state.questionCount = questionCount;
+    state.timeLimitSeconds = timeLimitSeconds;
+    saveMathSettings();
+    showNextMathQuestion();
     return;
   }
 
@@ -6323,6 +6498,7 @@ refs['flag-bill-request'].addEventListener('click', () => {
 refs['next-question'].addEventListener('click', () => {
   if (state.game === 'typing') showNextTypingRound();
   else if (state.game === 'memory') showNextMemoryQuestion();
+  else if (state.game === MATH_GAME) showNextMathQuestion();
   else if (state.game === 'task') showNextTaskQuestion();
   else if (state.game === 'error-detection') showNextErrorDetectionQuestion();
   else if (state.game === 'fraud-inspection') showNextFraudInspectionCase();
@@ -6359,6 +6535,22 @@ refs['memory-answer-form'].addEventListener('submit', (event) => {
   submitMemoryAnswer();
 });
 refs['memory-answer-now'].addEventListener('click', showMemoryAnswer);
+document.getElementById('math-answer-form').addEventListener('submit', (event) => {
+  event.preventDefault();
+  submitMathAnswer();
+});
+// Math answers are whole numbers: digits only, with an optional leading minus sign for Hard problems.
+attachAmountFilter(document.getElementById('math-answer'), {
+  decimal: false, negative: true, maxLength: 9, label: 'Answers',
+  onRemoved: (message) => { document.getElementById('math-answer-message').textContent = message; setMessage(message); },
+});
+document.getElementById('math-operations').addEventListener('change', (event) => {
+  if (!selectedMathOperations().length) {
+    event.target.checked = true;
+    setMessage('Keep at least one operation on.');
+  }
+  saveMathSettings();
+});
 refs['error-detection-form'].addEventListener('submit', (event) => {
   event.preventDefault();
   submitErrorDetectionAttempt();

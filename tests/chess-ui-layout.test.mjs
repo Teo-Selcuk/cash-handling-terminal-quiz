@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-const [html, css, board, ui] = await Promise.all(['index.html', 'style.css', 'chess-board.mjs', 'chess-ui.mjs']
+const [html, css, board, ui] = await Promise.all(['index.html', 'style.css?v=20261113-math', 'chess-board.mjs', 'chess-ui.mjs?v=20261113-math']
   .map((file) => readFile(new URL(`../${file}`, import.meta.url), 'utf8')));
 
 const hex = (value) => value.match(/[0-9a-f]{2}/gi).map((part) => parseInt(part, 16) / 255);

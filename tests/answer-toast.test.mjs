@@ -68,7 +68,7 @@ test('typing shows its speed when exact and the expected text when not, shortene
 });
 
 test('every auto-continue path shows the note before moving on, and the note never takes focus', () => {
-  const app = read('app.js');
+  const app = read('app.js?v=20261113-math');
   for (const next of ['showNextQuestion', 'showNextMemoryQuestion', 'showNextErrorDetectionQuestion', 'showNextTaskQuestion']) {
     assert.match(app, new RegExp(`if \\(state\\.autoContinue\\) \\{\\r?\\n    showAnswerToast\\(record[^]*?\\n    ${next}\\(\\);`), next);
   }
@@ -77,6 +77,6 @@ test('every auto-continue path shows the note before moving on, and the note nev
   assert.doesNotMatch(app, /answer-toast'\]\.focus/);
   const html = read('index.html');
   assert.match(html, /<aside id="answer-toast" class="answer-toast" role="status" aria-live="polite" aria-atomic="true" hidden>/);
-  const css = read('style.css');
+  const css = read('style.css?v=20261113-math');
   assert.match(css, /\.answer-toast \{ position: fixed;[^}]*top: 1rem; right: 1rem;[^}]*pointer-events: none;/);
 });

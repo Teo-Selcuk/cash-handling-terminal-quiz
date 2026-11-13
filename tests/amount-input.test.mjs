@@ -5,7 +5,7 @@ import { sanitizeAmount, readAmountCents, attachAmountFilter, removedMessage, AM
 import { numpadChoice } from '../numpad-shortcuts.mjs';
 
 const read = (file) => readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
-const app = read('app.js');
+const app = read('app.js?v=20261113-math');
 const html = read('index.html');
 const overload = read('overload-ui.mjs');
 

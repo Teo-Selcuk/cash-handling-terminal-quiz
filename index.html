@@ -7,36 +7,37 @@
     <meta name="theme-color" content="#12343b">
     <title>Cash, Memory &amp; Detail Trainer</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="style.css?v=20261101-numeric">
+    <link rel="stylesheet" href="style.css?v=20261113-math">
     <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
     <!-- Start every startup module download at once instead of discovering imports one level at a time. -->
-    <link rel="modulepreload" href="app.js?v=20261101-numeric">
+    <link rel="modulepreload" href="app.js?v=20261113-math">
     <link rel="modulepreload" href="firebase-accounts.mjs?v=20261020-sync">
     <link rel="modulepreload" href="account-data.mjs?v=20261020-fast">
     <link rel="modulepreload" href="firebase-config.mjs">
     <link rel="modulepreload" href="account-access.mjs">
     <link rel="modulepreload" href="cash-mistakes.mjs?v=20261011-fair-credit">
-    <link rel="modulepreload" href="history-tables.mjs?v=20261023-round3">
-    <link rel="modulepreload" href="history-explanations.mjs?v=20261023-round3">
+    <link rel="modulepreload" href="history-tables.mjs?v=20261113-math">
+    <link rel="modulepreload" href="history-explanations.mjs?v=20261113-math">
     <link rel="modulepreload" href="chart-contrast.mjs?v=20261023-round3">
     <link rel="modulepreload" href="chart-examples.mjs?v=20261023-round3">
-    <link rel="modulepreload" href="chart-games.mjs?v=20261031-games">
+    <link rel="modulepreload" href="chart-games.mjs?v=20261113-math">
     <link rel="modulepreload" href="numpad-shortcuts.mjs?v=20261028-amount">
     <link rel="modulepreload" href="amount-input.mjs?v=20261101-numeric">
     <link rel="modulepreload" href="round-shortcuts.mjs?v=20261028-amount">
-    <link rel="modulepreload" href="answer-toast.mjs?v=20261031-toast">
-    <link rel="modulepreload" href="progress-projection.mjs?v=20261031-games">
-    <link rel="modulepreload" href="progress-analytics.mjs?v=20261031-games">
+    <link rel="modulepreload" href="answer-toast.mjs?v=20261113-math">
+    <link rel="modulepreload" href="progress-projection.mjs?v=20261113-math">
+    <link rel="modulepreload" href="progress-analytics.mjs?v=20261113-math">
     <link rel="modulepreload" href="overload-core.mjs?v=20261003-accounts">
     <link rel="modulepreload" href="overload-analytics.mjs?v=20261003-accounts">
     <link rel="modulepreload" href="quiz-core.mjs?v=20261017-round2">
     <link rel="modulepreload" href="pattern-games.mjs">
-    <link rel="modulepreload" href="speed-goals.mjs?v=20261031-games">
+    <link rel="modulepreload" href="speed-goals.mjs?v=20261113-math">
     <link rel="modulepreload" href="overload-ui.mjs?v=20261101-numeric">
     <link rel="modulepreload" href="check-holds.mjs?v=20261003-accounts">
     <link rel="modulepreload" href="hold-training-ui.mjs?v=20261003-accounts">
+    <link rel="modulepreload" href="math-core.mjs?v=20261113-math">
     <link rel="modulepreload" href="typing-core.mjs?v=20261002-typing">
-    <link rel="modulepreload" href="chess-ui.mjs?v=20261028-amount">
+    <link rel="modulepreload" href="chess-ui.mjs?v=20261113-math">
     <link rel="modulepreload" href="chess-core.mjs">
     <link rel="modulepreload" href="assets/chess/chess.mjs">
     <link rel="modulepreload" href="chess-board.mjs?v=20261017-round2">
@@ -47,7 +48,7 @@
     <link rel="modulepreload" href="distraction-sounds.mjs">
     <link rel="modulepreload" href="fraud-inspection.mjs?v=20261003-accounts">
     <link rel="modulepreload" href="adaptive-practice.mjs?v=20261017-perf">
-    <link rel="modulepreload" href="sample-history.mjs?v=20261008-advanced-errors">
+    <link rel="modulepreload" href="sample-history.mjs?v=20261113-math">
     <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js">
     <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js">
     <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js">
@@ -115,6 +116,7 @@
             <legend>Game</legend>
             <div class="choice-grid game-choice-grid">
               <label class="choice-card"><input type="radio" name="game" value="cash" checked><span><strong>Cash handling</strong><small>Practice exact, change, and short transactions.</small></span></label>
+              <label class="choice-card"><input type="radio" name="game" value="math"><span><strong>Math practice</strong><small>Add, subtract, multiply, divide, brackets, and mixed problems against the clock.</small></span></label>
               <label class="choice-card"><input type="radio" name="game" value="memory"><span><strong>Number memory</strong><small>Read a number, then type it back from memory.</small></span></label>
               <label class="choice-card"><input type="radio" name="game" value="task"><span><strong>Task simulation</strong><small>Watch a workflow, then repeat its tabs, fields, and selections from memory.</small></span></label>
               <label class="choice-card"><input type="radio" name="game" value="error-detection"><span><strong>Error detection</strong><small>15 rotating games: sequences, mirrors, rotations, binary patterns, grids, and more. Each has Easy, Medium, and Hard puzzles.</small></span></label>
@@ -304,6 +306,30 @@
               <input id="customer-bill-request-toggle" name="customerBillRequests" type="checkbox">
               <span><strong>Include customer bill requests</strong><small>On change rounds, customers may request specific, mixed, low, or high bills. Automatically turns on cash builder.</small></span>
             </label>
+          </div>
+
+          <div id="math-setup-options" hidden>
+            <p class="setup-note">Each problem has a whole-number answer. Type it and press Enter. Normal order of operations applies: brackets first, then × and ÷, then + and −.</p>
+            <div class="form-grid">
+              <label for="math-question-count">Questions
+                <input id="math-question-count" name="mathQuestionCount" type="number" value="10" min="1" max="100" inputmode="numeric" required>
+              </label>
+              <label for="math-time-limit">Seconds per question
+                <input id="math-time-limit" name="mathTimeLimit" type="number" value="20" min="3" max="300" inputmode="numeric" required>
+              </label>
+            </div>
+            <fieldset class="math-operations">
+              <legend>Operations</legend>
+              <p class="setup-note">Turn an operation off to leave it out of the round. Keep at least one on.</p>
+              <div class="math-operation-grid" id="math-operations">
+                <label class="toggle-row math-operation-choice" for="math-op-addition"><input id="math-op-addition" type="checkbox" name="mathOperation" value="addition" checked><span><strong>Addition</strong><small>+</small></span></label>
+                <label class="toggle-row math-operation-choice" for="math-op-subtraction"><input id="math-op-subtraction" type="checkbox" name="mathOperation" value="subtraction" checked><span><strong>Subtraction</strong><small>−</small></span></label>
+                <label class="toggle-row math-operation-choice" for="math-op-multiplication"><input id="math-op-multiplication" type="checkbox" name="mathOperation" value="multiplication" checked><span><strong>Multiplication</strong><small>×</small></span></label>
+                <label class="toggle-row math-operation-choice" for="math-op-division"><input id="math-op-division" type="checkbox" name="mathOperation" value="division" checked><span><strong>Division</strong><small>÷</small></span></label>
+                <label class="toggle-row math-operation-choice" for="math-op-brackets"><input id="math-op-brackets" type="checkbox" name="mathOperation" value="brackets" checked><span><strong>Brackets</strong><small>( )</small></span></label>
+                <label class="toggle-row math-operation-choice" for="math-op-mixed"><input id="math-op-mixed" type="checkbox" name="mathOperation" value="mixed" checked><span><strong>Mixed problems</strong><small>2 + 3 × 4</small></span></label>
+              </div>
+            </fieldset>
           </div>
 
           <div id="memory-setup-options" hidden>
@@ -521,6 +547,24 @@
             <div id="cash-working-steps"></div>
           </details>
           <button class="primary-button" id="submit-answer" type="submit">Submit answer</button>
+        </form>
+      </section>
+
+      <section class="screen" id="math-screen" hidden aria-labelledby="math-heading">
+        <div class="question-header">
+          <p class="eyebrow" id="math-progress">Question 1 of 10</p>
+          <time class="timer" id="math-timer" aria-label="Time remaining">0:20</time>
+        </div>
+        <div class="transaction-card math-card">
+          <p class="transaction-label" id="math-operation-label">Addition</p>
+          <h2 class="money-value math-expression" id="math-heading" tabindex="-1"><span id="math-expression">0 + 0</span> <span aria-hidden="true">=</span> ?</h2>
+        </div>
+        <form id="math-answer-form" class="answer-form">
+          <label for="math-answer">Your answer
+            <input id="math-answer" name="mathAnswer" type="text" inputmode="numeric" autocomplete="off" placeholder="Type the answer" aria-describedby="math-answer-message">
+          </label>
+          <p class="field-message" id="math-answer-message" aria-live="polite"></p>
+          <button class="primary-button" id="math-submit" type="submit">Submit answer</button>
         </form>
       </section>
 
@@ -744,6 +788,7 @@
           <button type="button" data-history-game="fraud-inspection" aria-pressed="false">Check &amp; ID Inspection</button>
           <button type="button" data-history-game="typing" aria-pressed="false">Typing Speed</button>
           <button type="button" data-history-game="overload" aria-pressed="false">Multitasker</button>
+          <button type="button" data-history-game="math" aria-pressed="false">Math Practice</button>
           <button type="button" data-history-game="chess" aria-pressed="false">Chess</button>
         </nav>
         <section id="speed-goals-history" class="speed-goals" aria-labelledby="speed-goals-history-heading" hidden>
@@ -984,6 +1029,6 @@
       <p class="answer-toast-title" id="answer-toast-title"></p>
       <dl class="answer-toast-lines" id="answer-toast-lines"></dl>
     </aside>
-    <script type="module" src="app.js?v=20261101-numeric"></script>
+    <script type="module" src="app.js?v=20261113-math"></script>
   </body>
 </html>

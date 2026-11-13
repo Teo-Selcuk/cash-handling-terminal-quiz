@@ -1362,3 +1362,11 @@ body:has(.interactive-chart.is-maximized) #history-screen .history-charts { cont
 @keyframes answer-toast-in { from { transform: translateY(-0.5rem); } to { transform: none; } }
 @media (prefers-reduced-motion: reduce) { .answer-toast { animation: none; } }
 @media (max-width: 36rem) { .answer-toast { top: 0.5rem; right: 1rem; left: 1rem; width: auto; } .answer-toast-lines { grid-template-columns: minmax(0, 1fr); } }
+
+/* Math practice */
+.math-operation-grid { display: grid; gap: 0.5rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); }
+.math-operation-grid .toggle-row { min-width: 0; }
+.math-operation-grid small { overflow-wrap: anywhere; }
+.math-expression { margin: 0.25rem 0 0; overflow-wrap: anywhere; letter-spacing: -0.02em; }
+.math-card .transaction-label { margin: 0; }
+#math-answer { font-size: 1.5rem; font-variant-numeric: tabular-nums; }

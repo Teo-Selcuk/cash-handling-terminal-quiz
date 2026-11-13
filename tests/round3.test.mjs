@@ -28,7 +28,7 @@ test('Accuracy by difficulty numbers are white in the dark theme and dark in the
   for (const background of THEME_COLORS.dark.backgrounds) assert.ok(contrastRatio(dark, background) >= MIN_LABEL_CONTRAST);
   for (const background of THEME_COLORS.light.backgrounds) assert.ok(contrastRatio(light, background) >= MIN_LABEL_CONTRAST);
   // The labels match the other chart text: the theme's own ink color.
-  const css = read('style.css');
+  const css = read('style.css?v=20261113-math');
   assert.match(css, /:root\[data-theme="dark"\] \{[^}]*--ink: #edf5f2/);
   assert.equal(dark, '#edf5f2');
 });
@@ -50,8 +50,8 @@ test('every Appearance label color stays readable in both themes, even a dark cu
 });
 
 test('changing the label color in Appearance updates the Accuracy by difficulty chart', () => {
-  const app = read('app.js');
-  const css = read('style.css');
+  const app = read('app.js?v=20261113-math');
+  const css = read('style.css?v=20261113-math');
   assert.match(app, /applyChartAppearance\(accuracyCard, 'accuracy-by-difficulty'\)/);
   assert.match(app, /setProperty\('--chart-label-color', resolveLabelColor\(settings, document\.documentElement\.dataset\.theme\)\)/);
   assert.match(css, /\.visual-card \.bar-chart-value \{ color: var\(--chart-label-color/);
@@ -66,7 +66,7 @@ test('changing the label color in Appearance updates the Accuracy by difficulty 
 });
 
 test('no chart label is hard-coded to a dark text color', () => {
-  const css = read('style.css');
+  const css = read('style.css?v=20261113-math');
   const rules = css.match(/[^{}]*(?:chart|bar-chart)[^{}]*\{[^}]*\}/g) ?? [];
   for (const rule of rules) assert.doesNotMatch(rule, /(?:^|[;{\s])color:\s*#(?:0|1|2)[0-9a-f]{5}/i, rule.slice(0, 120));
 });
@@ -74,8 +74,8 @@ test('no chart label is hard-coded to a dark text color', () => {
 // ---- Digit and arithmetic analysis ----
 
 test('the digit and arithmetic section uses short bullets, hides empty table headings, and wraps inside its card', () => {
-  const app = read('app.js');
-  const css = read('style.css');
+  const app = read('app.js?v=20261113-math');
+  const css = read('style.css?v=20261113-math');
   const start = app.indexOf('function renderAdvancedErrorAnalysis');
   const body = app.slice(start, app.indexOf('function renderHistoryInsights', start));
   assert.doesNotMatch(body, /Digit offsets are compared/, 'the long right-aligned paragraph is gone');
@@ -91,8 +91,8 @@ test('the digit and arithmetic section uses short bullets, hides empty table hea
 // ---- Lists ----
 
 test('lists on History pages are real bullets with one idea each', () => {
-  const app = read('app.js');
-  const explanations = read('history-explanations.mjs');
+  const app = read('app.js?v=20261113-math');
+  const explanations = read('history-explanations.mjs?v=20261113-math');
   assert.doesNotMatch(explanations, /createElement\('dl'\)/, 'term lists are bullets, not definition lists');
   assert.match(explanations, /list\.className = 'explanation-terms'/);
   const insights = app.slice(app.indexOf('function renderHistoryInsights'), app.indexOf('function currentComparison'));
@@ -100,7 +100,7 @@ test('lists on History pages are real bullets with one idea each', () => {
   assert.match(insights, /bulletList\(/);
   const bullets = [...app.matchAll(/bulletList\(\[([\s\S]*?)\]/g)].map((match) => match[1]);
   assert.ok(bullets.length >= 8);
-  const css = read('style.css');
+  const css = read('style.css?v=20261113-math');
   assert.match(css, /\.plain-bullets \{[^}]*list-style: disc outside/);
 });
 
@@ -171,13 +171,13 @@ test('formula kinds follow the chart metric', () => {
 });
 
 test('Example toggles start closed and sit beside "What this shows" on every chart', () => {
-  const app = read('app.js');
+  const app = read('app.js?v=20261113-math');
   const examples = read('chart-examples.mjs');
   assert.match(examples, /details\.className = 'chart-example'/);
   assert.doesNotMatch(examples, /details\.open = true/);
   assert.match(app, /card\.append\(heading, chartExplanationToggle\(spec\.id, chartExplanation\(spec\)\), chartExampleToggle\(spec\.id, chartExample\(spec\)\)\)/);
   assert.match(app, /chartExplanationToggle\(id, summaryChartExplanation\(id, summary\)\), chartExampleToggle\(id, summaryChartExample\(id, summary\)\)/);
-  assert.match(read('style.css'), /\.visual-card > \.explanation:not\(\[open\]\), \.visual-card > \.chart-example:not\(\[open\]\) \{ display: inline-block/);
+  assert.match(read('style.css?v=20261113-math'), /\.visual-card > \.explanation:not\(\[open\]\), \.visual-card > \.chart-example:not\(\[open\]\) \{ display: inline-block/);
 });
 
 // ---- Numpad ----
@@ -203,7 +203,7 @@ test('numpad / * - pick Exact, Change, and Short only during an active game and 
 
 test('cash answer buttons show their key hint and a help line; clicking still works', () => {
   const html = read('index.html');
-  const app = read('app.js');
+  const app = read('app.js?v=20261113-math');
   for (const [value, hint] of [['Exact', 'Num /'], ['Change', 'Num \\*'], ['Short', 'Num -']]) {
     assert.match(html, new RegExp(`value="${value}"[^>]*><span>${value} <kbd class="key-hint" aria-hidden="true">${hint}</kbd></span>`));
   }
@@ -217,7 +217,7 @@ test('cash answer buttons show their key hint and a help line; clicking still wo
 // ---- Game labels ----
 
 test('every chart carries its game name and unfit charts are left off that game', () => {
-  const app = read('app.js');
+  const app = read('app.js?v=20261113-math');
   assert.match(app, /heading\.append\(chartGameTagElement\(historyView\.filters\.game, chartGames\), title, controls\)/);
   assert.match(app, /card\.querySelector\('\.chart-game-tag'\)\.textContent = chartGameTag\(game, games\)/);
   assert.equal((read('index.html').match(/class="eyebrow chart-game-tag"/g) ?? []).length, 2);
@@ -350,9 +350,9 @@ test('every game builds projection rows from its own history', () => {
   const chessRows = chessProjectionRows(chess.games);
   assert.equal(chessRows.length, chess.games.filter((game) => game.result).length);
   assert.ok(chessRows.every((row) => row.success === 0 || row.success === 100));
-  const app = read('app.js');
+  const app = read('app.js?v=20261113-math');
   assert.match(app, /renderGameProjection\(history, historyView\.filters\.game\)/);
-  assert.match(read('chess-ui.mjs'), /renderProjection\?\.\(el\('history-projection'\), games\)/);
+  assert.match(read('chess-ui.mjs?v=20261113-math'), /renderProjection\?\.\(el\('history-projection'\), games\)/);
 });
 
 // ---- Keypad shortcuts for the list games ----
@@ -379,7 +379,7 @@ test('list games: keypad 1–9 pick choices, "+" reaches 10–18, 0 is "nothing 
 
 test('Error detection and fraud choices show keypad hints and a help line; clicks still work', () => {
   const html = read('index.html');
-  const app = read('app.js');
+  const app = read('app.js?v=20261113-math');
   assert.match(html, /id="error-detection-shortcut-help">Number keypad:/);
   assert.match(html, /id="fraud-shortcut-help">Number keypad:/);
   assert.match(html, /No anomalies in this puzzle <kbd class="key-hint" aria-hidden="true">Num 0<\/kbd>/);
@@ -405,7 +405,7 @@ test('All games charts name the games they combine, on the tag, each mark and th
   assert.equal(gameBreakdownText(found), 'Cash handling 2, Number memory 1, Typing speed 1');
   assert.equal(gamesIncludedText(found), 'Games in this chart: Cash handling 2 attempts, Number memory 1 attempt, Typing speed 1 attempt.');
   assert.equal(gamesIncludedText([]), '');
-  const app = read('app.js');
+  const app = read('app.js?v=20261113-math');
   assert.match(app, /\+ markGames\(point\.attemptIds\);/);
   assert.match(app, /chartSpecDataTable\(spec, gameOf\)/);
   assert.match(app, /renderHistoryVisuals\(summarizeHistory\(records\), records\)/);
@@ -413,7 +413,8 @@ test('All games charts name the games they combine, on the tag, each mark and th
   const weakest = buildChartSpecs(history, 'all').find((spec) => spec.id === 'weakest-variables');
   assert.ok(weakest.series[0].points.every((point) => Object.values(GAME_LABELS).some((label) => point.label.toLowerCase().startsWith(`${label.toLowerCase()} · `))),
     'each All games weak spot names its game');
-  const cashWeakest = buildChartSpecs(history, 'cash').find((spec) => spec.id === 'weakest-variables');
+  // Sample data is random per seed; seed 6 has a cash weak spot since Math practice joined the sample games.
+  const cashWeakest = buildChartSpecs(generateSampleHistory({ seed: 6, now: new Date('2026-10-23T12:00:00Z') }), 'cash').find((spec) => spec.id === 'weakest-variables');
   assert.ok(cashWeakest.series[0].points.every((point) => !point.label.startsWith('Cash handling · ')), 'one game keeps its short labels');
 });
 
@@ -427,7 +428,7 @@ test('All games names the one game a chart, table or note is about', async () =>
   assert.equal(withGameName('Number memory: Digit position accuracy', 'memory'), 'Number memory: Digit position accuracy', 'no double name');
   assert.equal(withGameName('Check & ID Fraud Inspection', 'fraud-inspection'), 'Check & ID Fraud Inspection', 'case does not matter');
   assert.equal(withGameName('Accuracy', 'all'), 'Accuracy');
-  const app = read('app.js');
+  const app = read('app.js?v=20261113-math');
   assert.match(app, /const chartTitle = chartGames\.length === 1 \? withGameName\(spec\.title, chartGames\[0\]\.game\) : spec\.title;/);
   assert.match(app, /title\.textContent = chartTitle;/);
   assert.match(app, /title\.textContent = named\(id\.startsWith\('memory-'\) \? 'memory' : 'cash', \[label\]\)\[0\];/);
