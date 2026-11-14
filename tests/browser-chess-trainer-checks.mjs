@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import { DRILL_QUESTIONS } from '../chess-trainer.mjs';
+// These checks click the square buttons, so they use the tilted CSS view; the realistic WebGL view has its own check.
+const preferTilt = context => context.addInitScript(() => { if (!localStorage.getItem('cash-handling-chess-board-v1')) localStorage.setItem('cash-handling-chess-board-v1', JSON.stringify({ view: 'tilt', theme: 'green' })); });
 
 // Find the right answer for the card on screen by its question text and choices.
 async function rightAnswer(page) {
@@ -11,7 +13,7 @@ async function rightAnswer(page) {
 
 export async function checkChessTrainer(browser, base) {
   await mkdir('.artifacts/chess', { recursive: true });
-  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } }); await preferTilt(context);
   const page = await context.newPage(); const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   page.on('response', r => { if (r.status() >= 400) errors.push(`${r.status()} ${r.url()}`); });
@@ -108,6 +110,42 @@ export async function checkChessTrainer(browser, base) {
     await page.locator('[data-trainer-tab="lessons"]').click();
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'trainer fits 390px');
     await page.screenshot({ path: '.artifacts/chess/trainer-lessons-390.png', fullPage: true });
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); }
+  await checkRealisticBoard(browser, base);
+}
+
+// The default view is a WebGL board: moves are made by clicking where squares appear on screen.
+async function checkRealisticBoard(browser, base) {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 860 } });
+  const page = await context.newPage(); const errors = [];
+  page.on('pageerror', e => errors.push(e.message));
+  page.on('response', r => { if (r.status() >= 400) errors.push(`${r.status()} ${r.url()}`); });
+  try {
+    await page.goto(base);
+    await page.locator('input[name="game"][value="chess"]').check({ force: true });
+    await page.locator('#chess-setup-status').filter({ hasText: 'Computer ready' }).waitFor();
+    await page.locator('#chess-color').selectOption('w'); await page.locator('#chess-time-control').selectOption('untimed');
+    await page.getByRole('button', { name: 'Start chess game', exact: true }).click();
+    await page.locator('#chess-status').filter({ hasText: 'Your turn' }).waitFor();
+    await page.waitForFunction(() => document.querySelector('#chess-board').chessView?.ready, null, { timeout: 30000 });
+    assert.equal(await page.locator('#chess-view').inputValue(), 'real');
+    assert.equal(await page.locator('#chess-board').evaluate(n => n.classList.contains('uses-webgl') && Boolean(n.querySelector('canvas.chess-webgl'))), true);
+    const click = async square => { const p = await page.evaluate(sq => document.querySelector('#chess-board').chessView.screenPoint(sq), square); await page.mouse.click(p.x, p.y); };
+    await page.waitForTimeout(300);
+    await click('e2'); assert.equal(await page.locator('[data-square="e2"]').getAttribute('aria-pressed'), 'true');
+    await click('e4'); await page.locator('#chess-moves li').nth(1).waitFor();
+    assert.match(await page.locator('#chess-moves li').first().textContent(), /e4/);
+    // Keyboard still works through the hidden square buttons.
+    await page.locator('[data-square="d2"]').focus(); await page.keyboard.press('Enter'); await page.keyboard.press('ArrowUp'); await page.keyboard.press('ArrowUp'); await page.keyboard.press('Enter');
+    await page.locator('#chess-moves li').nth(3).waitFor();
+    await page.locator('#chess-flip').click(); await page.waitForTimeout(800);
+    await page.screenshot({ path: '.artifacts/chess/realistic-1280.png' });
+    await page.locator('#chess-view').selectOption('flat');
+    assert.equal(await page.locator('#chess-board').evaluate(n => n.classList.contains('uses-webgl') || n.classList.contains('is-3d')), false, 'flat view');
+    await page.setViewportSize({ width: 390, height: 844 }); await page.locator('#chess-view').selectOption('real'); await page.waitForTimeout(500);
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'realistic board fits 390px');
+    await page.locator('#chess-resign').click();
     assert.deepEqual(errors, []);
   } finally { await context.close(); }
 }

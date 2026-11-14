@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
+// These checks click the square buttons, so they use the tilted CSS view; the realistic WebGL view has its own check.
+const preferTilt = context => context.addInitScript(() => { if (!localStorage.getItem('cash-handling-chess-board-v1')) localStorage.setItem('cash-handling-chess-board-v1', JSON.stringify({ view: 'tilt', theme: 'green' })); });
 const move = async (page, from, to) => { await page.locator(`[data-square="${from}"]`).click(); await page.locator(`[data-square="${to}"]`).click(); };
 const setup = async (page, base) => { await page.goto(base); await page.locator('input[name="game"][value="chess"]').check(); await page.locator('#chess-setup-status').filter({ hasText: 'Computer ready' }).waitFor(); await page.locator('#chess-color').selectOption('w'); await page.locator('#chess-time-control').selectOption('untimed'); };
 const practice = async page => { while (!(await page.locator('#chess-demo-next').isDisabled())) await page.locator('#chess-demo-next').click(); await page.locator('#chess-practice').click(); };
@@ -7,7 +9,7 @@ const start = async page => { await page.getByRole('button', { name: 'Start ches
 const games = page => page.evaluate(() => JSON.parse(localStorage.getItem('cash-handling-chess-games-v1') ?? '{"value":[]}').value);
 export async function checkChess(browser, base) {
   await mkdir('.artifacts/chess', { recursive: true });
-  const context = await browser.newContext({ acceptDownloads: true });
+  const context = await browser.newContext({ acceptDownloads: true }); await preferTilt(context);
   const page = await context.newPage(); const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   page.on('response', r => { if (r.status() >= 400) errors.push(`${r.status()} ${r.url()}`); });
@@ -112,7 +114,7 @@ export async function checkChess(browser, base) {
     await page.screenshot({ path: '.artifacts/chess/history-320-dark.png', fullPage: true });
     assert.deepEqual(errors, []);
   } finally { await context.close(); }
-  const arenaContext = await browser.newContext();
+  const arenaContext = await browser.newContext(); await preferTilt(arenaContext);
   try {
     const arena = await arenaContext.newPage(); await setup(arena, base);
     const arenaErrors = []; arena.on('pageerror', error => arenaErrors.push(error.message));
@@ -169,7 +171,7 @@ export async function checkChess(browser, base) {
     await arena.locator('#chess-back').click(); assert.equal(await arena.locator('#setup-screen').isVisible(), true);
   } finally { await arenaContext.close(); }
   // Missing worker assets produce a recoverable state without running clocks.
-  const failureContext = await browser.newContext();
+  const failureContext = await browser.newContext(); await preferTilt(failureContext);
   try {
     const failurePage = await failureContext.newPage();
     await failurePage.route('**/stockfish-19-lite-single.js', route => route.abort());
@@ -184,7 +186,7 @@ export async function checkChess(browser, base) {
     await failurePage.locator('#chess-status').filter({ hasText: 'Your turn' }).waitFor();
     await move(failurePage, 'e2', 'e4'); await failurePage.locator('#chess-moves li').nth(1).waitFor();
   } finally { await failureContext.close(); }
-  const touchContext = await browser.newContext({ hasTouch: true, viewport: { width: 320, height: 900 } });
+  const touchContext = await browser.newContext({ hasTouch: true, viewport: { width: 320, height: 900 } }); await preferTilt(touchContext);
   try {
     const touch = await touchContext.newPage(); await setup(touch, base);
     await touch.locator('#chess-open-lessons').tap(); await touch.locator('[data-lesson="pawn"]').tap(); await practice(touch);

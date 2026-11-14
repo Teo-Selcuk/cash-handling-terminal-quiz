@@ -1,8 +1,8 @@
 import { enhanceHistoryList } from './history-tables.mjs?v=20261113-math';
 import { roundEndAction } from './round-shortcuts.mjs?v=20261028-amount';
 import { Chess, ChessSession, DEFAULT_POSITION, DIFFICULTIES, normalizeSettings } from './chess-core.mjs';
-import { ChessBoard } from './chess-board.mjs?v=20261113-trainer';
-import { createChessTrainer } from './chess-trainer-ui.mjs?v=20261113-trainer';
+import { ChessBoard } from './chess-board.mjs?v=20261114-real';
+import { createChessTrainer } from './chess-trainer-ui.mjs?v=20261114-real';
 import { ChessEngine, analyzeMove } from './chess-engine.mjs';
 import { ChessStore, CHESS_KEYS } from './chess-storage.mjs';
 import { CHESS_LESSONS } from './chess-lessons.mjs';
@@ -25,16 +25,22 @@ export function createChessUI({ showScreen, renderChart, showChartData, renderPr
   let disabledSetup = new Map();
   const board = new ChessBoard(el('board'), selectSquare);
   const engine = new ChessEngine({ onError: handleEngineError });
-  // Board look: 3D tilt (default on) and a color theme, shared by the game board and the trainer board.
-  const LOOK_KEY = 'cash-handling-chess-board-v1', THEMES = ['green', 'wood', 'marble', 'night'];
-  function readLook() { try { const look = JSON.parse(storage.getItem(LOOK_KEY) ?? 'null'); return { threeD: look?.threeD !== false, theme: THEMES.includes(look?.theme) ? look.theme : 'green' }; } catch { return { threeD: true, theme: 'green' }; } }
+  // Board look: realistic WebGL 3D (default), tilted CSS 3D or flat, plus a color theme. Shared by the game and trainer boards.
+  const LOOK_KEY = 'cash-handling-chess-board-v1', THEMES = ['wood', 'green', 'marble', 'night'], VIEWS = ['real', 'tilt', 'flat'];
+  function readLook() {
+    try {
+      const saved = JSON.parse(storage.getItem(LOOK_KEY) ?? 'null');
+      const view = VIEWS.includes(saved?.view) ? saved.view : saved?.threeD === false ? 'flat' : 'real';
+      return { view, theme: THEMES.includes(saved?.theme) ? saved.theme : 'wood' };
+    } catch { return { view: 'real', theme: 'wood' }; }
+  }
   let look = readLook();
-  function applyBoardLook(target) { target.root.classList.toggle('is-3d', look.threeD); target.root.dataset.boardTheme = look.theme; }
+  function applyBoardLook(target) { target.setLook(look); }
   function setLook(change) {
     look = { ...look, ...change }; try { storage.setItem(LOOK_KEY, JSON.stringify(look)); } catch { /* the look still applies for this visit */ }
     applyBoardLook(board); trainer.refreshLook(); lookControls();
   }
-  function lookControls() { el('3d').textContent = look.threeD ? '3D view: on' : '3D view: off'; el('3d').setAttribute('aria-pressed', String(look.threeD)); el('theme').value = look.theme; }
+  function lookControls() { el('view').value = look.view; el('theme').value = look.theme; }
   applyBoardLook(board);
   const trainer = createChessTrainer({
     root: el('trainer'), storage, engine, ensureEngine: () => ensureEngine(), applyBoardLook,
@@ -478,7 +484,7 @@ export function createChessUI({ showScreen, renderChart, showChartData, renderPr
   el('trainer-open').addEventListener('click', () => (trainerOpen() ? closeTrainer(true) : openTrainer()));
   el('open-trainer').addEventListener('click', () => openTrainer());
   el('trainer-close').addEventListener('click', () => closeTrainer(true));
-  el('3d').addEventListener('click', () => setLook({ threeD: !look.threeD }));
+  el('view').addEventListener('change', () => setLook({ view: el('view').value }));
   el('theme').addEventListener('change', () => setLook({ theme: el('theme').value }));
   lookControls();
   restoreSettings();timeControls(); render();

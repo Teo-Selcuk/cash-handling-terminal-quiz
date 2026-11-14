@@ -14,7 +14,9 @@ replaces `AGENTS.md`; keep every agent rule here so there is one source of truth
 - Chess trainer (game plan, lessons with demo + quiz, Flash, Read ahead, Quick analysis, Mistakes):
   content and logic in `chess-trainer.mjs`, screen in `chess-trainer-ui.mjs`. Every puzzle answer is
   checked by a material search in `tests/chess-trainer.test.mjs`; add a `check` to each new question.
-  The board's 3D view and theme live in `chess-board.mjs` + `style.css` (`.is-3d`, `data-board-theme`).
+  Board views: `real` (default, WebGL in `chess-board3d.mjs` with vendored `assets/three/`, loaded on demand
+  only when a board is visible), `tilt` (CSS `.is-3d`) and `flat`. The square buttons stay in the DOM for
+  keyboard use; browser checks that click them set the `tilt` view first, and the WebGL view has its own check.
 - History & Progress analytics live in `progress-analytics.mjs` (data) and
   `app.js` (rendering). Plain-language chart and table explanations live in
   `history-explanations.mjs`. Speed goals and progressive levels live in

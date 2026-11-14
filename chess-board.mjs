@@ -25,11 +25,13 @@ function ensurePieceGradients() {
 }
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const reducedMotion = () => globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+const VIEW_MODULE = './chess-board3d.mjs?v=20261114-real';
 const NAMES = { k: 'king', q: 'queen', r: 'rook', b: 'bishop', n: 'knight', p: 'pawn' };
 export class ChessBoard {
   constructor(root, onSelect, { key = 'square' } = {}) {
     this.key = key; this.root = root; this.onSelect = onSelect; this.flipped = false; this.focusSquare = 'e2';
     this.buttons = new Map(); this.renderedFen = null; this.arrows = []; this.marks = [];
+    this.view = 'flat'; this.theme = 'green'; this.view3d = null; this.state = null;
     ensurePieceGradients();
     this.overlay = document.createElementNS(SVG_NS, 'svg');
     this.overlay.setAttribute('class', 'chess-arrows'); this.overlay.setAttribute('viewBox', '0 0 8 8'); this.overlay.setAttribute('aria-hidden', 'true');
@@ -37,7 +39,8 @@ export class ChessBoard {
       const square = file + rank, button = document.createElement('button');
       button.type = 'button'; button.dataset[key] = square;
       button.addEventListener('click', () => { this.focusSquare = square; this.onSelect(square); });
-      button.addEventListener('focus', () => { this.focusSquare = square; this.updateTabStops(); });
+      button.addEventListener('focus', () => { this.focusSquare = square; this.updateTabStops(); this.sync3d(); });
+      button.addEventListener('blur', () => queueMicrotask(() => this.sync3d()));
       this.buttons.set(square, button);
     }
     this.root.addEventListener('keydown', event => {
@@ -62,8 +65,44 @@ export class ChessBoard {
     const lift = this.root.classList.contains('is-3d') ? ' translateZ(18px)' : ' scale(1.08)';
     return glyph.animate([{ transform: `translate(${x}px, ${y}px)` }, { transform: `translate(${x / 2}px, ${y / 2}px)${lift}`, offset: 0.5 }, { transform: 'none' }], { duration, easing: 'cubic-bezier(.3,.7,.4,1)' });
   }
+  /** View: 'real' (WebGL, loaded on demand), 'tilt' (CSS 3D) or 'flat'. Falls back to 'tilt' without WebGL. */
+  setLook({ view = 'real', theme = 'wood' } = {}) {
+    this.view = view; this.theme = theme;
+    const real = view === 'real';
+    this.root.dataset.boardTheme = theme;
+    this.root.classList.toggle('is-3d', view === 'tilt');
+    this.root.classList.toggle('uses-webgl', real && Boolean(this.view3d));
+    // Build the WebGL view only once this board is on screen, so hidden boards cost nothing at startup.
+    if (real && !this.view3d && !this.loading3d && !this.root.clientWidth) {
+      this.root.classList.add('is-3d');
+      if (!this.waitForSize) { this.waitForSize = new ResizeObserver(() => { if (this.root.clientWidth && this.view === 'real') { this.waitForSize.disconnect(); this.waitForSize = null; this.setLook({ view: this.view, theme: this.theme }); } }); this.waitForSize.observe(this.root); }
+      return;
+    }
+    if (real && !this.view3d && !this.loading3d) {
+      this.root.classList.add('is-3d'); // tilted view while the realistic one loads
+      this.loading3d = import(VIEW_MODULE).then(({ Board3D }) => {
+        if (!Board3D.supported()) throw new Error('WebGL unavailable');
+        this.view3d = new Board3D(this.root, { theme: this.theme, onSelect: square => { this.focusSquare = square; this.onSelect(square); } });
+        if (this.view === 'real') { this.root.classList.remove('is-3d'); this.root.classList.add('uses-webgl'); }
+        this.sync3d(); this.view3d.setArrows(this.arrows, this.marks);
+      }).catch(() => { this.view3dFailed = true; if (this.view === 'real') this.root.classList.add('is-3d'); });
+    }
+    if (this.view3d) { if (this.view3d.themeName !== theme) this.view3d.setTheme(theme); this.sync3d(); }
+  }
+  get realistic() { return this.view === 'real' && Boolean(this.view3d); }
+  sync3d(animate = null) {
+    if (!this.realistic || !this.state) return;
+    const { chess, selected, targets, lastMove, hint } = this.state;
+    const pieces = [];
+    for (const row of chess.board()) for (const piece of row) if (piece) pieces.push(piece);
+    const king = chess.isCheck() ? pieces.find(p => p.type === 'k' && p.color === chess.turn())?.square : null;
+    const captures = targets.filter(square => chess.get(square) || (selected && chess.get(selected)?.type === 'p' && square[0] !== selected[0]));
+    const focus = this.root.contains(document.activeElement) && document.activeElement?.dataset?.[this.key] ? document.activeElement.dataset[this.key] : null;
+    this.view3d.setFlipped(this.flipped);
+    this.view3d.update({ pieces, selected, targets, lastMove, hint, focus, check: king, captures, animate });
+  }
   /** Draw arrows ([{ from, to, kind }]) and square marks ([{ square, kind }]) on the board surface. */
-  setArrows(arrows = [], marks = []) { this.arrows = arrows; this.marks = marks; this.drawOverlay(); }
+  setArrows(arrows = [], marks = []) { this.arrows = arrows; this.marks = marks; this.drawOverlay(); this.view3d?.setArrows(arrows, marks); }
   drawOverlay() {
     const point = square => { const file = square.charCodeAt(0) - 97, rank = Number(square[1]); return this.flipped ? [7 - file + 0.5, rank - 0.5] : [file + 0.5, 8 - rank + 0.5]; };
     const parts = ['<defs>', ...['good', 'bad', 'hint', 'line'].map(kind => `<marker id="chess-arrowhead-${kind}-${this.root.id}" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="3.2" markerHeight="3.2" orient="auto-start-reverse"><path class="arrowhead-${kind}" d="M0,0 L10,5 L0,10 z"/></marker>`), '</defs>'];
@@ -81,7 +120,7 @@ export class ChessBoard {
     const order = ranks.flatMap(rank => [...files].map(file => file + rank));
     if (order.join() !== this.order?.join()) {
       const activeSquare = document.activeElement?.dataset[this.key];
-      this.order = order; this.root.replaceChildren(...order.map(square => this.buttons.get(square)), this.overlay);
+      this.order = order; this.root.replaceChildren(...order.map(square => this.buttons.get(square)), this.overlay, ...(this.view3d ? [this.view3d.renderer.domElement] : []));
       if (activeSquare) this.buttons.get(activeSquare)?.focus();
     }
     for (const square of order) {
@@ -105,5 +144,9 @@ export class ChessBoard {
       if (lastMove.flags?.includes('k') || lastMove.flags?.includes('q')) { const rank = lastMove.to[1]; const [rf, rt] = lastMove.flags.includes('k') ? ['h', 'f'] : ['a', 'd']; this.animateMove(rf + rank, rt + rank); }
     }
     this.renderedFen = fen;
+    const fromPrevious = animate && lastMove?.before && lastMove.before === this.state?.fen;
+    this.state = { chess, selected, targets, lastMove, hint, fen };
+    const castle = lastMove?.flags?.includes('k') ? ['h', 'f'] : lastMove?.flags?.includes('q') ? ['a', 'd'] : null;
+    this.sync3d(fromPrevious ? { from: lastMove.from, to: lastMove.to, rook: castle ? [castle[0] + lastMove.to[1], castle[1] + lastMove.to[1]] : null } : null);
   }
 }

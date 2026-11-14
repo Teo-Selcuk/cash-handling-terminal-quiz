@@ -7,10 +7,10 @@
     <meta name="theme-color" content="#12343b">
     <title>Cash, Memory &amp; Detail Trainer</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="style.css?v=20261113-trainer">
+    <link rel="stylesheet" href="style.css?v=20261114-real">
     <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
     <!-- Start every startup module download at once instead of discovering imports one level at a time. -->
-    <link rel="modulepreload" href="app.js?v=20261113-trainer">
+    <link rel="modulepreload" href="app.js?v=20261114-real">
     <link rel="modulepreload" href="firebase-accounts.mjs?v=20261020-sync">
     <link rel="modulepreload" href="account-data.mjs?v=20261020-fast">
     <link rel="modulepreload" href="firebase-config.mjs">
@@ -37,12 +37,12 @@
     <link rel="modulepreload" href="hold-training-ui.mjs?v=20261003-accounts">
     <link rel="modulepreload" href="math-core.mjs?v=20261113-math">
     <link rel="modulepreload" href="typing-core.mjs?v=20261002-typing">
-    <link rel="modulepreload" href="chess-ui.mjs?v=20261113-trainer">
-    <link rel="modulepreload" href="chess-trainer-ui.mjs?v=20261113-trainer">
+    <link rel="modulepreload" href="chess-ui.mjs?v=20261114-real">
+    <link rel="modulepreload" href="chess-trainer-ui.mjs?v=20261114-real">
     <link rel="modulepreload" href="chess-trainer.mjs?v=20261113-trainer">
     <link rel="modulepreload" href="chess-core.mjs">
     <link rel="modulepreload" href="assets/chess/chess.mjs">
-    <link rel="modulepreload" href="chess-board.mjs?v=20261113-trainer">
+    <link rel="modulepreload" href="chess-board.mjs?v=20261114-real">
     <link rel="modulepreload" href="chess-engine.mjs">
     <link rel="modulepreload" href="chess-analytics.mjs">
     <link rel="modulepreload" href="chess-storage.mjs">
@@ -488,7 +488,7 @@
             <section id="chess-game-actions" class="visual-card"><h3 id="chess-game-label">Computer game</h3><p id="chess-game-details"></p><p id="chess-feedback" role="status"></p><div class="action-row"><button type="button" class="secondary-button" id="chess-hint" hidden>Hint</button><button type="button" class="text-button" id="chess-resign">Resign</button><button type="button" class="secondary-button" id="chess-rematch" hidden>Rematch (Enter)</button><button type="button" class="secondary-button" id="chess-analyze" hidden>Analyze game</button><button type="button" class="text-button" id="chess-pgn">Export PGN</button></div></section>
 
             <section id="chess-review" class="visual-card" hidden><h3>Game review</h3><p id="chess-review-status" role="status"></p><p id="chess-review-position" class="chess-review-position" role="status">Move 0 of 0</p><div class="chess-review-controls" role="group" aria-label="Step through moves"><button type="button" id="chess-review-first" class="secondary-button" aria-label="First position">⏮ First</button><button type="button" id="chess-review-prev" class="secondary-button" aria-label="Previous move">◀ Previous</button><button type="button" id="chess-review-next" class="secondary-button" aria-label="Next move">Next ▶</button><button type="button" id="chess-review-last" class="secondary-button" aria-label="Last position">Last ⏭</button></div><label>Replay position<input type="range" id="chess-replay" min="0" max="0" value="0"></label><p class="chart-note">Tip: use the Left and Right arrow keys to step, or select a move in the list.</p><p id="chess-review-move"></p><p id="chess-review-eval"></p><p class="chart-note">Centipawn loss compares the played move with the engine’s best move using 250 ms per search. Inaccuracy ≥50, mistake ≥100, blunder ≥200. Forced mates are separate. Short searches are estimates.</p></section>
-            <section id="chess-moves-card" class="visual-card chess-moves-card" aria-labelledby="chess-moves-heading"><h3 id="chess-moves-heading">Moves</h3><ol id="chess-moves" class="chess-moves"></ol></section><section id="chess-look-card" class="visual-card chess-look" aria-labelledby="chess-look-heading"><h3 id="chess-look-heading">Board look</h3><div class="action-row"><button type="button" class="secondary-button" id="chess-3d" aria-pressed="true">3D view: on</button><label class="chess-theme-label">Board <select id="chess-theme"><option value="green">Classic green</option><option value="wood">Walnut wood</option><option value="marble">Blue marble</option><option value="night">Night</option></select></label></div></section>
+            <section id="chess-moves-card" class="visual-card chess-moves-card" aria-labelledby="chess-moves-heading"><h3 id="chess-moves-heading">Moves</h3><ol id="chess-moves" class="chess-moves"></ol></section><section id="chess-look-card" class="visual-card chess-look" aria-labelledby="chess-look-heading"><h3 id="chess-look-heading">Board look</h3><div class="action-row"><label class="chess-theme-label">View <select id="chess-view"><option value="real">Realistic 3D</option><option value="tilt">Tilted 3D</option><option value="flat">Flat</option></select></label><label class="chess-theme-label">Board <select id="chess-theme"><option value="wood">Walnut &amp; maple</option><option value="green">Classic green</option><option value="marble">Blue marble</option><option value="night">Night</option></select></label></div></section>
           </aside>
         </div>
       </section>
@@ -1043,6 +1043,6 @@
       <p class="answer-toast-title" id="answer-toast-title"></p>
       <dl class="answer-toast-lines" id="answer-toast-lines"></dl>
     </aside>
-    <script type="module" src="app.js?v=20261113-trainer"></script>
+    <script type="module" src="app.js?v=20261114-real"></script>
   </body>
 </html>
