@@ -8,15 +8,19 @@ const SHAPES = {
   q: '<path class="piece-body" d="M10,40 H35 L34,33.5 L37,16 L31,26 L29,13 L25,25 L22.5,11 L20,25 L16,13 L14,26 L8,16 L11,33.5 Z"/><circle class="piece-body" cx="8" cy="15" r="2.4"/><circle class="piece-body" cx="16" cy="12" r="2.4"/><circle class="piece-body" cx="22.5" cy="9.5" r="2.4"/><circle class="piece-body" cx="29" cy="12" r="2.4"/><circle class="piece-body" cx="37" cy="15" r="2.4"/><path class="piece-detail" d="M11.5,35.5 H33.5"/>',
   k: '<path class="piece-body" d="M11,40 H34 L33,33 C36.5,29.5 38.5,25 36,21 C33.5,17 28.5,17.5 25.5,21.5 L22.5,25.5 L19.5,21.5 C16.5,17.5 11.5,17 9,21 C6.5,25 8.5,29.5 12,33 Z"/><path class="piece-body" d="M19.8,23 L20.5,15.5 H24.5 L25.2,23 Z"/><path class="piece-body" d="M21.3,4 H23.7 V7 H26.5 V9.4 H23.7 V15.5 H21.3 V9.4 H18.5 V7 H21.3 Z"/><path class="piece-detail" d="M12.5,35.5 H32.5"/>',
 };
-const pieceSvg = (type) => `<svg viewBox="0 0 45 45" aria-hidden="true" focusable="false">${SHAPES[type]}</svg>`;
+// Each piece is drawn twice: the shaded body, then a glossy highlight layer of the same silhouette on top.
+const glossShapes = type => SHAPES[type].replace(/<(?:path|rect|circle)[^>]*class="(?:piece-detail|piece-eye)"[^>]*\/>/g, '').replace(/piece-body/g, 'piece-gloss');
+const pieceSvg = (type) => `<svg viewBox="0 0 45 45" aria-hidden="true" focusable="false">${SHAPES[type]}${glossShapes(type)}</svg>`;
 // Shared gradients give the pieces a polished, rounded look in 3D view. Defined once per page.
 function ensurePieceGradients() {
   if (typeof document === 'undefined' || document.getElementById('chess-piece-gradients')) return;
   const holder = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   holder.id = 'chess-piece-gradients'; holder.setAttribute('aria-hidden', 'true'); holder.setAttribute('width', '0'); holder.setAttribute('height', '0');
   holder.style.position = 'absolute';
-  holder.innerHTML = '<defs><linearGradient id="chess-grad-w" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="0.55" stop-color="#ece6d6"/><stop offset="1" stop-color="#b9ad93"/></linearGradient>'
-    + '<linearGradient id="chess-grad-b" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6a6a72"/><stop offset="0.45" stop-color="#2a2a30"/><stop offset="1" stop-color="#0b0b0e"/></linearGradient></defs>';
+  holder.innerHTML = '<defs>'
+    + '<radialGradient id="chess-grad-w" cx="0.34" cy="0.3" r="0.85"><stop offset="0" stop-color="#ffffff"/><stop offset="0.45" stop-color="#f1eadb"/><stop offset="0.8" stop-color="#bfb299"/><stop offset="1" stop-color="#8d8167"/></radialGradient>'
+    + '<radialGradient id="chess-grad-b" cx="0.34" cy="0.3" r="0.85"><stop offset="0" stop-color="#9a9aa8"/><stop offset="0.4" stop-color="#454551"/><stop offset="0.8" stop-color="#14141a"/><stop offset="1" stop-color="#000000"/></radialGradient>'
+    + '<linearGradient id="chess-grad-gloss" x1="0.05" y1="0" x2="0.75" y2="0.9"><stop offset="0" stop-color="#ffffff" stop-opacity="0.75"/><stop offset="0.3" stop-color="#ffffff" stop-opacity="0.22"/><stop offset="0.55" stop-color="#ffffff" stop-opacity="0"/><stop offset="1" stop-color="#000000" stop-opacity="0.18"/></linearGradient></defs>';
   document.body.append(holder);
 }
 const SVG_NS = 'http://www.w3.org/2000/svg';
