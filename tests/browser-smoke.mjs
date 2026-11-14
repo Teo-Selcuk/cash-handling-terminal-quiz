@@ -20,6 +20,7 @@ import { checkHoldTraining } from './browser-hold-training-checks.mjs';
 import { checkChartFormatting } from './browser-chart-format-checks.mjs';
 import { checkChess } from './browser-chess-checks.mjs';
 import { checkChessTrainer } from './browser-chess-trainer-checks.mjs';
+import { checkTouch } from './browser-touch-checks.mjs';
 import { checkRound2 } from './browser-round2-checks.mjs';
 import { checkOverload } from './browser-overload-checks.mjs';
 import { checkFirebase, checkGuestAccess, withApprovedProfiles } from './browser-firebase-checks.mjs';
@@ -91,6 +92,8 @@ try {
     await checkTyping(browser, base);
   } else if (process.env.QUIZ_FOCUSED === 'chess') {
     await checkChess(browser, base);
+  } else if (process.env.QUIZ_FOCUSED === 'touch') {
+    await checkTouch(browser, base);
   } else if (process.env.QUIZ_FOCUSED === 'chess-trainer') {
     await checkChessTrainer(browser, base);
   } else if (process.env.QUIZ_FOCUSED === 'progress') {
@@ -124,6 +127,7 @@ try {
   await checkRound3(browser, base);
   await checkChess(browser, base);
   await checkChessTrainer(browser, base);
+  await checkTouch(browser, base);
   await checkRound2(browser, base);
   }
   await checkAutoContinue(browser, base);

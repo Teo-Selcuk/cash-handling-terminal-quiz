@@ -7,10 +7,10 @@
     <meta name="theme-color" content="#12343b">
     <title>Cash, Memory &amp; Detail Trainer</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="style.css?v=20261114-real">
+    <link rel="stylesheet" href="style.css?v=20261114-touch">
     <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
     <!-- Start every startup module download at once instead of discovering imports one level at a time. -->
-    <link rel="modulepreload" href="app.js?v=20261114-real">
+    <link rel="modulepreload" href="app.js?v=20261114-touch">
     <link rel="modulepreload" href="firebase-accounts.mjs?v=20261020-sync">
     <link rel="modulepreload" href="account-data.mjs?v=20261020-fast">
     <link rel="modulepreload" href="firebase-config.mjs">
@@ -37,12 +37,12 @@
     <link rel="modulepreload" href="hold-training-ui.mjs?v=20261003-accounts">
     <link rel="modulepreload" href="math-core.mjs?v=20261113-math">
     <link rel="modulepreload" href="typing-core.mjs?v=20261002-typing">
-    <link rel="modulepreload" href="chess-ui.mjs?v=20261114-real">
-    <link rel="modulepreload" href="chess-trainer-ui.mjs?v=20261114-real">
+    <link rel="modulepreload" href="chess-ui.mjs?v=20261114-touch">
+    <link rel="modulepreload" href="chess-trainer-ui.mjs?v=20261114-touch">
     <link rel="modulepreload" href="chess-trainer.mjs?v=20261113-trainer">
     <link rel="modulepreload" href="chess-core.mjs">
     <link rel="modulepreload" href="assets/chess/chess.mjs">
-    <link rel="modulepreload" href="chess-board.mjs?v=20261114-real">
+    <link rel="modulepreload" href="chess-board.mjs?v=20261114-touch">
     <link rel="modulepreload" href="chess-engine.mjs">
     <link rel="modulepreload" href="chess-analytics.mjs">
     <link rel="modulepreload" href="chess-storage.mjs">
@@ -577,6 +577,7 @@
           <label for="math-answer">Your answer
             <input id="math-answer" name="mathAnswer" type="text" inputmode="numeric" autocomplete="off" placeholder="Type the answer" aria-describedby="math-answer-message">
           </label>
+          <button class="secondary-button math-sign-button" id="math-sign" type="button" aria-controls="math-answer">± Switch to negative</button>
           <p class="field-message" id="math-answer-message" aria-live="polite"></p>
           <button class="primary-button" id="math-submit" type="submit">Submit answer</button>
         </form>
@@ -1043,6 +1044,6 @@
       <p class="answer-toast-title" id="answer-toast-title"></p>
       <dl class="answer-toast-lines" id="answer-toast-lines"></dl>
     </aside>
-    <script type="module" src="app.js?v=20261114-real"></script>
+    <script type="module" src="app.js?v=20261114-touch"></script>
   </body>
 </html>

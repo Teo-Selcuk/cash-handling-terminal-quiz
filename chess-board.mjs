@@ -25,7 +25,7 @@ function ensurePieceGradients() {
 }
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const reducedMotion = () => globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-const VIEW_MODULE = './chess-board3d.mjs?v=20261114-real';
+const VIEW_MODULE = './chess-board3d.mjs?v=20261114-touch';
 const NAMES = { k: 'king', q: 'queen', r: 'rook', b: 'bishop', n: 'knight', p: 'pawn' };
 export class ChessBoard {
   constructor(root, onSelect, { key = 'square' } = {}) {

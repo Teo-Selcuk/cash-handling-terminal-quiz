@@ -55,6 +55,9 @@ replaces `AGENTS.md`; keep every agent rule here so there is one source of truth
   count in its header and Minimize/Expand all buttons. Tests that need a table must open it first
   (`openAllTables` in `tests/browser-all-tables-checks.mjs`) and find moved tables by `data-table-source`.
 - Setup screen game cards share one width and height; long text wraps inside.
+- Every game works on phones and tablets in both orientations: no sideways scrolling, 44px touch
+  targets, and 16px text in fields (iPhones zoom into smaller text). `QUIZ_FOCUSED=touch` checks all
+  games at 390x844, 844x390, 768x1024 and 1024x768, including a finger tap on the 3D chess board.
 - Cash handling answer choices: picking Exact, Change, or Short (keypad `/ * -` or a click) never moves
   focus into the cash builder and never changes a bill or coin count. Change and Short move focus to the
   amount box (or keep it there); Exact turns the amount box off and focuses its choice. Switching choices

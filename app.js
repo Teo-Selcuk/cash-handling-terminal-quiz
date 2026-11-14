@@ -19,7 +19,7 @@ import { renderHoldTraining, readHoldAnswer } from './hold-training-ui.mjs?v=202
 import { MATH_GAME, MATH_OPERATION_IDS, MATH_PRESETS, resolveMathSettings, createMathQuestion, scoreMathAnswer, mathRecordFields, summarizeMathHistory } from './math-core.mjs?v=20261113-math';
 import { TYPING_PRESETS, resolveTypingSettings, createTypingPrompt, scoreTyping, summarizeTyping } from './typing-core.mjs?v=20261002-typing';
 import { PATTERN_GAME_NAMES } from './pattern-games.mjs';
-import { createChessUI } from './chess-ui.mjs?v=20261114-real';
+import { createChessUI } from './chess-ui.mjs?v=20261114-touch';
 import { ChessStore } from './chess-storage.mjs';
 import { createDistractionSamples } from './distraction-sounds.mjs';
 import {
@@ -6884,6 +6884,13 @@ updateGameAccess();
 // Sign-in and sign-out switch accounts without a reload, so game access follows the account live.
 window.addEventListener('account-change',()=>{updateGameAccess();if(state.activeScreen==='setup')updateGameSetup();});
 document.getElementById('fraud-signin').addEventListener('click',()=>requireGameAccess('fraud-inspection'));
+// Phone number pads have no minus key, so Math practice offers a sign button for negative answers.
+document.getElementById('math-sign').addEventListener('click', () => {
+  const input = document.getElementById('math-answer');
+  input.value = input.value.startsWith('-') ? input.value.slice(1) : `-${input.value}`;
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  input.focus({ preventScroll: true });
+});
 refs['setup-form'].inert=false;
 document.querySelector('.header-actions').inert=false;
 document.getElementById('qralarm-connection').inert=false;

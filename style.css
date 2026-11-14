@@ -1508,7 +1508,54 @@ body:has(.interactive-chart.is-maximized) #history-screen .history-charts { cont
 /* ===== Realistic 3D view (WebGL canvas from chess-board3d.mjs). The square buttons stay for keyboard and screen readers. ===== */
 .chess-webgl { display: none; }
 #chess-screen .chess-board.uses-webgl { border: 0; border-radius: 0; background: transparent; box-shadow: none; transform: none; overflow: visible; }
-.chess-board.uses-webgl .chess-webgl { display: block; position: absolute; left: -12%; top: -5%; width: 124%; height: 110%; z-index: 4; touch-action: manipulation; }
+.chess-board.uses-webgl .chess-webgl { display: block; position: absolute; z-index: 4; touch-action: manipulation; }
 .chess-board.uses-webgl > button.chess-square { opacity: 0; pointer-events: none; }
 .chess-board.uses-webgl .chess-arrows { display: none; }
-@media (max-width: 700px) { .chess-board.uses-webgl .chess-webgl { left: -3%; width: 106%; } }
+
+/* ===== Phones and tablets: every game ===== */
+/* The realistic chess canvas fits exactly over the board; the camera frames the whole set inside it. */
+.chess-board.uses-webgl .chess-webgl { left: 0; top: 0; width: 100%; height: 100%; }
+.math-sign-button { display: none; }
+@media (pointer: coarse) { .math-sign-button { display: inline-flex; justify-content: center; margin-top: 0.25rem; } }
+@media (max-width: 1024px), (pointer: coarse) {
+  /* iOS zooms into any field with text under 16px, which shifts the whole page. */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea { font-size: max(16px, 1em); }
+  /* Every expandable section header is a comfortable tap target. */
+  details > summary { min-height: 44px; }
+  details > summary:not([class]) { padding-block: 0.7rem; }
+  /* Multitasker: full-size buttons and checkboxes. */
+  .overload-controls button, .overload-task-content button { min-height: 44px; min-width: 44px; padding: 0.5rem 0.9rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--ink); font-weight: 650; }
+  .multitasker-task-toggle { min-height: 44px; display: flex; align-items: center; gap: 0.6rem; }
+  .multitasker-task-toggle input[type="checkbox"], .overload-toggles input[type="checkbox"] { width: 1.35rem; height: 1.35rem; }
+  .trainer-tab { min-height: 44px; }
+  #chess-screen .chess-toolbar button { min-height: 44px; }
+}
+.overload-controls button, .overload-task-content button { cursor: pointer; }
+.overload-task-content form button { flex: none; padding-inline: 1rem; }
+@media (max-width: 600px) {
+  /* Chess on phones: the board uses the full screen width and the controls above it stay compact. */
+  #chess-screen .chess-board-column > .chess-board, #chess-screen .trainer-board-column > .chess-board { width: calc(100vw - 12px); max-width: none; flex: none; margin-inline: calc((100% - 100vw + 12px) / 2); align-self: auto; }
+  #chess-screen .chess-board-column > .chess-clocks { width: 100%; }
+  #chess-fullscreen, #chess-fullscreen-note { display: none; }
+  #chess-screen .chess-topbar { margin-block: 0.25rem 0.5rem; gap: 0.4rem; }
+  #chess-screen .chess-topbar > #chess-status { flex-basis: 100%; padding: 0.4rem 0.6rem; font-size: 0.95rem; }
+  #chess-screen .chess-toolbar { gap: 0.4rem; }
+  #chess-screen .chess-toolbar button { flex: 1 1 auto; }
+  .trainer-tab { flex: 1 1 auto; padding-inline: 0.7rem; }
+}
+@media (max-width: 1024px), (pointer: coarse) { label:has(> #fraud-use-holds) { display: flex; align-items: center; gap: 0.6rem; min-height: 44px; } #fraud-use-holds { width: 1.35rem; height: 1.35rem; } }
+/* The 3D set is wider than it is tall, so its canvas is too: less empty space above and below. */
+#chess-screen .chess-board.uses-webgl, #chess-screen #chess-trainer-board.uses-webgl { aspect-ratio: 10 / 9; }
+/* Phones held sideways: board on the left at the full screen height, tools scroll on the right. */
+@media (orientation: landscape) and (max-height: 520px) {
+  #chess-screen > .screen-title-row .eyebrow, #chess-fullscreen, #chess-fullscreen-note { display: none; }
+  #chess-screen > .screen-title-row h2 { font-size: 1.2rem; margin: 0; }
+  #chess-screen .chess-topbar { margin-block: 0.25rem; }
+  #chess-screen .chess-layout, #chess-screen .trainer-layout { grid-template-columns: auto minmax(14rem, 1fr); gap: 0.75rem; align-items: start; }
+  #chess-screen .chess-board-column > .chess-board, #chess-screen #chess-trainer-board { width: min(60vw, calc(100dvh - 4.5rem)); max-width: none; }
+  #chess-screen .chess-board-column > .chess-clocks { width: min(60vw, calc(100dvh - 4.5rem)); margin-bottom: 0.35rem; }
+  #chess-screen .chess-clocks > div { padding: 0.35rem 0.5rem; font-size: 0.8rem; }
+  #chess-screen .chess-sidebar { position: static; max-height: calc(100dvh - 1rem); overflow-y: auto; }
+}
+/* A tilted or 3D board's near edge may overhang the screen edge slightly; never let it scroll the page sideways. */
+#chess-screen { overflow-x: clip; }

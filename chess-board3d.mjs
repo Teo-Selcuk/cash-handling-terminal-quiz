@@ -5,7 +5,6 @@ import * as THREE from './assets/three/three.module.min.js';
 
 const FILES = 'abcdefgh';
 const BOARD_HALF = 4.7; // half the frame width, in squares
-const TILT_POSITIONS = { w: new THREE.Vector3(0, 13.4, 12.4), b: new THREE.Vector3(0, 13.4, -12.4) };
 const PIECE_SCALE = 0.9;
 
 // ---------- procedural textures ----------
@@ -112,7 +111,7 @@ export class Board3D {
 
     const scene = this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(33, 1, 0.1, 100);
-    this.camera.position.copy(TILT_POSITIONS.w); this.camera.lookAt(0, 0, 1.05);
+    this.yaw = 0; this.view = { elevation: 0.82, distance: 18, targetZ: 1 };
     // Soft studio reflections: a simple room with bright panels, pre-filtered for the glossy finishes.
     const pmrem = new THREE.PMREMGenerator(renderer), room = new THREE.Scene();
     room.add(new THREE.Mesh(new THREE.BoxGeometry(30, 16, 30), new THREE.MeshBasicMaterial({ color: 0x5b5048, side: THREE.BackSide })));
@@ -213,7 +212,32 @@ export class Board3D {
     const width = this.renderer.domElement.clientWidth, height = this.renderer.domElement.clientHeight;
     if (!width || !height) return;
     this.renderer.setSize(width, height, false);
-    this.camera.aspect = width / height; this.camera.updateProjectionMatrix(); this.invalidate();
+    this.camera.aspect = width / height; this.camera.updateProjectionMatrix();
+    this.fitCamera(width); this.invalidate();
+  }
+  /** Camera on a circle around the board: yaw 0 is White's side, π is Black's. */
+  placeCamera(yaw = this.yaw) {
+    const { elevation, distance, targetZ } = this.view, target = new THREE.Vector3(Math.sin(yaw) * targetZ, 0, Math.cos(yaw) * targetZ);
+    this.camera.position.set(target.x + Math.sin(yaw) * Math.cos(elevation) * distance, Math.sin(elevation) * distance, target.z + Math.cos(yaw) * Math.cos(elevation) * distance);
+    this.camera.lookAt(target); this.camera.updateMatrixWorld();
+  }
+  /**
+   * Fit the whole board (frame and the tallest back-rank pieces) into the canvas, whatever its shape.
+   * Small screens look down more steeply, so the far squares stay big enough to tap.
+   */
+  fitCamera(width) {
+    this.view.elevation = (width < 520 ? 66 : width < 900 ? 57 : 48) * Math.PI / 180;
+    const points = [];
+    for (const x of [-BOARD_HALF, BOARD_HALF]) for (const z of [-BOARD_HALF, BOARD_HALF]) points.push(new THREE.Vector3(x, 0, z), new THREE.Vector3(x, -0.41, z));
+    for (const x of [-3.5, 3.5]) for (const z of [-3.5, 3.5]) points.push(new THREE.Vector3(x, 1.35, z));
+    for (let i = 0; i < 12; i++) {
+      this.placeCamera(0);
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      for (const p of points) { const q = p.clone().project(this.camera); minX = Math.min(minX, q.x); maxX = Math.max(maxX, q.x); minY = Math.min(minY, q.y); maxY = Math.max(maxY, q.y); }
+      this.view.distance *= Math.max((maxX - minX) / 2 / 0.97, (maxY - minY) / 2 / 0.95);
+      this.view.targetZ -= (maxY + minY) / 2 * this.view.distance * 0.18;
+    }
+    this.placeCamera();
   }
   squarePosition(square) { return new THREE.Vector3(FILES.indexOf(square[0]) - 3.5, 0, 3.5 - (Number(square[1]) - 1)); }
   screenPoint(square) {
@@ -237,15 +261,10 @@ export class Board3D {
   setFlipped(flipped) {
     if (flipped === this.flipped) return;
     this.flipped = flipped;
-    const from = this.camera.position.clone(), to = TILT_POSITIONS[flipped ? 'b' : 'w'], target = new THREE.Vector3(0, 0, flipped ? -1.05 : 1.05), start = performance.now();
+    const from = this.yaw, to = flipped ? Math.PI : 0, start = performance.now();
     this.tweens.push(now => {
-      const t = Math.min(1, (now - start) / 600), e = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
-      // Swing around the board instead of passing through it.
-      const angle = Math.atan2(from.x, from.z) + (Math.atan2(to.x, to.z + 1e-6) - Math.atan2(from.x, from.z) || Math.PI) * e;
-      const radius = Math.hypot(from.x, from.z);
-      this.camera.position.set(Math.sin(angle) * radius, from.y, Math.cos(angle) * radius);
-      this.camera.lookAt(new THREE.Vector3(0, 0, 1.05 * Math.cos(angle)));
-      if (t === 1) { this.camera.position.copy(to); this.camera.lookAt(target); }
+      const t = Math.min(1, (now - start) / 650), e = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
+      this.yaw = from + (to - from) * e; this.placeCamera();
       return t < 1;
     });
     this.invalidate();

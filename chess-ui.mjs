@@ -1,8 +1,8 @@
 import { enhanceHistoryList } from './history-tables.mjs?v=20261113-math';
 import { roundEndAction } from './round-shortcuts.mjs?v=20261028-amount';
 import { Chess, ChessSession, DEFAULT_POSITION, DIFFICULTIES, normalizeSettings } from './chess-core.mjs';
-import { ChessBoard } from './chess-board.mjs?v=20261114-real';
-import { createChessTrainer } from './chess-trainer-ui.mjs?v=20261114-real';
+import { ChessBoard } from './chess-board.mjs?v=20261114-touch';
+import { createChessTrainer } from './chess-trainer-ui.mjs?v=20261114-touch';
 import { ChessEngine, analyzeMove } from './chess-engine.mjs';
 import { ChessStore, CHESS_KEYS } from './chess-storage.mjs';
 import { CHESS_LESSONS } from './chess-lessons.mjs';
@@ -127,7 +127,9 @@ export function createChessUI({ showScreen, renderChart, showChartData, renderPr
       if (active) el('fullscreen-note').textContent = 'Browser fullscreen was unavailable. Chess remains playable here; you can retry with Enter fullscreen.';
     });
   }
-  function open() { active = true; showScreen('chess'); fullscreenLabel();el('screen').scrollIntoView({block:'start'}); }
+  function open() { active = true; showScreen('chess'); fullscreenLabel();
+    // Short landscape phones: start with the board at the top of the screen; the title and toolbar are a scroll away.
+    (innerHeight < 520 && innerWidth > innerHeight ? document.querySelector('#chess-screen .chess-layout') : el('screen')).scrollIntoView({block:'start'}); }
   async function start({ fen = DEFAULT_POSITION, lessonId = null, restored = null } = {}) {
     closeTrainer(); engine.cancel(); busy = false; lesson = null; review = null; selected = null; hint = null; promotion = null;
     session = restored ? ChessSession.restore(restored) : new ChessSession(settings(), { fen, lessonId });

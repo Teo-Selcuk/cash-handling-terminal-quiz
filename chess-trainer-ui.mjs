@@ -1,7 +1,7 @@
 // Chess trainer screen: plan, lessons (idea -> animated demo -> quiz), flash drills,
 // read-ahead drills, quick analysis (puzzles or engine positions from your games) and mistake review.
 import { Chess } from './chess-core.mjs';
-import { ChessBoard } from './chess-board.mjs?v=20261114-real';
+import { ChessBoard } from './chess-board.mjs?v=20261114-touch';
 import {
   TRAINER_CONCEPTS, TRACKS, TRACK_NOTES, FLASH_LEVELS, PLAN_STAGES, conceptById, lessonQuiz, flashDeck, analysisDeck,
   readAheadQuestion, mistakeQueue, dailyWorkout, refutation, readStats, writeStats, recordAnswer, recordRun, recordLesson,

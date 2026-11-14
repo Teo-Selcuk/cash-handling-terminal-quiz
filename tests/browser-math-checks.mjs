@@ -71,7 +71,8 @@ export async function checkMath(browser, base) {
     await page.goto(base);
     await page.locator('input[name="game"][value="math"]').check();
     assert.deepEqual(await page.locator('#math-operations input:checked').evaluateAll((inputs) => inputs.map((input) => input.value)), ['division']);
-    await page.locator('#math-op-division').uncheck();
+    // click(), not uncheck(): the app keeps the box ticked, so uncheck() would throw before the assertion.
+    await page.locator('#math-op-division').click();
     assert.equal(await page.locator('#math-op-division').isChecked(), true);
 
     // Auto-continue goes straight on and shows the right/wrong note; the timer times a question out.
