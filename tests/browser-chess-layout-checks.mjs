@@ -33,7 +33,8 @@ export async function checkChessLayout(browser, base) {
         document.getElementById('chess-screen').scrollIntoView({ block: 'start' });
         const box = (s) => document.querySelector(s).getBoundingClientRect();
         const board = box('#chess-board'), moves = box('#chess-moves-card'), actions = box('#chess-game-actions');
-        return { board: { w: board.width, h: board.height, top: board.top, bottom: board.bottom, right: board.right, left: board.left },
+        const own = document.querySelector('#chess-board'); // layout size; the 3D tilt only changes the drawn box
+        return { board: { w: own.offsetWidth, h: own.offsetHeight, top: board.top, bottom: board.bottom, right: board.right, left: board.left },
           moves: { left: moves.left, top: moves.top }, actions: { left: actions.left }, inner: innerHeight, scrollWidth: document.documentElement.scrollWidth, innerWidth };
       });
       assert.ok(Math.abs(layout.board.w - layout.board.h) <= 1, `${width}x${height}: board stays square (${layout.board.w}x${layout.board.h})`);
@@ -47,7 +48,8 @@ export async function checkChessLayout(browser, base) {
     }
     await page.setViewportSize({ width: 1280, height: 800 });
 
-    // Piece colors are readable on both square colors.
+    // Piece colors are readable on both square colors (checked on the flat 2D board; 3D uses shaded versions of the same colors).
+    await page.locator('#chess-3d').click();
     const colors = await page.evaluate(() => {
       const fill = (square) => getComputedStyle(document.querySelector(`[data-square="${square}"] .piece-body`)).fill;
       const bg = (square) => getComputedStyle(document.querySelector(`[data-square="${square}"]`)).backgroundColor;
@@ -60,6 +62,8 @@ export async function checkChessLayout(browser, base) {
     assert.ok(contrast(colors.white, colors.black) >= 7, 'white and black pieces are clearly different');
     const outline = await page.evaluate(() => getComputedStyle(document.querySelector('[data-square="e1"] .piece-body')).stroke);
     assert.ok(contrast(outline, colors.light) >= 3, 'white piece outline readable on light squares');
+    await page.locator('#chess-3d').click();
+    assert.equal(await page.locator('#chess-board').evaluate(node => node.classList.contains('is-3d')), true, '3D view comes back on');
 
     // Moves show in numbered order; review steps forward and back with visible controls.
     await move(page, 'e2', 'e4'); await page.locator('#chess-moves li').nth(1).waitFor();

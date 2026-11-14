@@ -93,7 +93,8 @@ export async function checkChess(browser, base) {
       for (const theme of ['light', 'dark']) {
         await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
         assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Chess fits ${width}px ${theme}`);
-        const boardBounds = await page.locator('#chess-board').boundingBox();
+        // Layout size: the 3D tilt changes the on-screen box, not the board's own square shape.
+        const boardBounds = await page.locator('#chess-board').evaluate(node => ({ width: node.offsetWidth, height: node.offsetHeight }));
         for (const id of width >= 768 ? ['chess-back', 'chess-lessons-toggle', 'chess-flip'] : []) {
           const bounds = await page.locator('#' + id).boundingBox();
           assert.ok(bounds && bounds.x >= 0 && bounds.x + bounds.width <= width && bounds.y >= 0 && bounds.y + bounds.height <= 900, `${id} stays on screen at ${width}px`);

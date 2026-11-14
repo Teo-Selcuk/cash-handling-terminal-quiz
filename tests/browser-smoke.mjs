@@ -19,6 +19,7 @@ import { checkFraudInspection } from './browser-fraud-inspection-checks.mjs';
 import { checkHoldTraining } from './browser-hold-training-checks.mjs';
 import { checkChartFormatting } from './browser-chart-format-checks.mjs';
 import { checkChess } from './browser-chess-checks.mjs';
+import { checkChessTrainer } from './browser-chess-trainer-checks.mjs';
 import { checkRound2 } from './browser-round2-checks.mjs';
 import { checkOverload } from './browser-overload-checks.mjs';
 import { checkFirebase, checkGuestAccess, withApprovedProfiles } from './browser-firebase-checks.mjs';
@@ -30,7 +31,7 @@ const server = createServer(async (request, response) => {
   const path = new URL(request.url, 'http://localhost').pathname;
   const file = path === '/' ? 'index.html' : path.slice(1);
   if (file === 'cash-mistakes.mjs') { response.setHeader('Content-Type', 'text/javascript'); response.end(await readFile(resolve(root, file))); return; }
-  if (!['account-access.mjs', 'firebase-accounts.mjs', 'firebase-config.mjs', 'account-data.mjs', 'overload-core.mjs', 'overload-ui.mjs', 'overload-analytics.mjs', 'check-holds.mjs', 'hold-training-ui.mjs', 'history-tables.mjs', 'history-explanations.mjs', 'chart-contrast.mjs', 'chart-examples.mjs', 'chart-games.mjs', 'numpad-shortcuts.mjs', 'amount-input.mjs', 'round-shortcuts.mjs', 'answer-toast.mjs', 'progress-projection.mjs', 'speed-goals.mjs', 'typing-core.mjs', 'math-core.mjs', 'index.html', 'app.js', 'style.css', 'quiz-core.mjs', 'pattern-games.mjs', 'distraction-sounds.mjs', 'adaptive-practice.mjs', 'progress-analytics.mjs', 'fraud-inspection.mjs', 'sample-history.mjs', 'chess-ui.mjs', 'chess-core.mjs', 'chess-board.mjs', 'chess-engine.mjs', 'chess-lessons.mjs', 'chess-storage.mjs', 'chess-analytics.mjs', 'assets/chess/chess.mjs', 'assets/chess/chess.js.map', 'assets/chess/stockfish-19-lite-single.js', 'assets/chess/stockfish-19-lite-single.wasm', 'assets/chess/chess-LICENSE', 'assets/chess/stockfish-COPYING.txt', 'assets/fraud/id-portrait-female-20260922.jpg', 'assets/fraud/id-portrait-male-20260922.jpg', 'assets/fraud/id-portrait-female-2-20260929.jpg', 'assets/fraud/id-portrait-male-2-20260929.jpg'].includes(file)) {
+  if (!['account-access.mjs', 'firebase-accounts.mjs', 'firebase-config.mjs', 'account-data.mjs', 'overload-core.mjs', 'overload-ui.mjs', 'overload-analytics.mjs', 'check-holds.mjs', 'hold-training-ui.mjs', 'history-tables.mjs', 'history-explanations.mjs', 'chart-contrast.mjs', 'chart-examples.mjs', 'chart-games.mjs', 'numpad-shortcuts.mjs', 'amount-input.mjs', 'round-shortcuts.mjs', 'answer-toast.mjs', 'progress-projection.mjs', 'speed-goals.mjs', 'typing-core.mjs', 'math-core.mjs', 'index.html', 'app.js', 'style.css', 'quiz-core.mjs', 'pattern-games.mjs', 'distraction-sounds.mjs', 'adaptive-practice.mjs', 'progress-analytics.mjs', 'fraud-inspection.mjs', 'sample-history.mjs', 'chess-ui.mjs', 'chess-trainer-ui.mjs', 'chess-trainer.mjs', 'chess-core.mjs', 'chess-board.mjs', 'chess-engine.mjs', 'chess-lessons.mjs', 'chess-storage.mjs', 'chess-analytics.mjs', 'assets/chess/chess.mjs', 'assets/chess/chess.js.map', 'assets/chess/stockfish-19-lite-single.js', 'assets/chess/stockfish-19-lite-single.wasm', 'assets/chess/chess-LICENSE', 'assets/chess/stockfish-COPYING.txt', 'assets/fraud/id-portrait-female-20260922.jpg', 'assets/fraud/id-portrait-male-20260922.jpg', 'assets/fraud/id-portrait-female-2-20260929.jpg', 'assets/fraud/id-portrait-male-2-20260929.jpg'].includes(file)) {
     response.writeHead(404).end(); return;
   }
   response.setHeader('Content-Type', file.endsWith('.jpg') ? 'image/jpeg' : ({ '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.mjs': 'text/javascript', '.wasm': 'application/wasm' })[extname(file)] ?? 'text/plain');
@@ -90,6 +91,8 @@ try {
     await checkTyping(browser, base);
   } else if (process.env.QUIZ_FOCUSED === 'chess') {
     await checkChess(browser, base);
+  } else if (process.env.QUIZ_FOCUSED === 'chess-trainer') {
+    await checkChessTrainer(browser, base);
   } else if (process.env.QUIZ_FOCUSED === 'progress') {
     await checkChartFormatting(browser, base);
     await checkProgress(browser, base);
@@ -120,6 +123,7 @@ try {
   await checkChartFormatting(browser, base);
   await checkRound3(browser, base);
   await checkChess(browser, base);
+  await checkChessTrainer(browser, base);
   await checkRound2(browser, base);
   }
   await checkAutoContinue(browser, base);

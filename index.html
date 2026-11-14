@@ -7,10 +7,10 @@
     <meta name="theme-color" content="#12343b">
     <title>Cash, Memory &amp; Detail Trainer</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="style.css?v=20261113-math">
+    <link rel="stylesheet" href="style.css?v=20261113-trainer">
     <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
     <!-- Start every startup module download at once instead of discovering imports one level at a time. -->
-    <link rel="modulepreload" href="app.js?v=20261113-math">
+    <link rel="modulepreload" href="app.js?v=20261113-trainer">
     <link rel="modulepreload" href="firebase-accounts.mjs?v=20261020-sync">
     <link rel="modulepreload" href="account-data.mjs?v=20261020-fast">
     <link rel="modulepreload" href="firebase-config.mjs">
@@ -37,10 +37,12 @@
     <link rel="modulepreload" href="hold-training-ui.mjs?v=20261003-accounts">
     <link rel="modulepreload" href="math-core.mjs?v=20261113-math">
     <link rel="modulepreload" href="typing-core.mjs?v=20261002-typing">
-    <link rel="modulepreload" href="chess-ui.mjs?v=20261113-math">
+    <link rel="modulepreload" href="chess-ui.mjs?v=20261113-trainer">
+    <link rel="modulepreload" href="chess-trainer-ui.mjs?v=20261113-trainer">
+    <link rel="modulepreload" href="chess-trainer.mjs?v=20261113-trainer">
     <link rel="modulepreload" href="chess-core.mjs">
     <link rel="modulepreload" href="assets/chess/chess.mjs">
-    <link rel="modulepreload" href="chess-board.mjs?v=20261017-round2">
+    <link rel="modulepreload" href="chess-board.mjs?v=20261113-trainer">
     <link rel="modulepreload" href="chess-engine.mjs">
     <link rel="modulepreload" href="chess-analytics.mjs">
     <link rel="modulepreload" href="chess-storage.mjs">
@@ -446,7 +448,7 @@
             <label class="toggle-row"><input id="chess-coaching" type="checkbox"><span><strong>Enable coaching</strong><small>Ask for hints and receive move feedback. Assisted games are labeled in history.</small></span></label>
             <p id="chess-setup-status" role="status"></p>
             <p id="chess-setup-storage-status" role="status" hidden></p>
-            <div class="action-row"><button class="secondary-button" type="button" id="chess-open-lessons">Learn chess · 44 lessons</button><button class="secondary-button" type="button" id="chess-resume" hidden>Resume saved game</button><button class="text-button" type="button" id="chess-setup-retry" hidden>Retry engine</button></div>
+            <div class="action-row"><button class="primary-button" type="button" id="chess-open-trainer">Chess trainer · game plan, flash, read ahead, quick analysis</button><button class="secondary-button" type="button" id="chess-open-lessons">Learn chess · 44 lessons</button><button class="secondary-button" type="button" id="chess-resume" hidden>Resume saved game</button><button class="text-button" type="button" id="chess-setup-retry" hidden>Retry engine</button></div>
             <p class="chart-note">Runs on this device with <a href="https://github.com/jhlywa/chess.js/tree/v1.4.0" target="_blank" rel="noopener">chess.js 1.4.0</a> and <a href="https://github.com/nmrugg/stockfish.js/tree/v19.0.0" target="_blank" rel="noopener">Stockfish 19 lite (GPLv3; source)</a>. <a href="assets/chess/stockfish-COPYING.txt">Engine license</a> · <a href="assets/chess/chess-LICENSE">Rules license</a>. Difficulty labels are practice levels, not verified Elo ratings.</p>
           </section>
           <button class="primary-button" type="submit">Start quiz</button>
@@ -458,10 +460,22 @@
         <div class="chess-topbar">
           <p id="chess-status" role="status" aria-live="polite"></p>
         <p id="chess-storage-status" role="status" hidden></p>
-        <div class="action-row chess-toolbar"><button type="button" class="text-button" id="chess-retry" hidden>Retry engine &amp; continue</button><button type="button" class="secondary-button" id="chess-lessons-toggle">Lessons</button><button type="button" class="text-button" id="chess-flip">Flip board</button><button type="button" class="text-button" id="chess-fullscreen">Enter fullscreen</button><button type="button" class="text-button" id="chess-progress" hidden>Progress &amp; history</button></div>
+        <div class="action-row chess-toolbar"><button type="button" class="text-button" id="chess-retry" hidden>Retry engine &amp; continue</button><button type="button" class="secondary-button" id="chess-trainer-open">Trainer</button><button type="button" class="secondary-button" id="chess-lessons-toggle">Lessons</button><button type="button" class="text-button" id="chess-flip">Flip board</button><button type="button" class="text-button" id="chess-fullscreen">Enter fullscreen</button><button type="button" class="text-button" id="chess-progress" hidden>Progress &amp; history</button></div>
           <p id="chess-fullscreen-note" class="chart-note" role="status">Chess stays in the website layout. Fullscreen is optional.</p>
         </div>
         <section id="chess-lessons" hidden aria-labelledby="chess-lessons-heading"><h3 id="chess-lessons-heading">Learn and practice</h3><p>Choose a lesson. Watch each move and its purpose, then reset the position and practice both sides yourself.</p><div id="chess-lesson-list" class="chess-lesson-list"></div></section>
+        <section id="chess-trainer" class="chess-trainer" hidden aria-labelledby="chess-trainer-heading">
+          <div class="trainer-head"><div><h3 id="chess-trainer-heading" tabindex="-1">Chess trainer</h3><p id="chess-trainer-summary" class="chart-note" role="status"></p></div><button type="button" class="text-button" id="chess-trainer-close">Back to the board (Esc)</button></div>
+          <div id="chess-trainer-tabs" class="trainer-tabs" role="tablist" aria-label="Trainer modes"></div>
+          <div class="trainer-layout">
+            <div class="trainer-board-column">
+              <div id="chess-trainer-timer" class="trainer-timer" role="progressbar" aria-label="Time left in seconds" aria-valuemin="0" hidden><span></span></div>
+              <div id="chess-trainer-board" class="chess-board" role="group" aria-label="Trainer board. Select a piece then a destination to answer find-the-move cards."></div>
+              <p id="chess-trainer-caption" class="trainer-caption" aria-live="polite"></p>
+            </div>
+            <div id="chess-trainer-panel" class="trainer-panel"></div>
+          </div>
+        </section>
         <div class="chess-layout">
           <div class="chess-board-column">
             <div class="chess-clocks" id="chess-clocks" aria-label="Player clocks"><div id="chess-clock-w"></div><div id="chess-clock-b"></div></div>
@@ -474,7 +488,7 @@
             <section id="chess-game-actions" class="visual-card"><h3 id="chess-game-label">Computer game</h3><p id="chess-game-details"></p><p id="chess-feedback" role="status"></p><div class="action-row"><button type="button" class="secondary-button" id="chess-hint" hidden>Hint</button><button type="button" class="text-button" id="chess-resign">Resign</button><button type="button" class="secondary-button" id="chess-rematch" hidden>Rematch (Enter)</button><button type="button" class="secondary-button" id="chess-analyze" hidden>Analyze game</button><button type="button" class="text-button" id="chess-pgn">Export PGN</button></div></section>
 
             <section id="chess-review" class="visual-card" hidden><h3>Game review</h3><p id="chess-review-status" role="status"></p><p id="chess-review-position" class="chess-review-position" role="status">Move 0 of 0</p><div class="chess-review-controls" role="group" aria-label="Step through moves"><button type="button" id="chess-review-first" class="secondary-button" aria-label="First position">⏮ First</button><button type="button" id="chess-review-prev" class="secondary-button" aria-label="Previous move">◀ Previous</button><button type="button" id="chess-review-next" class="secondary-button" aria-label="Next move">Next ▶</button><button type="button" id="chess-review-last" class="secondary-button" aria-label="Last position">Last ⏭</button></div><label>Replay position<input type="range" id="chess-replay" min="0" max="0" value="0"></label><p class="chart-note">Tip: use the Left and Right arrow keys to step, or select a move in the list.</p><p id="chess-review-move"></p><p id="chess-review-eval"></p><p class="chart-note">Centipawn loss compares the played move with the engine’s best move using 250 ms per search. Inaccuracy ≥50, mistake ≥100, blunder ≥200. Forced mates are separate. Short searches are estimates.</p></section>
-            <section id="chess-moves-card" class="visual-card chess-moves-card" aria-labelledby="chess-moves-heading"><h3 id="chess-moves-heading">Moves</h3><ol id="chess-moves" class="chess-moves"></ol></section>
+            <section id="chess-moves-card" class="visual-card chess-moves-card" aria-labelledby="chess-moves-heading"><h3 id="chess-moves-heading">Moves</h3><ol id="chess-moves" class="chess-moves"></ol></section><section id="chess-look-card" class="visual-card chess-look" aria-labelledby="chess-look-heading"><h3 id="chess-look-heading">Board look</h3><div class="action-row"><button type="button" class="secondary-button" id="chess-3d" aria-pressed="true">3D view: on</button><label class="chess-theme-label">Board <select id="chess-theme"><option value="green">Classic green</option><option value="wood">Walnut wood</option><option value="marble">Blue marble</option><option value="night">Night</option></select></label></div></section>
           </aside>
         </div>
       </section>
@@ -1029,6 +1043,6 @@
       <p class="answer-toast-title" id="answer-toast-title"></p>
       <dl class="answer-toast-lines" id="answer-toast-lines"></dl>
     </aside>
-    <script type="module" src="app.js?v=20261113-math"></script>
+    <script type="module" src="app.js?v=20261113-trainer"></script>
   </body>
 </html>

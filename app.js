@@ -19,7 +19,7 @@ import { renderHoldTraining, readHoldAnswer } from './hold-training-ui.mjs?v=202
 import { MATH_GAME, MATH_OPERATION_IDS, MATH_PRESETS, resolveMathSettings, createMathQuestion, scoreMathAnswer, mathRecordFields, summarizeMathHistory } from './math-core.mjs?v=20261113-math';
 import { TYPING_PRESETS, resolveTypingSettings, createTypingPrompt, scoreTyping, summarizeTyping } from './typing-core.mjs?v=20261002-typing';
 import { PATTERN_GAME_NAMES } from './pattern-games.mjs';
-import { createChessUI } from './chess-ui.mjs?v=20261113-math';
+import { createChessUI } from './chess-ui.mjs?v=20261113-trainer';
 import { ChessStore } from './chess-storage.mjs';
 import { createDistractionSamples } from './distraction-sounds.mjs';
 import {

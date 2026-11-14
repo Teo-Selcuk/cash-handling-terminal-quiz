@@ -1,7 +1,8 @@
 import { enhanceHistoryList } from './history-tables.mjs?v=20261113-math';
 import { roundEndAction } from './round-shortcuts.mjs?v=20261028-amount';
 import { Chess, ChessSession, DEFAULT_POSITION, DIFFICULTIES, normalizeSettings } from './chess-core.mjs';
-import { ChessBoard } from './chess-board.mjs?v=20261017-round2';
+import { ChessBoard } from './chess-board.mjs?v=20261113-trainer';
+import { createChessTrainer } from './chess-trainer-ui.mjs?v=20261113-trainer';
 import { ChessEngine, analyzeMove } from './chess-engine.mjs';
 import { ChessStore, CHESS_KEYS } from './chess-storage.mjs';
 import { CHESS_LESSONS } from './chess-lessons.mjs';
@@ -24,6 +25,35 @@ export function createChessUI({ showScreen, renderChart, showChartData, renderPr
   let disabledSetup = new Map();
   const board = new ChessBoard(el('board'), selectSquare);
   const engine = new ChessEngine({ onError: handleEngineError });
+  // Board look: 3D tilt (default on) and a color theme, shared by the game board and the trainer board.
+  const LOOK_KEY = 'cash-handling-chess-board-v1', THEMES = ['green', 'wood', 'marble', 'night'];
+  function readLook() { try { const look = JSON.parse(storage.getItem(LOOK_KEY) ?? 'null'); return { threeD: look?.threeD !== false, theme: THEMES.includes(look?.theme) ? look.theme : 'green' }; } catch { return { threeD: true, theme: 'green' }; } }
+  let look = readLook();
+  function applyBoardLook(target) { target.root.classList.toggle('is-3d', look.threeD); target.root.dataset.boardTheme = look.theme; }
+  function setLook(change) {
+    look = { ...look, ...change }; try { storage.setItem(LOOK_KEY, JSON.stringify(look)); } catch { /* the look still applies for this visit */ }
+    applyBoardLook(board); trainer.refreshLook(); lookControls();
+  }
+  function lookControls() { el('3d').textContent = look.threeD ? '3D view: on' : '3D view: off'; el('3d').setAttribute('aria-pressed', String(look.threeD)); el('theme').value = look.theme; }
+  applyBoardLook(board);
+  const trainer = createChessTrainer({
+    root: el('trainer'), storage, engine, ensureEngine: () => ensureEngine(), applyBoardLook,
+    getGames: () => storageAction(() => store.games()) ?? [], getOpenings: () => CHESS_LESSONS.filter(item => item.category === 'Openings'),
+    onClose: () => closeTrainer(true), onPlay: () => { closeTrainer(); if (session && !session.result) { session.resume(); render(); void computerTurn(); } else void start(); },
+  });
+  function trainerOpen() { return !el('trainer').hidden; }
+  function closeTrainer(focus = false) {
+    if (!trainerOpen()) return;
+    trainer.hide(); el('screen').classList.remove('trainer-open'); render();
+    if (focus) el('trainer-open').focus();
+  }
+  function openTrainer(tab = 'plan') {
+    if (session && !session.result) { session.pause(); saveCurrent(); }
+    engine.cancel(); busy = false; lesson = null; review = null; selected = null; hint = null; promotion = null;
+    open(); document.getElementById('open-history').disabled = false; el('lessons').hidden = true;
+    el('screen').classList.add('trainer-open'); render(); trainer.show(tab);
+    status('Chess trainer — follow the game plan, or pick a mode. Esc returns to the board.');
+  }
 
   function status(message) { el('status').textContent = message; }
   function storageAction(action) {
@@ -93,7 +123,7 @@ export function createChessUI({ showScreen, renderChart, showChartData, renderPr
   }
   function open() { active = true; showScreen('chess'); fullscreenLabel();el('screen').scrollIntoView({block:'start'}); }
   async function start({ fen = DEFAULT_POSITION, lessonId = null, restored = null } = {}) {
-    engine.cancel(); busy = false; lesson = null; review = null; selected = null; hint = null; promotion = null;
+    closeTrainer(); engine.cancel(); busy = false; lesson = null; review = null; selected = null; hint = null; promotion = null;
     session = restored ? ChessSession.restore(restored) : new ChessSession(settings(), { fen, lessonId });
     setSettings(session.settings); board.flipped = session.player === 'b';
     storageAction(()=>storage.setItem('cash-handling-chess-settings-v1',JSON.stringify(session.settings)));
@@ -159,7 +189,7 @@ export function createChessUI({ showScreen, renderChart, showChartData, renderPr
     const chess = displayChess();
     const targets = selected ? chess.moves({ square: selected, verbose: true }).map(move => move.to) : [];
     const last = chess.history({ verbose: true }).at(-1);
-    board.render(chess, { selected, targets, lastMove: last, hint });
+    board.render(chess, { selected, targets, lastMove: last, hint, animate: !review });
     requestAnimationFrame(fitBoard);
     el('promotion').hidden = !promotion;
     el('lesson-detail').hidden = !lesson; el('game-actions').hidden = Boolean(lesson);
@@ -229,6 +259,7 @@ export function createChessUI({ showScreen, renderChart, showChartData, renderPr
     }
   }
   function startLesson(item) {
+    closeTrainer();
     if (session && !session.result) { session.pause(); saveCurrent(); }
     engine.cancel(); busy = false; selected = null; promotion = null; hint = null; review = null;
     lesson = { item, phase: 'demo', chess: new Chess(item.fen), index: 0, attempt: { id: crypto.randomUUID(), lessonId: item.id, startedAt: new Date().toISOString(), completed: false, retries: 0, hints: 0, moves: 0 } };
@@ -271,6 +302,7 @@ export function createChessUI({ showScreen, renderChart, showChartData, renderPr
     return line.join(' ') || 'No continuation available';
   }
   function reviewGame(record) {
+    closeTrainer();
     if (session && !session.result) { session.pause(); saveCurrent(); }
     engine.cancel(); busy = false; lesson = null; selected = null; promotion = null; hint = null;
     review = { record, chess: new Chess(record.startFen), index: 0 }; board.flipped = record.player === 'b';
@@ -355,7 +387,7 @@ export function createChessUI({ showScreen, renderChart, showChartData, renderPr
   }
   function leave() {
     if (session && !session.result) { session.pause(); saveCurrent(); }
-    engine.cancel(); active = false; busy = false;
+    closeTrainer(); engine.cancel(); active = false; busy = false;
     showScreen('setup'); setupChanged('chess');
   }
   function setupChanged(game) {
@@ -407,7 +439,7 @@ export function createChessUI({ showScreen, renderChart, showChartData, renderPr
   el('moves').addEventListener('click', event => { const ply = event.target.closest('li')?.dataset.ply; if (review && ply) stepReview(Number(ply)); });
   el('moves').addEventListener('keydown', event => { const ply = event.target.closest('li')?.dataset.ply; if (review && ply && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); stepReview(Number(ply)); } });
   document.addEventListener('keydown', event => {
-    if (!active || review || lesson || !session?.result || el('screen').hidden || event.target.closest?.('.chess-board, dialog')) return;
+    if (!active || review || lesson || trainerOpen() || !session?.result || el('screen').hidden || event.target.closest?.('.chess-board, dialog')) return;
     const action = roundEndAction(event, { shownAt: resultShownAt });
     if (!action) return;
     event.preventDefault();
@@ -419,8 +451,8 @@ export function createChessUI({ showScreen, renderChart, showChartData, renderPr
     if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); stepReview(review.index + (event.key === 'ArrowLeft' ? -1 : 1)); }
     else if (event.key === 'Home' || event.key === 'End') { event.preventDefault(); stepReview(event.key === 'Home' ? 0 : review.record.moves.length); }
   });
-  el('lessons-toggle').addEventListener('click', () => { el('lessons').hidden = !el('lessons').hidden; listLessons(); });
-  el('open-lessons').addEventListener('click', () => { if (session && !session.result) { session.pause(); saveCurrent(); } engine.cancel(); busy = false; lesson = null; review = null; open(); document.getElementById('open-history').disabled = false; listLessons(); el('lessons').hidden = false; render(); status('Choose a lesson to learn a piece, opening, or tactical idea.'); });
+  el('lessons-toggle').addEventListener('click', () => { closeTrainer(); el('lessons').hidden = !el('lessons').hidden; listLessons(); });
+  el('open-lessons').addEventListener('click', () => { closeTrainer(); if (session && !session.result) { session.pause(); saveCurrent(); } engine.cancel(); busy = false; lesson = null; review = null; open(); document.getElementById('open-history').disabled = false; listLessons(); el('lessons').hidden = false; render(); status('Choose a lesson to learn a piece, opening, or tactical idea.'); });
   el('demo-next').addEventListener('click', () => {
     if (!lesson || lesson.phase !== 'demo' || lesson.index >= lesson.item.steps.length) return;
     const step = lesson.item.steps[lesson.index], move = lesson.chess.move(step.move);
@@ -443,6 +475,12 @@ export function createChessUI({ showScreen, renderChart, showChartData, renderPr
   el('download-csv').addEventListener('click', () => download(chessCsv(filterChessGames(sampleHistory?.games ?? storageAction(() => store.games()) ?? [], historyFilters())), sampleHistory ? 'sample-chess-analytics.csv' : 'chess-analytics.csv', 'text/csv;charset=utf-8'));
   window.addEventListener('storage', event => { if (Object.values(CHESS_KEYS).includes(event.key) && !el('history').hidden) renderHistory(); });
   window.addEventListener('storage',event=>{if(event.key==='cash-handling-chess-settings-v1'&&!active)restoreSettings();});
+  el('trainer-open').addEventListener('click', () => (trainerOpen() ? closeTrainer(true) : openTrainer()));
+  el('open-trainer').addEventListener('click', () => openTrainer());
+  el('trainer-close').addEventListener('click', () => closeTrainer(true));
+  el('3d').addEventListener('click', () => setLook({ threeD: !look.threeD }));
+  el('theme').addEventListener('change', () => setLook({ theme: el('theme').value }));
+  lookControls();
   restoreSettings();timeControls(); render();
-  return { start, setupChanged, renderHistory, leave, onHistoryOpen() { active = false; engine.cancel(); busy = false; } };
+  return { start, setupChanged, renderHistory, leave, openTrainer, onHistoryOpen() { closeTrainer(); active = false; engine.cancel(); busy = false; } };
 }

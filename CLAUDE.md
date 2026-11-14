@@ -11,6 +11,10 @@ replaces `AGENTS.md`; keep every agent rule here so there is one source of truth
 - Games: Cash handling, Number memory, Task simulation, Error detection,
   Check & ID Fraud Inspection, Typing speed, Multitasker, Math practice, Chess.
 - Math practice problems, the answer evaluator and scoring live in `math-core.mjs`.
+- Chess trainer (game plan, lessons with demo + quiz, Flash, Read ahead, Quick analysis, Mistakes):
+  content and logic in `chess-trainer.mjs`, screen in `chess-trainer-ui.mjs`. Every puzzle answer is
+  checked by a material search in `tests/chess-trainer.test.mjs`; add a `check` to each new question.
+  The board's 3D view and theme live in `chess-board.mjs` + `style.css` (`.is-3d`, `data-board-theme`).
 - History & Progress analytics live in `progress-analytics.mjs` (data) and
   `app.js` (rendering). Plain-language chart and table explanations live in
   `history-explanations.mjs`. Speed goals and progressive levels live in
