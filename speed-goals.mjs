@@ -1,13 +1,13 @@
 // Per-game speed goals and progressive levels. Goal progress is derived from the
 // saved attempt history, so it persists wherever that history persists.
-import { normalizeHistoryRecord, deduplicateHistory } from './progress-analytics.mjs?v=20261113-math';
+import { normalizeHistoryRecord, deduplicateHistory } from './progress-analytics.mjs?v=20261115-quick-add';
 
 export const GOAL_SUCCESS_PERCENT = 90;
 export const GOAL_MINIMUM_QUESTIONS = 5;
 // A goal passes on any run of consecutive attempts (one difficulty, one game) as long as the run is this long.
 // Cash handling asks for a longer run than the other games. Both numbers can be changed per game in the app.
 // Typing counts tests and Multitasker counts runs, so their runs are shorter.
-export const DEFAULT_GOAL_WINDOW = Object.freeze({ cash: 150, memory: 80, task: 80, 'error-detection': 80, 'fraud-inspection': 80, typing: 10, overload: 10, math: 80 });
+export const DEFAULT_GOAL_WINDOW = Object.freeze({ cash: 150, memory: 80, task: 80, 'error-detection': 80, 'fraud-inspection': 80, typing: 10, overload: 10, math: 80, 'quick-add': 80 });
 export const GOAL_WINDOW_LIMITS = Object.freeze({ min: 5, max: 1000 });
 export const GOAL_SUCCESS_LIMITS = Object.freeze({ min: 50, max: 100 });
 export const GOAL_SETTINGS_KEY = 'cash-handling-terminal-quiz-goal-settings-v1';
@@ -22,7 +22,7 @@ export function resolveGoalSettings(game, saved = {}) {
   };
 }
 
-export const GOAL_GAMES = Object.freeze(['cash', 'memory', 'task', 'error-detection', 'fraud-inspection', 'typing', 'overload', 'math']);
+export const GOAL_GAMES = Object.freeze(['cash', 'memory', 'task', 'error-detection', 'fraud-inspection', 'typing', 'overload', 'math', 'quick-add']);
 
 const finite = (value) => (Number.isFinite(Number(value)) && value !== null && value !== '' ? Number(value) : null);
 // How each game scores one attempt for goals. success: 0-100 for that attempt. speed: the timed measure, or null.
@@ -62,6 +62,8 @@ const GAME_LADDER = Object.freeze({
   overload: Object.freeze({ Easy: Object.freeze([4, 3.5, 3]), Medium: Object.freeze([3.5, 3, 2.5]), Hard: Object.freeze([3, 2.5, 2]) }),
   // Math practice: seconds per problem, below each mode's default time limit.
   math: Object.freeze({ Easy: Object.freeze([10, 7.5, 5]), Medium: Object.freeze([12, 10, 7.5]), Hard: Object.freeze([12, 10, 8]) }),
+  // Quick addition: seconds per addition, below each mode's default timer.
+  'quick-add': Object.freeze({ Easy: Object.freeze([6, 5, 4]), Medium: Object.freeze([5, 4, 3]), Hard: Object.freeze([4.5, 4, 3]) }),
 });
 const LEVELS = Object.freeze(['Easy', 'Medium', 'Hard']);
 

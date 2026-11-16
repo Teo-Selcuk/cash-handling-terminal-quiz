@@ -1559,3 +1559,15 @@ body:has(.interactive-chart.is-maximized) #history-screen .history-charts { cont
 }
 /* A tilted or 3D board's near edge may overhang the screen edge slightly; never let it scroll the page sideways. */
 #chess-screen { overflow-x: clip; }
+
+/* Quick addition */
+.quick-add-values { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.5rem 0 0; padding: 0; list-style: none; }
+.quick-add-chip { min-width: 3.5rem; padding: 0.5rem 0.75rem; border: 2px solid currentColor; border-radius: 0.5rem; background: transparent; color: inherit; font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; text-align: center; }
+.quick-add-chip.is-coin { border-radius: 999px; }
+.quick-add-expression { margin: 0.5rem 0 0; font-size: 1.1rem; overflow-wrap: anywhere; }
+.quick-add-status { display: grid; gap: 0.25rem; margin: 0.75rem 0; }
+.quick-add-status p { margin: 0; overflow-wrap: anywhere; }
+#quick-add-pass-status[data-status="failed"] { font-weight: 700; }
+.quick-add-goal { display: grid; gap: 0.25rem; }
+.quick-add-goal progress { width: 100%; height: 0.75rem; }
+#quick-add-answer { font-size: 1.5rem; font-variant-numeric: tabular-nums; }

@@ -1,25 +1,29 @@
 import { accountStorage as localStorage, initializeAccounts } from './firebase-accounts.mjs?v=20261020-sync';
 import { canPlayGame } from './account-access.mjs';
 import { analyzeCashMistakes } from './cash-mistakes.mjs?v=20261011-fair-credit';
-import { enhanceHistoryTables } from './history-tables.mjs?v=20261113-math';
-import { chartExplanation, summaryChartExplanation, createExplanation } from './history-explanations.mjs?v=20261113-math';
+import { enhanceHistoryTables } from './history-tables.mjs?v=20261115-quick-add';
+import { chartExplanation, summaryChartExplanation, createExplanation } from './history-explanations.mjs?v=20261115-quick-add';
 import { resolveLabelColor } from './chart-contrast.mjs?v=20261023-round3';
 import { chartExample, summaryChartExample, createExample } from './chart-examples.mjs?v=20261023-round3';
-import { chartGameTag, chartFitsGame, gamesInAttempts, gameBreakdownText, gamesIncludedText, withGameName } from './chart-games.mjs?v=20261113-math';
+import { chartGameTag, chartFitsGame, gamesInAttempts, gameBreakdownText, gamesIncludedText, withGameName } from './chart-games.mjs?v=20261115-quick-add';
 import { numpadChoice, numpadListAction, listKeyHint } from './numpad-shortcuts.mjs?v=20261028-amount';
 import { attachAmountFilter, readAmountCents } from './amount-input.mjs?v=20261101-numeric';
 import { roundEndAction } from './round-shortcuts.mjs?v=20261028-amount';
-import { answerToastContent } from './answer-toast.mjs?v=20261113-math';
-import { buildProjection, projectionRows, chessProjectionRows } from './progress-projection.mjs?v=20261113-math';
-import { goalProgress, goalMetric, availableProgressiveLevels, PROGRESSIVE_LEVELS, fraudProgressiveOverrides, GOAL_SETTINGS_KEY, GOAL_WINDOW_LIMITS, GOAL_SUCCESS_LIMITS, resolveGoalSettings } from './speed-goals.mjs?v=20261113-math';
+import { answerToastContent } from './answer-toast.mjs?v=20261115-quick-add';
+import { buildProjection, projectionRows, chessProjectionRows } from './progress-projection.mjs?v=20261115-quick-add';
+import { goalProgress, goalMetric, availableProgressiveLevels, PROGRESSIVE_LEVELS, fraudProgressiveOverrides, GOAL_SETTINGS_KEY, GOAL_WINDOW_LIMITS, GOAL_SUCCESS_LIMITS, resolveGoalSettings } from './speed-goals.mjs?v=20261115-quick-add';
 import { createOverloadUI } from './overload-ui.mjs?v=20261101-numeric';
 import { summarizeOverload, overloadRecommendation } from './overload-analytics.mjs?v=20261003-accounts';
 import { decideCheck, scoreHoldDecision, ITEM_TYPES, ITEM_REASONS, ACTIONS, HOLD_TYPES, availabilityText } from './check-holds.mjs?v=20261003-accounts';
 import { renderHoldTraining, readHoldAnswer } from './hold-training-ui.mjs?v=20261003-accounts';
 import { MATH_GAME, MATH_OPERATION_IDS, MATH_PRESETS, resolveMathSettings, createMathQuestion, scoreMathAnswer, mathRecordFields, summarizeMathHistory } from './math-core.mjs?v=20261113-math';
+import {
+  QUICK_ADD_GAME, QUICK_ADD_PRESETS, QUICK_ADD_LIMITS, resolveQuickAddSettings, createQuickAddQuestion, scoreQuickAddAnswer, summarizeQuickAddRound,
+  quickAddRecordFields, summarizeQuickAddHistory, passRuleText, goalText, formatCents,
+} from './quick-add-core.mjs?v=20261115-quick-add';
 import { TYPING_PRESETS, resolveTypingSettings, createTypingPrompt, scoreTyping, summarizeTyping } from './typing-core.mjs?v=20261002-typing';
 import { PATTERN_GAME_NAMES } from './pattern-games.mjs';
-import { createChessUI } from './chess-ui.mjs?v=20261114-touch';
+import { createChessUI } from './chess-ui.mjs?v=20261115-quick-add';
 import { ChessStore } from './chess-storage.mjs';
 import { createDistractionSamples } from './distraction-sounds.mjs';
 import {
@@ -33,8 +37,8 @@ import { PRACTICE_GAMES, rankPracticeCandidates, recommendPractice, practiceSett
 import {
   buildChartSpecs, buildConditionalReport, buildErrorAnalytics, buildAdvancedErrorAnalytics, buildGameFilters, buildProgressModel, comparePeriods,
   filterHistory, recommendNextChallenge, progressionSegments,
-} from './progress-analytics.mjs?v=20261113-math';
-import { generateSampleHistory, generateSampleChessHistory } from './sample-history.mjs?v=20261113-math';
+} from './progress-analytics.mjs?v=20261115-quick-add';
+import { generateSampleHistory, generateSampleChessHistory } from './sample-history.mjs?v=20261115-quick-add';
 import {
   DENOMINATIONS,
   DIFFICULTY_CONFIG,
@@ -73,9 +77,9 @@ const PRESET_KEY = 'cash-handling-terminal-quiz-presets-v1';
 const CURRENT_CHALLENGE_KEY = 'cash-handling-terminal-quiz-current-challenge-v1';
 const SAMPLE_HISTORY_KEY = 'cash-handling-terminal-quiz-sample-history-v1';
 const CHART_APPEARANCE_KEY = 'cash-handling-terminal-quiz-chart-appearance-v1';
-const screens = ['math', 'overload', 'typing', 'setup', 'chess', 'quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'error-detection-briefing', 'error-detection', 'fraud-inspection', 'feedback', 'summary', 'history'];
+const screens = ['quick-add', 'math', 'overload', 'typing', 'setup', 'chess', 'quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'error-detection-briefing', 'error-detection', 'fraud-inspection', 'feedback', 'summary', 'history'];
 const refs = Object.fromEntries([
-  'math-screen', 'overload-screen', 'typing-screen', 'setup-form', 'setup-screen', 'chess-screen', 'quiz-screen', 'feedback-screen', 'summary-screen', 'history-screen',
+  'quick-add-screen', 'math-screen', 'overload-screen', 'typing-screen', 'setup-form', 'setup-screen', 'chess-screen', 'quiz-screen', 'feedback-screen', 'summary-screen', 'history-screen',
   'memory-read-screen', 'memory-answer-screen', 'task-briefing-screen', 'task-workspace-screen', 'error-detection-briefing-screen', 'error-detection-screen', 'fraud-inspection-screen', 'cash-setup-options', 'memory-setup-options', 'task-setup-options', 'error-detection-setup-options', 'fraud-setup-options',
   'question-count', 'time-limit', 'cash-builder-toggle', 'customer-bill-request-toggle', 'auto-continue-toggle', 'distraction-noise-toggle', 'question-progress', 'timer', 'amount-due',
   'tender-breakdown', 'customer-bill-request', 'customer-bill-request-text', 'customer-bill-request-status', 'flag-bill-request', 'answer-form', 'answer-amount', 'amount-input-message', 'cash-builder-section', 'cash-builder-heading',
@@ -532,7 +536,7 @@ function showScreen(name) {
   if (name === 'setup') { renderSpeedGoals(refs['speed-goals-setup'], getHistory(), selectedGame()); renderProgressiveLevels(selectedGame()); }
   const activeScreen = refs[`${name}-screen`];
   if (isCompactViewport()) activeScreen.scrollIntoView({ block: 'start', inline: 'nearest' });
-  const roundInProgress = ['math', 'typing', 'quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'error-detection-briefing', 'error-detection', 'fraud-inspection'].includes(name);
+  const roundInProgress = ['quick-add', 'math', 'typing', 'quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'error-detection-briefing', 'error-detection', 'fraud-inspection'].includes(name);
   refs['open-history'].disabled = roundInProgress;
   if (!roundInProgress) stopTimer();
   if (name === 'quiz') {
@@ -541,6 +545,10 @@ function showScreen(name) {
   }
   if (name === 'math') {
     window.setTimeout(() => document.getElementById('math-answer').focus({ preventScroll: true }), 0);
+    return;
+  }
+  if (name === 'quick-add') {
+    window.setTimeout(() => document.getElementById('quick-add-answer').focus({ preventScroll: true }), 0);
     return;
   }
   if (name === 'memory-answer') {
@@ -609,7 +617,7 @@ function setHistoryDataSource(source) {
   renderHistory();
 }
 
-const GOAL_GAME_NAMES = { cash: 'Cash handling', memory: 'Number memory', task: 'Task simulation', 'error-detection': 'Error detection', 'fraud-inspection': 'Check & ID Fraud Inspection', typing: 'Typing speed', overload: 'Multitasker', math: 'Math practice' };
+const GOAL_GAME_NAMES = { cash: 'Cash handling', memory: 'Number memory', task: 'Task simulation', 'error-detection': 'Error detection', 'fraud-inspection': 'Check & ID Fraud Inspection', typing: 'Typing speed', overload: 'Multitasker', math: 'Math practice', [QUICK_ADD_GAME]: 'Quick addition' };
 // Goal targets in each game's unit: seconds per answer, seconds per action, or words per minute.
 const goalTargetText = (target, unit) => unit === 'WPM' ? `${target} WPM or faster` : `${target}s or faster`;
 const GOAL_RULE_TEXT = {
@@ -999,7 +1007,18 @@ function updateGameSetup() {
   document.getElementById('typing-setup-options').hidden = game !== 'typing';
   document.querySelectorAll('#typing-setup-options input, #typing-setup-options select, #typing-setup-options button').forEach(node => { node.disabled = game !== 'typing'; });
   document.getElementById('math-setup-options').hidden = game !== MATH_GAME;
+  document.getElementById('quick-add-setup-options').hidden = game !== QUICK_ADD_GAME;
+  document.querySelectorAll('#quick-add-setup-options input, #quick-add-setup-options select').forEach((node) => { node.disabled = game !== QUICK_ADD_GAME; });
   if (game === 'chess') return;
+  if (game === QUICK_ADD_GAME) {
+    if (selectedDifficulty() === 'Custom') document.querySelector('input[name="difficulty"][value="Easy"]').checked = true;
+    for (const id of ['cash-setup-options', 'memory-setup-options', 'task-setup-options', 'error-detection-setup-options', 'fraud-setup-options', 'preset-editor', 'custom-difficulty-card']) refs[id].hidden = true;
+    for (const level of ['Easy', 'Medium', 'Hard']) refs[`${level.toLowerCase()}-description`].textContent = quickAddPresetDescription(level);
+    applyQuickAddDifficulty(selectedDifficulty());
+    renderPracticeRecommendations(document.getElementById('setup-recommendations'), game, selectedDifficulty());
+    renderActivePractice();
+    return;
+  }
   if (game === MATH_GAME) {
     if (selectedDifficulty() === 'Custom') document.querySelector('input[name="difficulty"][value="Easy"]').checked = true;
     for (const id of ['cash-setup-options', 'memory-setup-options', 'task-setup-options', 'error-detection-setup-options', 'fraud-setup-options', 'preset-editor', 'custom-difficulty-card']) refs[id].hidden = true;
@@ -1090,6 +1109,7 @@ function presetFor(game, difficulty) {
 function sessionPreset() {
   if (state.game === 'overload') return overloadUI.settings;
   if (state.game === MATH_GAME) return state.mathSettings;
+  if (state.game === QUICK_ADD_GAME) return state.quickAddSettings;
   if (state.game === 'typing') return state.typingSettings;
   if (state.game === 'fraud-inspection') return state.fraudSettings;
   if (state.game === 'cash' && state.progressiveLevel && state.progressivePreset) return state.progressivePreset;
@@ -1118,6 +1138,7 @@ function renderPracticeRecommendations(target, game, difficulty, history = getHi
     return;
   }
   if (game === MATH_GAME) { target.textContent = summarizeMathHistory(history).recommendation; return; }
+  if (game === QUICK_ADD_GAME) { target.textContent = summarizeQuickAddHistory(history).recommendation; return; }
   if (game === 'typing') { target.textContent = 'Build accuracy first, then increase characters or shorten the timer. Saved typing results appear in History | Progress.'; return; }
   if (game === 'fraud-inspection') {
     const fraudSummary = summarizeFraudHistory(history);
@@ -1875,6 +1896,152 @@ function showNextMathQuestion() {
   showScreen('math');
   state.mathQuestionStartedAt = Date.now();
   startTimer(state.timeLimitSeconds, document.getElementById('math-timer'), () => submitMathAnswer(true));
+  startContinuousDistractionNoise();
+}
+
+// Quick addition: add a few small cash values per question, X seconds each, Y additions back to back.
+// Questions always continue automatically with the Auto-continue answer note, and the shared timer counts down;
+// a timeout counts as a mistake. The round has a pass rule and a separate goal, both shown while it runs.
+const QUICK_ADD_SETTINGS_KEY = 'cash-handling-quick-add-settings-v1';
+let appliedQuickAddDifficulty = null;
+const quickAddField = (name) => document.getElementById(`quick-add-${name}`);
+
+function quickAddPresetDescription(level) {
+  const preset = QUICK_ADD_PRESETS[level];
+  const coins = preset.values.some((cents) => cents < 100) ? ' and coins' : '';
+  return `${preset.additions} additions, ${preset.secondsPerQuestion}s each, ${preset.terms[0]}–${preset.terms[1]} values from $1 up to ${formatCents(Math.max(...preset.values)).replace('.00', '')}${coins}`;
+}
+
+function readQuickAddForm() {
+  return {
+    secondsPerQuestion: quickAddField('seconds').value, additions: quickAddField('additions').value,
+    passRule: quickAddField('pass-rule').value, passValue: quickAddField('pass-value').value,
+    goalType: quickAddField('goal-type').value, goalTarget: quickAddField('goal-target').value,
+  };
+}
+
+function fillQuickAddForm(settings) {
+  quickAddField('seconds').value = String(settings.secondsPerQuestion);
+  quickAddField('additions').value = String(settings.additions);
+  quickAddField('pass-rule').value = settings.passRule;
+  quickAddField('pass-value').value = String(settings.passValue);
+  quickAddField('goal-type').value = settings.goalType;
+  quickAddField('goal-target').value = String(settings.goalTarget);
+  updateQuickAddRuleNote();
+}
+
+function updateQuickAddRuleNote() {
+  // Pass and goal numbers can never be more than the additions in the round, so they follow a smaller round size.
+  const additions = Number(quickAddField('additions').value);
+  if (Number.isInteger(additions) && additions >= QUICK_ADD_LIMITS.additions[0] && additions <= QUICK_ADD_LIMITS.additions[1]) {
+    for (const name of ['pass-value', 'goal-target']) {
+      const field = quickAddField(name);
+      field.max = String(additions);
+      if (Number(field.value) > additions) field.value = String(additions);
+    }
+  }
+  const settings = resolveQuickAddSettings({ difficulty: selectedDifficulty(), ...readQuickAddForm() });
+  quickAddField('pass-value-label').firstChild.textContent = settings.passRule === 'max-mistakes' ? 'Mistakes allowed ' : 'Correct answers needed ';
+  quickAddField('goal-target-label').firstChild.textContent = settings.goalType === 'score' ? 'Target score ' : 'Target streak ';
+  quickAddField('rule-note').textContent = `${passRuleText(settings)}. ${goalText(settings)}.`;
+}
+
+// A difficulty fills every field only when it changes, so typed values survive other setup refreshes.
+function applyQuickAddDifficulty(difficulty) {
+  if (difficulty === appliedQuickAddDifficulty) return;
+  const restoring = appliedQuickAddDifficulty === null;
+  appliedQuickAddDifficulty = difficulty;
+  let saved = null;
+  if (restoring) { try { saved = JSON.parse(localStorage.getItem(QUICK_ADD_SETTINGS_KEY) ?? 'null'); } catch { saved = null; } }
+  fillQuickAddForm(resolveQuickAddSettings(saved && saved.difficulty === difficulty ? saved : { difficulty }));
+}
+
+function saveQuickAddSettings() {
+  try { localStorage.setItem(QUICK_ADD_SETTINGS_KEY, JSON.stringify(state.quickAddSettings)); } catch { /* settings stay for this visit */ }
+}
+
+function quickAddRound() {
+  return summarizeQuickAddRound(state.results.map((record) => record.outcome), state.quickAddSettings);
+}
+
+function renderQuickAddProgress(round) {
+  const settings = state.quickAddSettings;
+  const passLine = settings.passRule === 'max-mistakes'
+    ? round.passStatus === 'failed' ? `Over the mistake limit (${round.mistakes} of ${settings.passValue} allowed)` : `Mistakes ${round.mistakes} of ${settings.passValue} allowed`
+    : round.passStatus === 'passed' ? `Pass target reached (${round.correct} of ${settings.passValue} correct)`
+      : round.passStatus === 'failed' ? `Pass target out of reach (${round.correct} of ${settings.passValue} correct)` : `Correct ${round.correct} of ${settings.passValue} needed`;
+  quickAddField('score').textContent = `Correct ${round.correct} · Mistakes ${round.mistakes} · Streak ${round.currentStreak}`;
+  quickAddField('pass-status').textContent = passLine;
+  quickAddField('pass-status').dataset.status = round.passStatus;
+  const goal = quickAddField('goal-progress');
+  goal.max = settings.goalTarget;
+  goal.value = round.goalValue;
+  quickAddField('goal-text').textContent = `${settings.goalType === 'score' ? 'Score goal' : 'Streak goal'}: ${round.goalValue} of ${settings.goalTarget}${settings.goalType === 'streak' ? ' in a row (best so far)' : ' correct'}${round.goalMet ? ' — goal met' : ''}`;
+}
+
+function recordQuickAddAnswer(question, typed, outcome, elapsedSeconds, round = null) {
+  return {
+    timestamp: new Date().toISOString(),
+    sessionId: state.sessionId,
+    ...quickAddRecordFields(question, state.quickAddSettings, round),
+    difficulty: state.difficulty,
+    questionNumber: state.questionNumber,
+    timeLimitSeconds: state.timeLimitSeconds,
+    timeUsedSeconds: Number(elapsedSeconds.toFixed(1)),
+    userAnswer: typed,
+    outcome,
+  };
+}
+
+function submitQuickAddAnswer(timedOut = false) {
+  if (state.answerSubmitted || state.game !== QUICK_ADD_GAME) return;
+  const input = quickAddField('answer');
+  const read = readAmountCents(input.value);
+  const typedCents = read.status === 'ok' ? read.cents : null;
+  if (!timedOut && typedCents === null) {
+    const message = 'Type the total before submitting.';
+    quickAddField('answer-message').textContent = message;
+    setMessage(message);
+    input.focus();
+    return;
+  }
+  state.answerSubmitted = true;
+  stopTimer();
+  const elapsedSeconds = Math.min(state.timeLimitSeconds, Math.max(0, (Date.now() - state.quickAddQuestionStartedAt) / 1000));
+  const score = scoreQuickAddAnswer(state.quickAddQuestion, timedOut ? null : typedCents, timedOut);
+  const round = summarizeQuickAddRound([...state.results.map((row) => row.outcome), score.outcome], state.quickAddSettings);
+  const record = recordQuickAddAnswer(state.quickAddQuestion, timedOut ? '' : formatCents(typedCents), score.outcome, elapsedSeconds, round);
+  state.results.push(record);
+  persistRecord(record);
+  if (state.results.length === state.questionCount) stopContinuousDistractionNoise();
+  showAnswerToast(record, { correctAnswer: `${record.quickAddExpression} = ${record.expectedAnswer}`, yourAnswer: record.userAnswer || 'No answer' });
+  showNextQuickAddQuestion();
+}
+
+function showNextQuickAddQuestion() {
+  state.questionNumber += 1;
+  if (state.questionNumber > state.questionCount) {
+    renderSummary();
+    showScreen('summary');
+    return;
+  }
+  state.quickAddQuestion = createQuickAddQuestion({ difficulty: state.difficulty });
+  persistUnansweredRound(recordQuickAddAnswer(state.quickAddQuestion, '', 'Not answered', 0));
+  state.answerSubmitted = false;
+  quickAddField('progress').textContent = `Addition ${state.questionNumber} of ${state.questionCount} · ${state.difficulty.toUpperCase()}`;
+  quickAddField('values').replaceChildren(...state.quickAddQuestion.labels.map((label) => {
+    const item = document.createElement('li');
+    item.className = label.endsWith('¢') ? 'quick-add-chip is-coin' : 'quick-add-chip';
+    item.textContent = label;
+    return item;
+  }));
+  quickAddField('expression').textContent = `${state.quickAddQuestion.expression} = ?`;
+  quickAddField('answer').value = '';
+  quickAddField('answer-message').textContent = '';
+  renderQuickAddProgress(quickAddRound());
+  showScreen('quick-add');
+  state.quickAddQuestionStartedAt = Date.now();
+  startTimer(state.timeLimitSeconds, document.getElementById('quick-add-timer'), () => submitQuickAddAnswer(true));
   startContinuousDistractionNoise();
 }
 
@@ -3947,6 +4114,13 @@ function makeMetrics(records) {
     return [[`${summary.answered}`, 'Questions'], [`${summary.accuracyPercent}%`, 'Accuracy'], [`${averageTime.toFixed(1)}s`, 'Average time'],
       ...math.operations.map((group) => [`${group.correct}/${group.answered}`, `${group.label} correct`])];
   }
+  if (state.game === QUICK_ADD_GAME) {
+    const round = summarizeQuickAddRound(records.map((record) => record.outcome), state.quickAddSettings);
+    return [[`${round.correct}/${round.answered}`, 'Correct answers'], [`${round.mistakes}`, `Mistakes (${round.timedOut} timed out)`],
+      [`${round.bestStreak}`, 'Best streak'], [`${averageTime.toFixed(1)}s`, 'Average time'],
+      [round.passed ? 'Passed' : 'Not passed', passRuleText(state.quickAddSettings)],
+      [round.goalMet ? 'Goal met' : 'Goal not met', `${goalText(state.quickAddSettings)} (reached ${round.goalValue})`]];
+  }
   if (state.game === 'memory') {
     const credits = records.map(memoryCredit).filter(Boolean);
     const sum = field => credits.reduce((total, row) => total + (row[field] ?? 0), 0);
@@ -4017,7 +4191,7 @@ function renderMetrics(target, metrics) {
 
 function renderSummary() {
   stopContinuousDistractionNoise();
-  refs['summary-heading'].textContent = state.game === MATH_GAME ? 'Your math results' : state.game === 'typing' ? 'Your typing results' : state.game === 'memory'
+  refs['summary-heading'].textContent = state.game === QUICK_ADD_GAME ? 'Your quick addition results' : state.game === MATH_GAME ? 'Your math results' : state.game === 'typing' ? 'Your typing results' : state.game === 'memory'
     ? 'Your memory results'
     : state.game === 'task'
       ? 'Your task simulation results'
@@ -4679,6 +4853,9 @@ function openAttemptDetails(records, attemptIds, heading) {
             ? [`${record.stepsCompleted}/${record.stepsExpected} steps`, `${record.totalMistakes} mistakes`, (record.taskMistakeCategories ?? []).join(', ') || 'No mistake categories']
             : record.game === MATH_GAME
               ? [record.mathOperationLabel ?? 'Operation not recorded', record.mathExpression ? `${record.mathExpression} = ${record.mathAnswer}` : '']
+            : record.game === QUICK_ADD_GAME
+              ? [record.quickAddExpression ?? 'Values not recorded', record.quickAddTermCount ? `${record.quickAddTermCount} values` : '',
+                record.quickAddRoundComplete ? `Round ${record.quickAddRoundPassed ? 'passed' : 'not passed'}, goal ${record.quickAddRoundGoalMet ? 'met' : 'not met'}` : '']
             : record.game === 'error-detection'
               ? [`${record.expectedAnomalyCount} actual errors`, `${record.selectedAnomalyCount} selected`, `${record.missedAnomalyCount} missed`, `${record.falseFlagCount} false positives`, record.puzzleFamily]
               : [`${record.fraudExpectedIssueCount} actual errors`, `${record.fraudCorrectlyIdentifiedCount ?? Math.max(0, record.fraudExpectedIssueCount - record.fraudFalseNegativeCount)} identified`, `${record.fraudFalseNegativeCount} missed`, `${record.fraudFalsePositiveCount} false positives`, (record.fraudExpectedCategories ?? []).join(', ') || 'Clean case'];
@@ -6016,7 +6193,7 @@ function applyHistoryQuickRange(kind) {
 
 function openHistory() {
   if (state.activeScreen === 'overload') { overloadUI.stop(); historyView.filters = { game: 'overload' }; }
-  if (['math', 'typing', 'quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'error-detection'].includes(state.activeScreen)) {
+  if (['quick-add', 'math', 'typing', 'quiz', 'memory-read', 'memory-answer', 'task-briefing', 'task-workspace', 'error-detection'].includes(state.activeScreen)) {
     setMessage('Finish the current round before opening history.');
     return;
   }
@@ -6347,6 +6524,34 @@ refs['setup-form'].addEventListener('submit', (event) => {
     return;
   }
 
+  if (game === QUICK_ADD_GAME) {
+    const typed = readQuickAddForm();
+    const checks = [
+      ['seconds', typed.secondsPerQuestion, ...QUICK_ADD_LIMITS.seconds, `Choose between ${QUICK_ADD_LIMITS.seconds[0]} and ${QUICK_ADD_LIMITS.seconds[1]} seconds per question.`],
+      ['additions', typed.additions, ...QUICK_ADD_LIMITS.additions, `Choose between ${QUICK_ADD_LIMITS.additions[0]} and ${QUICK_ADD_LIMITS.additions[1]} additions per round.`],
+    ];
+    const additions = Number(typed.additions);
+    checks.push(typed.passRule === 'max-mistakes'
+      ? ['pass-value', typed.passValue, 0, additions, `Allow between 0 and ${additions} mistakes.`]
+      : ['pass-value', typed.passValue, 1, additions, `Ask for between 1 and ${additions} correct answers.`]);
+    checks.push(['goal-target', typed.goalTarget, 1, additions, `Set a goal between 1 and ${additions}.`]);
+    for (const [field, value, min, max, message] of checks) {
+      const number = Number(value);
+      if (value === '' || !Number.isInteger(number) || number < min || number > max) {
+        setMessage(message);
+        quickAddField(field).focus();
+        return;
+      }
+    }
+    state.quickAddSettings = resolveQuickAddSettings({ difficulty, ...typed });
+    state.questionCount = state.quickAddSettings.additions;
+    state.timeLimitSeconds = state.quickAddSettings.secondsPerQuestion;
+    state.autoContinue = true;
+    saveQuickAddSettings();
+    showNextQuickAddQuestion();
+    return;
+  }
+
   if (game === 'error-detection') {
     const questionCount = Number(refs['error-detection-question-count'].value);
     if (!Number.isInteger(questionCount) || questionCount < 1 || questionCount > 100) {
@@ -6499,6 +6704,7 @@ refs['next-question'].addEventListener('click', () => {
   if (state.game === 'typing') showNextTypingRound();
   else if (state.game === 'memory') showNextMemoryQuestion();
   else if (state.game === MATH_GAME) showNextMathQuestion();
+  else if (state.game === QUICK_ADD_GAME) showNextQuickAddQuestion();
   else if (state.game === 'task') showNextTaskQuestion();
   else if (state.game === 'error-detection') showNextErrorDetectionQuestion();
   else if (state.game === 'fraud-inspection') showNextFraudInspectionCase();
@@ -6544,6 +6750,17 @@ attachAmountFilter(document.getElementById('math-answer'), {
   decimal: false, negative: true, maxLength: 9, label: 'Answers',
   onRemoved: (message) => { document.getElementById('math-answer-message').textContent = message; setMessage(message); },
 });
+document.getElementById('quick-add-answer-form').addEventListener('submit', (event) => {
+  event.preventDefault();
+  submitQuickAddAnswer();
+});
+// Quick addition totals are cash amounts: digits and one decimal point, like the Cash handling amount box.
+attachAmountFilter(document.getElementById('quick-add-answer'), {
+  label: 'Totals',
+  onRemoved: (message) => { document.getElementById('quick-add-answer-message').textContent = message; setMessage(message); },
+});
+document.getElementById('quick-add-setup-options').addEventListener('change', updateQuickAddRuleNote);
+document.getElementById('quick-add-setup-options').addEventListener('input', updateQuickAddRuleNote);
 document.getElementById('math-operations').addEventListener('change', (event) => {
   if (!selectedMathOperations().length) {
     event.target.checked = true;

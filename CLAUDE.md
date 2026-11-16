@@ -9,8 +9,10 @@ replaces `AGENTS.md`; keep every agent rule here so there is one source of truth
   `app.js`, and the `*.mjs` modules beside them. No build step.
 - `Cash-Handling-Terminal-Quiz.ps1` is the separate Windows PowerShell edition.
 - Games: Cash handling, Number memory, Task simulation, Error detection,
-  Check & ID Fraud Inspection, Typing speed, Multitasker, Math practice, Chess.
+  Check & ID Fraud Inspection, Typing speed, Multitasker, Math practice, Quick addition, Chess.
 - Math practice problems, the answer evaluator and scoring live in `math-core.mjs`.
+- Quick addition (cash values added back to back, X seconds each, Y additions per round, a pass rule and a
+  score or streak goal) lives in `quick-add-core.mjs`; it always continues automatically with the answer note.
 - Chess trainer (game plan, lessons with demo + quiz, Flash, Read ahead, Quick analysis, Mistakes):
   content and logic in `chess-trainer.mjs`, screen in `chess-trainer-ui.mjs`. Every puzzle answer is
   checked by a material search in `tests/chess-trainer.test.mjs`; add a `check` to each new question.

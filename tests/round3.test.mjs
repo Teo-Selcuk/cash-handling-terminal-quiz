@@ -413,8 +413,8 @@ test('All games charts name the games they combine, on the tag, each mark and th
   const weakest = buildChartSpecs(history, 'all').find((spec) => spec.id === 'weakest-variables');
   assert.ok(weakest.series[0].points.every((point) => Object.values(GAME_LABELS).some((label) => point.label.toLowerCase().startsWith(`${label.toLowerCase()} · `))),
     'each All games weak spot names its game');
-  // Sample data is random per seed; seed 6 has a cash weak spot since Math practice joined the sample games.
-  const cashWeakest = buildChartSpecs(generateSampleHistory({ seed: 6, now: new Date('2026-10-23T12:00:00Z') }), 'cash').find((spec) => spec.id === 'weakest-variables');
+  // Sample data is random per seed; seed 7 has a cash weak spot since Quick addition joined the sample games.
+  const cashWeakest = buildChartSpecs(generateSampleHistory({ seed: 7, now: new Date('2026-10-23T12:00:00Z') }), 'cash').find((spec) => spec.id === 'weakest-variables');
   assert.ok(cashWeakest.series[0].points.every((point) => !point.label.startsWith('Cash handling · ')), 'one game keeps its short labels');
 });
 

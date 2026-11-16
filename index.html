@@ -7,37 +7,38 @@
     <meta name="theme-color" content="#12343b">
     <title>Cash, Memory &amp; Detail Trainer</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="style.css?v=20261114-touch">
+    <link rel="stylesheet" href="style.css?v=20261115-quick-add">
     <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
     <!-- Start every startup module download at once instead of discovering imports one level at a time. -->
-    <link rel="modulepreload" href="app.js?v=20261114-touch">
+    <link rel="modulepreload" href="app.js?v=20261115-quick-add">
     <link rel="modulepreload" href="firebase-accounts.mjs?v=20261020-sync">
     <link rel="modulepreload" href="account-data.mjs?v=20261020-fast">
     <link rel="modulepreload" href="firebase-config.mjs">
     <link rel="modulepreload" href="account-access.mjs">
     <link rel="modulepreload" href="cash-mistakes.mjs?v=20261011-fair-credit">
-    <link rel="modulepreload" href="history-tables.mjs?v=20261113-math">
-    <link rel="modulepreload" href="history-explanations.mjs?v=20261113-math">
+    <link rel="modulepreload" href="history-tables.mjs?v=20261115-quick-add">
+    <link rel="modulepreload" href="history-explanations.mjs?v=20261115-quick-add">
     <link rel="modulepreload" href="chart-contrast.mjs?v=20261023-round3">
     <link rel="modulepreload" href="chart-examples.mjs?v=20261023-round3">
-    <link rel="modulepreload" href="chart-games.mjs?v=20261113-math">
+    <link rel="modulepreload" href="chart-games.mjs?v=20261115-quick-add">
     <link rel="modulepreload" href="numpad-shortcuts.mjs?v=20261028-amount">
     <link rel="modulepreload" href="amount-input.mjs?v=20261101-numeric">
     <link rel="modulepreload" href="round-shortcuts.mjs?v=20261028-amount">
-    <link rel="modulepreload" href="answer-toast.mjs?v=20261113-math">
-    <link rel="modulepreload" href="progress-projection.mjs?v=20261113-math">
-    <link rel="modulepreload" href="progress-analytics.mjs?v=20261113-math">
+    <link rel="modulepreload" href="answer-toast.mjs?v=20261115-quick-add">
+    <link rel="modulepreload" href="progress-projection.mjs?v=20261115-quick-add">
+    <link rel="modulepreload" href="progress-analytics.mjs?v=20261115-quick-add">
     <link rel="modulepreload" href="overload-core.mjs?v=20261003-accounts">
     <link rel="modulepreload" href="overload-analytics.mjs?v=20261003-accounts">
     <link rel="modulepreload" href="quiz-core.mjs?v=20261017-round2">
     <link rel="modulepreload" href="pattern-games.mjs">
-    <link rel="modulepreload" href="speed-goals.mjs?v=20261113-math">
+    <link rel="modulepreload" href="speed-goals.mjs?v=20261115-quick-add">
     <link rel="modulepreload" href="overload-ui.mjs?v=20261101-numeric">
     <link rel="modulepreload" href="check-holds.mjs?v=20261003-accounts">
     <link rel="modulepreload" href="hold-training-ui.mjs?v=20261003-accounts">
     <link rel="modulepreload" href="math-core.mjs?v=20261113-math">
+    <link rel="modulepreload" href="quick-add-core.mjs?v=20261115-quick-add">
     <link rel="modulepreload" href="typing-core.mjs?v=20261002-typing">
-    <link rel="modulepreload" href="chess-ui.mjs?v=20261114-touch">
+    <link rel="modulepreload" href="chess-ui.mjs?v=20261115-quick-add">
     <link rel="modulepreload" href="chess-trainer-ui.mjs?v=20261114-touch">
     <link rel="modulepreload" href="chess-trainer.mjs?v=20261113-trainer">
     <link rel="modulepreload" href="chess-core.mjs">
@@ -50,7 +51,7 @@
     <link rel="modulepreload" href="distraction-sounds.mjs">
     <link rel="modulepreload" href="fraud-inspection.mjs?v=20261003-accounts">
     <link rel="modulepreload" href="adaptive-practice.mjs?v=20261017-perf">
-    <link rel="modulepreload" href="sample-history.mjs?v=20261113-math">
+    <link rel="modulepreload" href="sample-history.mjs?v=20261115-quick-add">
     <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js">
     <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js">
     <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js">
@@ -119,6 +120,7 @@
             <div class="choice-grid game-choice-grid">
               <label class="choice-card"><input type="radio" name="game" value="cash" checked><span><strong>Cash handling</strong><small>Practice exact, change, and short transactions.</small></span></label>
               <label class="choice-card"><input type="radio" name="game" value="math"><span><strong>Math practice</strong><small>Add, subtract, multiply, divide, brackets, and mixed problems against the clock.</small></span></label>
+              <label class="choice-card"><input type="radio" name="game" value="quick-add"><span><strong>Quick addition</strong><small>Add ones, tens, and other bills fast, back to back, with a pass rule and a goal.</small></span></label>
               <label class="choice-card"><input type="radio" name="game" value="memory"><span><strong>Number memory</strong><small>Read a number, then type it back from memory.</small></span></label>
               <label class="choice-card"><input type="radio" name="game" value="task"><span><strong>Task simulation</strong><small>Watch a workflow, then repeat its tabs, fields, and selections from memory.</small></span></label>
               <label class="choice-card"><input type="radio" name="game" value="error-detection"><span><strong>Error detection</strong><small>15 rotating games: sequences, mirrors, rotations, binary patterns, grids, and more. Each has Easy, Medium, and Hard puzzles.</small></span></label>
@@ -332,6 +334,33 @@
                 <label class="toggle-row math-operation-choice" for="math-op-mixed"><input id="math-op-mixed" type="checkbox" name="mathOperation" value="mixed" checked><span><strong>Mixed problems</strong><small>2 + 3 × 4</small></span></label>
               </div>
             </fieldset>
+          </div>
+
+          <div id="quick-add-setup-options" hidden>
+            <p class="setup-note">Each question shows a few cash values, such as $10 + $1 + $5. Type the total and press Enter. Questions continue automatically, and a timeout counts as a mistake.</p>
+            <div class="form-grid">
+              <label for="quick-add-seconds">Seconds per question
+                <input id="quick-add-seconds" name="quickAddSeconds" type="number" value="8" min="2" max="120" inputmode="numeric">
+              </label>
+              <label for="quick-add-additions">Additions per round
+                <input id="quick-add-additions" name="quickAddAdditions" type="number" value="10" min="1" max="100" inputmode="numeric">
+              </label>
+              <label for="quick-add-pass-rule">Pass rule
+                <select id="quick-add-pass-rule" name="quickAddPassRule">
+                  <option value="max-mistakes">At most a set number of mistakes</option>
+                  <option value="min-correct">At least a set number correct</option>
+                </select>
+              </label>
+              <label id="quick-add-pass-value-label" for="quick-add-pass-value">Mistakes allowed <input id="quick-add-pass-value" name="quickAddPassValue" type="number" value="2" min="0" max="100" inputmode="numeric"></label>
+              <label for="quick-add-goal-type">Goal
+                <select id="quick-add-goal-type" name="quickAddGoalType">
+                  <option value="streak">Correct answers in a row (streak)</option>
+                  <option value="score">Correct answers in the round (score)</option>
+                </select>
+              </label>
+              <label id="quick-add-goal-target-label" for="quick-add-goal-target">Target streak <input id="quick-add-goal-target" name="quickAddGoalTarget" type="number" value="5" min="1" max="100" inputmode="numeric"></label>
+            </div>
+            <p class="setup-note" id="quick-add-rule-note" aria-live="polite"></p>
           </div>
 
           <div id="memory-setup-options" hidden>
@@ -583,6 +612,32 @@
         </form>
       </section>
 
+      <section class="screen" id="quick-add-screen" hidden aria-labelledby="quick-add-heading">
+        <div class="question-header">
+          <p class="eyebrow" id="quick-add-progress">Addition 1 of 10</p>
+          <time class="timer" id="quick-add-timer" aria-label="Time remaining">0:08</time>
+        </div>
+        <div class="transaction-card quick-add-card">
+          <p class="transaction-label">Add these values</p>
+          <ul class="quick-add-values" id="quick-add-values" aria-describedby="quick-add-expression"></ul>
+          <h2 class="quick-add-expression" id="quick-add-heading" tabindex="-1"><span id="quick-add-expression">$0 = ?</span></h2>
+        </div>
+        <div class="quick-add-status" aria-live="polite">
+          <p id="quick-add-score">Correct 0 · Mistakes 0 · Streak 0</p>
+          <p id="quick-add-pass-status" data-status="on-track"></p>
+          <label class="quick-add-goal" for="quick-add-goal-progress"><span id="quick-add-goal-text">Goal</span>
+            <progress id="quick-add-goal-progress" max="1" value="0"></progress>
+          </label>
+        </div>
+        <form id="quick-add-answer-form" class="answer-form">
+          <label for="quick-add-answer">Total ($)
+            <input id="quick-add-answer" name="quickAddAnswer" type="text" inputmode="decimal" autocomplete="off" placeholder="0.00" aria-describedby="quick-add-answer-message">
+          </label>
+          <p class="field-message" id="quick-add-answer-message" aria-live="polite"></p>
+          <button class="primary-button" id="quick-add-submit" type="submit">Submit total</button>
+        </form>
+      </section>
+
       <section class="screen memory-screen" id="memory-read-screen" hidden aria-labelledby="memory-read-heading">
         <div class="question-header">
           <p class="eyebrow" id="memory-read-progress">Round 1 of 10</p>
@@ -804,6 +859,7 @@
           <button type="button" data-history-game="typing" aria-pressed="false">Typing Speed</button>
           <button type="button" data-history-game="overload" aria-pressed="false">Multitasker</button>
           <button type="button" data-history-game="math" aria-pressed="false">Math Practice</button>
+          <button type="button" data-history-game="quick-add" aria-pressed="false">Quick Addition</button>
           <button type="button" data-history-game="chess" aria-pressed="false">Chess</button>
         </nav>
         <section id="speed-goals-history" class="speed-goals" aria-labelledby="speed-goals-history-heading" hidden>
@@ -1044,6 +1100,6 @@
       <p class="answer-toast-title" id="answer-toast-title"></p>
       <dl class="answer-toast-lines" id="answer-toast-lines"></dl>
     </aside>
-    <script type="module" src="app.js?v=20261114-touch"></script>
+    <script type="module" src="app.js?v=20261115-quick-add"></script>
   </body>
 </html>

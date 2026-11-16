@@ -1,11 +1,12 @@
 import { createTypingPrompt, scoreTyping } from './typing-core.mjs?v=20261002-typing';
 import { sampleOverloadRecord } from './overload-analytics.mjs?v=20261003-accounts';
 import { createMathQuestion, mathRecordFields, MATH_GAME } from './math-core.mjs?v=20261113-math';
+import { createQuickAddQuestion, quickAddRecordFields, summarizeQuickAddRound, formatCents, QUICK_ADD_GAME } from './quick-add-core.mjs?v=20261115-quick-add';
 import { ChessSession } from './chess-core.mjs';
 import { CHESS_LESSONS } from './chess-lessons.mjs';
 const DAY_MS = 86400000;
 const DIFFICULTIES = ['Easy', 'Medium', 'Hard', 'Custom'];
-const GAMES = ['cash', 'memory', 'task', 'error-detection', 'fraud-inspection', 'typing', 'overload', 'math'];
+const GAMES = ['cash', 'memory', 'task', 'error-detection', 'fraud-inspection', 'typing', 'overload', 'math', 'quick-add'];
 const DENOMINATIONS = [10000, 5000, 2000, 1000, 500, 100, 25, 10, 5, 1];
 const FRAUD_CATEGORIES = [
   'payee-mismatch', 'amount-mismatch', 'date-issue', 'check-alteration', 'handwriting-issue',
@@ -286,7 +287,20 @@ function mathRecord(common, random) {
   return { ...common, ...mathRecordFields(question), difficulty, userAnswer };
 }
 
-export function generateSampleHistory({ now = new Date(), count = 1680, seed = Math.floor(Math.random() * 0xFFFFFFFF) } = {}) {
+// Quick addition samples are 5-addition rounds; the 5th answer of a session saves the round's pass and goal result.
+const SAMPLE_QUICK_ADD_SETTINGS = Object.freeze({ additions: 5, passRule: 'max-mistakes', passValue: 1, goalType: 'streak', goalTarget: 4 });
+function quickAddSampleRecord(common, random, roundOutcomes) {
+  const difficulty = ['Easy', 'Medium', 'Hard'].includes(common.difficulty) ? common.difficulty : 'Medium';
+  const question = createQuickAddQuestion({ difficulty, random });
+  const outcomes = [...(roundOutcomes.get(common.sessionId) ?? []), common.outcome];
+  roundOutcomes.set(common.sessionId, outcomes);
+  const settings = { ...SAMPLE_QUICK_ADD_SETTINGS, difficulty, secondsPerQuestion: common.timeLimitSeconds };
+  const round = summarizeQuickAddRound(outcomes, settings);
+  const userAnswer = common.outcome === 'Correct' ? formatCents(question.answerCents) : common.outcome === 'Incorrect' ? formatCents(question.answerCents + (random() < 0.5 ? -100 : 1000)) : '';
+  return { ...common, ...quickAddRecordFields(question, settings, round), difficulty, userAnswer };
+}
+
+export function generateSampleHistory({ now = new Date(), count = 1890, seed = Math.floor(Math.random() * 0xFFFFFFFF) } = {}) {
   const total = clamp(Math.floor(Number(count) || 1200), 1, 10000);
   const random = randomSource(seed);
   const recentCount = Math.ceil(total * 0.85);
@@ -294,6 +308,7 @@ export function generateSampleHistory({ now = new Date(), count = 1680, seed = M
   const attemptsByGameDay = new Map();
   const sessionModes = new Map();
   const rows = [];
+  const quickAddRounds = new Map();
   for (let index = 0; index < total; index += 1) {
     const dayIndex = index < recentCount ? index % 30 : 31 + Math.floor(((index - recentCount) / Math.max(1, total - recentCount - 1)) * 150);
     const daysOnDate = index < recentCount ? Math.floor(index / 30) : index - recentCount;
@@ -323,7 +338,7 @@ export function generateSampleHistory({ now = new Date(), count = 1680, seed = M
     const row = game === 'cash' ? cashRecord(common, random, index)
       : game === 'memory' ? memoryRecord(common, random)
         : game === 'task' ? taskRecord(common, random)
-          : game === 'error-detection' ? errorRecord(common, random) : game === 'typing' ? typingRecord(common, random) : game === 'overload' ? sampleOverloadRecord(common,random,index) : game === MATH_GAME ? mathRecord(common, random) : fraudRecord(common, random);
+          : game === 'error-detection' ? errorRecord(common, random) : game === 'typing' ? typingRecord(common, random) : game === 'overload' ? sampleOverloadRecord(common,random,index) : game === MATH_GAME ? mathRecord(common, random) : game === QUICK_ADD_GAME ? quickAddSampleRecord(common, random, quickAddRounds) : fraudRecord(common, random);
     rows.push(row);
   }
   return rows;

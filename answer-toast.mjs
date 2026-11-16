@@ -10,7 +10,7 @@ export const ANSWER_TOAST_MAX_TEXT = 160;
 
 const GAME_NAMES = Object.freeze({
   cash: 'Cash handling', memory: 'Number memory', task: 'Task simulation', 'error-detection': 'Error detection',
-  'fraud-inspection': 'Check & ID fraud inspection', typing: 'Typing speed', math: 'Math practice',
+  'fraud-inspection': 'Check & ID fraud inspection', typing: 'Typing speed', math: 'Math practice', 'quick-add': 'Quick addition',
 });
 
 export function shortenToastText(value, max = ANSWER_TOAST_MAX_TEXT) {

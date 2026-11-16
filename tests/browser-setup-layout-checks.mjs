@@ -15,7 +15,7 @@ export async function checkSetupLayout(browser, base) {
           checked: item.querySelector('input').checked, border: style.borderColor, shadow: style.boxShadow, background: style.backgroundColor,
           clipped: [...item.querySelectorAll('strong, small')].some((text) => text.scrollWidth > text.clientWidth + 1 || text.getBoundingClientRect().bottom > box.bottom + 1) };
       }));
-      assert.equal(cards.length, 8, `${width}px: eight game cards`);
+      assert.equal(cards.length, 10, `${width}px: ten game cards`);
       assert.equal(new Set(cards.map((card) => card.width)).size, 1, `${width}px: equal card widths ${cards.map((c) => c.width)}`);
       assert.equal(new Set(cards.map((card) => card.height)).size, 1, `${width}px: equal card heights ${cards.map((c) => c.height)}`);
       assert.ok(cards.every((card) => !card.clipped), `${width}px: no clipped card text`);

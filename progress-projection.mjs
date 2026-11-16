@@ -1,7 +1,7 @@
 // Per-game progress projection: extends a game's own attempt history forward to guess success rate and answer
 // speed at a few horizons, as a low / likely / high range. Pure: everything comes from the rows passed in.
-import { deduplicateHistory } from './progress-analytics.mjs?v=20261113-math';
-import { goalMetric } from './speed-goals.mjs?v=20261113-math';
+import { deduplicateHistory } from './progress-analytics.mjs?v=20261115-quick-add';
+import { goalMetric } from './speed-goals.mjs?v=20261115-quick-add';
 
 const DAY_MS = 86400000;
 export const PROJECTION_MINIMUM = Object.freeze({ attempts: 10, days: 14 });

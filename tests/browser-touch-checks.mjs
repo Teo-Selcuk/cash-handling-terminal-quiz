@@ -3,7 +3,7 @@ import { mkdir } from 'node:fs/promises';
 
 // Every game on phones and tablets, held both ways: no sideways scrolling, 44px touch targets,
 // and 16px text in fields (smaller text makes iPhones zoom the page when a field is tapped).
-const GAMES = ['cash', 'math', 'memory', 'task', 'error-detection', 'fraud-inspection', 'typing', 'overload', 'chess'];
+const GAMES = ['cash', 'math', 'quick-add', 'memory', 'task', 'error-detection', 'fraud-inspection', 'typing', 'overload', 'chess'];
 const SIZES = [[390, 844], [844, 390], [768, 1024], [1024, 768]];
 
 async function touchProblems(page) {

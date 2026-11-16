@@ -12,10 +12,24 @@ const GAME_NAMES = Object.freeze({
   'fraud-inspection': 'Check & ID Fraud Inspection',
   overload: 'Multitasker',
   math: 'Math practice',
+  'quick-add': 'Quick addition',
 });
 // Math practice records keep the operation label they were asked with; older rows without it stay unknown.
 const mathOperationOf = (row) => known(row?.mathOperationLabel) ? String(row.mathOperationLabel) : null;
 const mathTermsOf = (row) => integer(row?.mathTermCount);
+// Quick addition records keep how many values were added and the largest one; the last answer of a round keeps
+// whether the round passed and met its goal.
+const quickAddTermsOf = (row) => integer(row?.quickAddTermCount);
+const quickAddLargestOf = (row) => known(row?.quickAddLargest) ? String(row.quickAddLargest) : null;
+const quickAddCoinsOf = (row) => typeof row?.quickAddHasCoins === 'boolean' ? (row.quickAddHasCoins ? 'With coins' : 'Bills only') : null;
+function quickAddRoundPoints(records) {
+  const rounds = records.filter((row) => row.quickAddRoundComplete === true);
+  return [['passed', 'Passed the round', 'quickAddRoundPassed'], ['goal', 'Met the goal', 'quickAddRoundGoalMet']].map(([key, label, field]) => {
+    const yes = rounds.filter((row) => row[field] === true).length;
+    return { key, label, count: rounds.length, correct: yes, measure: 'rate', value: rounds.length ? Math.round(yes / rounds.length * 1000) / 10 : null,
+      attemptIds: rounds.map((row) => row.attemptId) };
+  }).filter((point) => point.count);
+}
 const GAME_BY_NAME = new Map(Object.entries(GAME_NAMES).map(([key, value]) => [value.toLowerCase(), key]));
 const known = (value) => value !== null && value !== undefined && value !== '';
 const boolean = (value) => typeof value === 'boolean' ? value : null;
@@ -317,6 +331,7 @@ function gameMatches(record, filters) {
       || fraud.issueCategories.some((id) => record.fraudExpectedCategories?.includes(id)))
     && (fraud.cleanCase === undefined || record.fraudCleanCase === fraud.cleanCase);
   if (record.game === 'math') return selected(mathOperationOf(record), filters.math?.operations) && range(record.timeLimitSeconds, filters.math?.timeLimitSeconds);
+  if (record.game === 'quick-add') return selected(quickAddLargestOf(record), filters.quickAdd?.largest) && range(record.quickAddTermCount, filters.quickAdd?.terms) && range(record.timeLimitSeconds, filters.quickAdd?.timeLimitSeconds);
   if (record.game === 'typing') return selected(record.typingMode, filters.typing?.modes) && range(record.typingCharacters, filters.typing?.characters) && range(record.wpm, filters.typing?.wpm);
   if (record.game === 'overload') return selected(record.sessionMode, filters.overload?.modes) && range(record.overloadPeakTasks,filters.overload?.tasks) && range(record.overloadScore,filters.overload?.score) && range(record.overloadDifficulty,filters.overload?.difficulty) && (!filters.overload?.miniGames?.length||filters.overload.miniGames.every(task=>record.overloadTasks?.includes(task)));
   return true;
@@ -395,6 +410,11 @@ export function buildGameFilters(history, game = 'all') {
     rangeField('error.expectedAnomalyCount', 'Expected anomalies', 'anomalies', selectedRecords, 'expectedAnomalyCount'), { id: 'error.cleanPuzzle', label: 'Clean puzzle', type: 'boolean', available: countAvailable(selectedRecords, 'cleanPuzzle') },
     rangeField('error.selectedAnomalyCount', 'Selected anomalies', 'anomalies', selectedRecords, 'selectedAnomalyCount'), rangeField('error.missedAnomalyCount', 'Missed anomalies', 'anomalies', selectedRecords, 'missedAnomalyCount'),
     rangeField('error.falseFlagCount', 'False flags', 'flags', selectedRecords, 'falseFlagCount'), rangeField('error.timeLimitSeconds', 'Time limit', 'seconds', selectedRecords, 'timeLimitSeconds'),
+  );
+  if (game === 'quick-add') fields.push(
+    rangeField('quickAdd.terms', 'Values added', 'values', selectedRecords, 'quickAddTermCount'),
+    facetField('quickAdd.largest', 'Largest value', selectedRecords, (record) => [quickAddLargestOf(record)]),
+    rangeField('quickAdd.timeLimitSeconds', 'Seconds per addition', 'seconds', selectedRecords, 'timeLimitSeconds'),
   );
   if (game === 'math') fields.push(
     facetField('math.operations', 'Operation', selectedRecords, (record) => [mathOperationOf(record)]),
@@ -1089,6 +1109,17 @@ function buildErrorAnalyticsUncached(history, { previousRecords = [], comparison
     if (record.game === 'task') addTaskEvidence(record, byCategoryGroups, byRawInputGroups, numericResponses, mistakesForAttempt, mistakeCounts);
     if (record.game === 'error-detection') addErrorDetectionEvidence(record, byCategoryGroups, byRawInputGroups, mistakesForAttempt, mistakeCounts);
     if (record.game === 'fraud-inspection') addFraudEvidence(record, byCategoryGroups, byRawInputGroups, mistakesForAttempt, mistakeCounts);
+    if (record.game === 'quick-add' && quickAddTermsOf(record) !== null) {
+      const size = `${quickAddTermsOf(record)} values`;
+      const error = record.outcome !== 'Correct';
+      addErrorOpportunity(byCategoryGroups, { key: `quick-add:${size}`, label: size, game: record.game, error, record });
+      addErrorOpportunity(byRawInputGroups, { key: `quick-add:${quickAddCoinsOf(record) ?? 'unknown'}`, label: quickAddCoinsOf(record) ?? 'Not recorded', game: record.game, error, record });
+      if (error) {
+        const label = `Quick addition: ${record.outcome === 'Timed Out' ? 'timed out' : 'wrong total'}`;
+        mistakesForAttempt.push({ key: `quick-add:${size}`, label, detail: `${record.quickAddExpression ?? 'Values'} = ${record.expectedAnswer ?? 'unknown'}. Answered: ${record.userAnswer || 'no answer'}.` });
+        mistakeCounts.set(label, (mistakeCounts.get(label) ?? 0) + 1);
+      }
+    }
     if (record.game === 'math' && mathOperationOf(record)) {
       const operation = mathOperationOf(record);
       const error = record.outcome !== 'Correct';
@@ -1524,6 +1555,7 @@ function conditionAxes(game) {
     ['Issue count', (row) => row.fraudExpectedIssueCount], ['Actual issue', (row) => row.fraudExpectedCategories],
     ['Clean case', (row) => row.fraudCleanCase === null ? null : row.fraudCleanCase ? 'Clean' : 'Has issues']];
   if (game === 'math') return [...common, ['Operation', mathOperationOf], ['Numbers in problem', mathTermsOf]];
+  if (game === 'quick-add') return [...common, ['Values added', quickAddTermsOf], ['Largest value', quickAddLargestOf], ['Coins', quickAddCoinsOf]];
   if(game==='overload')return [...common,['Mode',row=>row.sessionMode],['Peak tasks',row=>row.overloadPeakTasks],['Difficulty reached',row=>row.overloadDifficulty],['Mini-games',row=>row.overloadTasks]];
   return common;
 }
@@ -1679,6 +1711,13 @@ export function buildChartSpecs(history, game = 'all') {
     chart('math-operation-time', 'Answer time by operation', groupedPoints(records, mathOperationOf, 'time'), { metric: 'time' }),
     chart('math-terms-accuracy', 'Accuracy by numbers in the problem', groupedPoints(records, mathTermsOf)),
   );
+  if (game === 'quick-add') specs.push(
+    chart('quick-add-round-results', 'Rounds passed and goals met', quickAddRoundPoints(records)),
+    chart('quick-add-terms-accuracy', 'Accuracy by values added', groupedPoints(records, quickAddTermsOf)),
+    chart('quick-add-terms-time', 'Answer time by values added', groupedPoints(records, quickAddTermsOf, 'time'), { metric: 'time' }),
+    chart('quick-add-largest-accuracy', 'Accuracy by largest value', groupedPoints(records, quickAddLargestOf)),
+    chart('quick-add-coins-accuracy', 'Accuracy with and without coins', groupedPoints(records, quickAddCoinsOf)),
+  );
   if (game === 'fraud-inspection') {
     specs.push(
       chart('hold-decision-progression', 'Hold / acceptance accuracy over time', records.filter(row => row.holdScenario).map(row => ({key:row.attemptId,label:new Date(row.timestamp).toLocaleString(),value:row.isAnswered?row.holdDecisionAccuracyPercent:null,count:1,attemptIds:[row.attemptId]})), {kind:'line'}),
@@ -1738,6 +1777,10 @@ function weaknessGroups(records, game) {
     add('mistake', 'Mistake type', (record) => record.taskMistakeCategories, (value) => ({ game: 'task', task: { mistakeCategories: [value] } }), 'mistakeCategory');
   }
   if (game === 'math') add('operation', 'Operation', mathOperationOf, (value) => ({ game, math: { operations: [value] } }), 'mathOperation');
+  if (game === 'quick-add') {
+    add('terms', 'Values added', quickAddTermsOf, (value) => ({ game, quickAdd: { terms: { min: Number(value), max: Number(value) } } }), 'quickAddTerms');
+    add('largest', 'Largest value', quickAddLargestOf, (value) => ({ game, quickAdd: { largest: [value] } }), 'quickAddLargest');
+  }
   if (game === 'error-detection') {
     add('family', 'Puzzle family', (record) => record.puzzleFamily, (value) => ({ game: 'error-detection', error: { puzzleFamilies: [value] } }), 'family');
     add('clues', 'Clue count', (record) => record.clueCount, (value) => ({ game: 'error-detection', error: { clueCount: { min: Number(value), max: Number(value) } } }), 'clues');
