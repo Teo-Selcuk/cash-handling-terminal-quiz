@@ -11,7 +11,8 @@ replaces `AGENTS.md`; keep every agent rule here so there is one source of truth
 - Games: Cash handling, Number memory, Task simulation, Error detection,
   Check & ID Fraud Inspection, Typing speed, Multitasker, Math practice, Quick addition, Chess.
 - Math practice problems, the answer evaluator and scoring live in `math-core.mjs`.
-- Quick addition (cash values added back to back, X seconds each, Y additions per round, a pass rule and a
+- Quick addition (a running total: each question adds one amount, between a set smallest and largest, to the previous
+  total; X seconds each, Y additions per round, a pass rule and a
   score or streak goal) lives in `quick-add-core.mjs`; it always continues automatically with the answer note.
 - Chess trainer (game plan, lessons with demo + quiz, Flash, Read ahead, Quick analysis, Mistakes):
   content and logic in `chess-trainer.mjs`, screen in `chess-trainer-ui.mjs`. Every puzzle answer is

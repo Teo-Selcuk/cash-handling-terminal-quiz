@@ -1,7 +1,7 @@
 import { createTypingPrompt, scoreTyping } from './typing-core.mjs?v=20261002-typing';
 import { sampleOverloadRecord } from './overload-analytics.mjs?v=20261003-accounts';
 import { createMathQuestion, mathRecordFields, MATH_GAME } from './math-core.mjs?v=20261113-math';
-import { createQuickAddQuestion, quickAddRecordFields, summarizeQuickAddRound, formatCents, QUICK_ADD_GAME } from './quick-add-core.mjs?v=20261115-quick-add';
+import { createQuickAddQuestion, quickAddRecordFields, summarizeQuickAddRound, formatCents, QUICK_ADD_GAME } from './quick-add-core.mjs?v=20261116-chain';
 import { ChessSession } from './chess-core.mjs';
 import { CHESS_LESSONS } from './chess-lessons.mjs';
 const DAY_MS = 86400000;
@@ -291,10 +291,12 @@ function mathRecord(common, random) {
 const SAMPLE_QUICK_ADD_SETTINGS = Object.freeze({ additions: 5, passRule: 'max-mistakes', passValue: 1, goalType: 'streak', goalTarget: 4 });
 function quickAddSampleRecord(common, random, roundOutcomes) {
   const difficulty = ['Easy', 'Medium', 'Hard'].includes(common.difficulty) ? common.difficulty : 'Medium';
-  const question = createQuickAddQuestion({ difficulty, random });
-  const outcomes = [...(roundOutcomes.get(common.sessionId) ?? []), common.outcome];
-  roundOutcomes.set(common.sessionId, outcomes);
   const settings = { ...SAMPLE_QUICK_ADD_SETTINGS, difficulty, secondsPerQuestion: common.timeLimitSeconds };
+  // Each sample answer adds to the round's running total, like the real game.
+  const before = roundOutcomes.get(common.sessionId) ?? { outcomes: [], totalCents: 0 };
+  const question = createQuickAddQuestion({ settings, previousCents: before.totalCents, random });
+  const outcomes = [...before.outcomes, common.outcome];
+  roundOutcomes.set(common.sessionId, { outcomes, totalCents: question.answerCents });
   const round = summarizeQuickAddRound(outcomes, settings);
   const userAnswer = common.outcome === 'Correct' ? formatCents(question.answerCents) : common.outcome === 'Incorrect' ? formatCents(question.answerCents + (random() < 0.5 ? -100 : 1000)) : '';
   return { ...common, ...quickAddRecordFields(question, settings, round), difficulty, userAnswer };

@@ -1,5 +1,5 @@
 // Shared presentation for tables and chess history lists; gameplay storage is untouched.
-import { tableExplanation, createExplanation } from './history-explanations.mjs?v=20261115-quick-add';
+import { tableExplanation, createExplanation } from './history-explanations.mjs?v=20261116-chain';
 const sizes = new Map();
 // Tables start minimized so History pages stay short; the toolbar opens them.
 const DEFAULT_SIZE = 'minimized';

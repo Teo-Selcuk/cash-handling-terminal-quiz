@@ -1,17 +1,17 @@
 import { accountStorage as localStorage, initializeAccounts } from './firebase-accounts.mjs?v=20261020-sync';
 import { canPlayGame } from './account-access.mjs';
 import { analyzeCashMistakes } from './cash-mistakes.mjs?v=20261011-fair-credit';
-import { enhanceHistoryTables } from './history-tables.mjs?v=20261115-quick-add';
-import { chartExplanation, summaryChartExplanation, createExplanation } from './history-explanations.mjs?v=20261115-quick-add';
+import { enhanceHistoryTables } from './history-tables.mjs?v=20261116-chain';
+import { chartExplanation, summaryChartExplanation, createExplanation } from './history-explanations.mjs?v=20261116-chain';
 import { resolveLabelColor } from './chart-contrast.mjs?v=20261023-round3';
 import { chartExample, summaryChartExample, createExample } from './chart-examples.mjs?v=20261023-round3';
-import { chartGameTag, chartFitsGame, gamesInAttempts, gameBreakdownText, gamesIncludedText, withGameName } from './chart-games.mjs?v=20261115-quick-add';
+import { chartGameTag, chartFitsGame, gamesInAttempts, gameBreakdownText, gamesIncludedText, withGameName } from './chart-games.mjs?v=20261116-chain';
 import { numpadChoice, numpadListAction, listKeyHint } from './numpad-shortcuts.mjs?v=20261028-amount';
 import { attachAmountFilter, readAmountCents } from './amount-input.mjs?v=20261101-numeric';
 import { roundEndAction } from './round-shortcuts.mjs?v=20261028-amount';
-import { answerToastContent } from './answer-toast.mjs?v=20261115-quick-add';
-import { buildProjection, projectionRows, chessProjectionRows } from './progress-projection.mjs?v=20261115-quick-add';
-import { goalProgress, goalMetric, availableProgressiveLevels, PROGRESSIVE_LEVELS, fraudProgressiveOverrides, GOAL_SETTINGS_KEY, GOAL_WINDOW_LIMITS, GOAL_SUCCESS_LIMITS, resolveGoalSettings } from './speed-goals.mjs?v=20261115-quick-add';
+import { answerToastContent } from './answer-toast.mjs?v=20261116-chain';
+import { buildProjection, projectionRows, chessProjectionRows } from './progress-projection.mjs?v=20261116-chain';
+import { goalProgress, goalMetric, availableProgressiveLevels, PROGRESSIVE_LEVELS, fraudProgressiveOverrides, GOAL_SETTINGS_KEY, GOAL_WINDOW_LIMITS, GOAL_SUCCESS_LIMITS, resolveGoalSettings } from './speed-goals.mjs?v=20261116-chain';
 import { createOverloadUI } from './overload-ui.mjs?v=20261101-numeric';
 import { summarizeOverload, overloadRecommendation } from './overload-analytics.mjs?v=20261003-accounts';
 import { decideCheck, scoreHoldDecision, ITEM_TYPES, ITEM_REASONS, ACTIONS, HOLD_TYPES, availabilityText } from './check-holds.mjs?v=20261003-accounts';
@@ -20,10 +20,10 @@ import { MATH_GAME, MATH_OPERATION_IDS, MATH_PRESETS, resolveMathSettings, creat
 import {
   QUICK_ADD_GAME, QUICK_ADD_PRESETS, QUICK_ADD_LIMITS, resolveQuickAddSettings, createQuickAddQuestion, scoreQuickAddAnswer, summarizeQuickAddRound,
   quickAddRecordFields, summarizeQuickAddHistory, passRuleText, goalText, formatCents,
-} from './quick-add-core.mjs?v=20261115-quick-add';
+} from './quick-add-core.mjs?v=20261116-chain';
 import { TYPING_PRESETS, resolveTypingSettings, createTypingPrompt, scoreTyping, summarizeTyping } from './typing-core.mjs?v=20261002-typing';
 import { PATTERN_GAME_NAMES } from './pattern-games.mjs';
-import { createChessUI } from './chess-ui.mjs?v=20261115-quick-add';
+import { createChessUI } from './chess-ui.mjs?v=20261116-chain';
 import { ChessStore } from './chess-storage.mjs';
 import { createDistractionSamples } from './distraction-sounds.mjs';
 import {
@@ -37,8 +37,8 @@ import { PRACTICE_GAMES, rankPracticeCandidates, recommendPractice, practiceSett
 import {
   buildChartSpecs, buildConditionalReport, buildErrorAnalytics, buildAdvancedErrorAnalytics, buildGameFilters, buildProgressModel, comparePeriods,
   filterHistory, recommendNextChallenge, progressionSegments,
-} from './progress-analytics.mjs?v=20261115-quick-add';
-import { generateSampleHistory, generateSampleChessHistory } from './sample-history.mjs?v=20261115-quick-add';
+} from './progress-analytics.mjs?v=20261116-chain';
+import { generateSampleHistory, generateSampleChessHistory } from './sample-history.mjs?v=20261116-chain';
 import {
   DENOMINATIONS,
   DIFFICULTY_CONFIG,
@@ -1908,13 +1908,13 @@ const quickAddField = (name) => document.getElementById(`quick-add-${name}`);
 
 function quickAddPresetDescription(level) {
   const preset = QUICK_ADD_PRESETS[level];
-  const coins = preset.values.some((cents) => cents < 100) ? ' and coins' : '';
-  return `${preset.additions} additions, ${preset.secondsPerQuestion}s each, ${preset.terms[0]}–${preset.terms[1]} values from $1 up to ${formatCents(Math.max(...preset.values)).replace('.00', '')}${coins}`;
+  return `${preset.additions} additions, ${preset.secondsPerQuestion}s each, add $${preset.minAdd} to $${preset.maxAdd}${preset.includeCents ? ' with cents' : ''} to the running total`;
 }
 
 function readQuickAddForm() {
   return {
     secondsPerQuestion: quickAddField('seconds').value, additions: quickAddField('additions').value,
+    minAdd: quickAddField('min-add').value, maxAdd: quickAddField('max-add').value, includeCents: quickAddField('include-cents').checked,
     passRule: quickAddField('pass-rule').value, passValue: quickAddField('pass-value').value,
     goalType: quickAddField('goal-type').value, goalTarget: quickAddField('goal-target').value,
   };
@@ -1923,6 +1923,9 @@ function readQuickAddForm() {
 function fillQuickAddForm(settings) {
   quickAddField('seconds').value = String(settings.secondsPerQuestion);
   quickAddField('additions').value = String(settings.additions);
+  quickAddField('min-add').value = String(settings.minAdd);
+  quickAddField('max-add').value = String(settings.maxAdd);
+  quickAddField('include-cents').checked = settings.includeCents;
   quickAddField('pass-rule').value = settings.passRule;
   quickAddField('pass-value').value = String(settings.passValue);
   quickAddField('goal-type').value = settings.goalType;
@@ -1943,7 +1946,7 @@ function updateQuickAddRuleNote() {
   const settings = resolveQuickAddSettings({ difficulty: selectedDifficulty(), ...readQuickAddForm() });
   quickAddField('pass-value-label').firstChild.textContent = settings.passRule === 'max-mistakes' ? 'Mistakes allowed ' : 'Correct answers needed ';
   quickAddField('goal-target-label').firstChild.textContent = settings.goalType === 'score' ? 'Target score ' : 'Target streak ';
-  quickAddField('rule-note').textContent = `${passRuleText(settings)}. ${goalText(settings)}.`;
+  quickAddField('rule-note').textContent = `Each step adds $${settings.minAdd} to $${settings.maxAdd}${settings.includeCents ? ' (with cents)' : ''} to the previous total, starting at $0. ${passRuleText(settings)}. ${goalText(settings)}.`;
 }
 
 // A difficulty fills every field only when it changes, so typed values survive other setup refreshes.
@@ -2012,6 +2015,8 @@ function submitQuickAddAnswer(timedOut = false) {
   const round = summarizeQuickAddRound([...state.results.map((row) => row.outcome), score.outcome], state.quickAddSettings);
   const record = recordQuickAddAnswer(state.quickAddQuestion, timedOut ? '' : formatCents(typedCents), score.outcome, elapsedSeconds, round);
   state.results.push(record);
+  // The next question adds to the correct total, so one mistake never throws off the rest of the round.
+  state.quickAddRunningCents = state.quickAddQuestion.answerCents;
   persistRecord(record);
   if (state.results.length === state.questionCount) stopContinuousDistractionNoise();
   showAnswerToast(record, { correctAnswer: `${record.quickAddExpression} = ${record.expectedAnswer}`, yourAnswer: record.userAnswer || 'No answer' });
@@ -2025,13 +2030,17 @@ function showNextQuickAddQuestion() {
     showScreen('summary');
     return;
   }
-  state.quickAddQuestion = createQuickAddQuestion({ difficulty: state.difficulty });
+  state.quickAddQuestion = createQuickAddQuestion({ settings: state.quickAddSettings, previousCents: state.quickAddRunningCents });
   persistUnansweredRound(recordQuickAddAnswer(state.quickAddQuestion, '', 'Not answered', 0));
   state.answerSubmitted = false;
   quickAddField('progress').textContent = `Addition ${state.questionNumber} of ${state.questionCount} · ${state.difficulty.toUpperCase()}`;
-  quickAddField('values').replaceChildren(...state.quickAddQuestion.labels.map((label) => {
+  // Two chips: the total so far, and the amount to add to it.
+  quickAddField('values').replaceChildren(...[
+    [`Total so far ${formatCents(state.quickAddQuestion.previousCents)}`, 'quick-add-chip'],
+    [`+ ${formatCents(state.quickAddQuestion.addendCents)}`, 'quick-add-chip is-add'],
+  ].map(([label, className]) => {
     const item = document.createElement('li');
-    item.className = label.endsWith('¢') ? 'quick-add-chip is-coin' : 'quick-add-chip';
+    item.className = className;
     item.textContent = label;
     return item;
   }));
@@ -4854,7 +4863,7 @@ function openAttemptDetails(records, attemptIds, heading) {
             : record.game === MATH_GAME
               ? [record.mathOperationLabel ?? 'Operation not recorded', record.mathExpression ? `${record.mathExpression} = ${record.mathAnswer}` : '']
             : record.game === QUICK_ADD_GAME
-              ? [record.quickAddExpression ?? 'Values not recorded', record.quickAddTermCount ? `${record.quickAddTermCount} values` : '',
+              ? [record.quickAddExpression ?? 'Amounts not recorded', Number.isInteger(record.quickAddAddendCents) ? `Added ${formatCents(record.quickAddAddendCents)}` : '',
                 record.quickAddRoundComplete ? `Round ${record.quickAddRoundPassed ? 'passed' : 'not passed'}, goal ${record.quickAddRoundGoalMet ? 'met' : 'not met'}` : '']
             : record.game === 'error-detection'
               ? [`${record.expectedAnomalyCount} actual errors`, `${record.selectedAnomalyCount} selected`, `${record.missedAnomalyCount} missed`, `${record.falseFlagCount} false positives`, record.puzzleFamily]
@@ -6535,6 +6544,9 @@ refs['setup-form'].addEventListener('submit', (event) => {
       ? ['pass-value', typed.passValue, 0, additions, `Allow between 0 and ${additions} mistakes.`]
       : ['pass-value', typed.passValue, 1, additions, `Ask for between 1 and ${additions} correct answers.`]);
     checks.push(['goal-target', typed.goalTarget, 1, additions, `Set a goal between 1 and ${additions}.`]);
+    const [lowestAdd, highestAdd] = QUICK_ADD_LIMITS.amount;
+    checks.push(['min-add', typed.minAdd, lowestAdd, highestAdd, `Choose a smallest amount to add between $${lowestAdd} and $${highestAdd}.`]);
+    checks.push(['max-add', typed.maxAdd, Number(typed.minAdd) || lowestAdd, highestAdd, `The largest amount to add must be between the smallest ($${Number(typed.minAdd) || lowestAdd}) and $${highestAdd}.`]);
     for (const [field, value, min, max, message] of checks) {
       const number = Number(value);
       if (value === '' || !Number.isInteger(number) || number < min || number > max) {
@@ -6547,6 +6559,7 @@ refs['setup-form'].addEventListener('submit', (event) => {
     state.questionCount = state.quickAddSettings.additions;
     state.timeLimitSeconds = state.quickAddSettings.secondsPerQuestion;
     state.autoContinue = true;
+    state.quickAddRunningCents = 0;
     saveQuickAddSettings();
     showNextQuickAddQuestion();
     return;

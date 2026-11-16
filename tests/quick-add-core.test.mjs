@@ -2,28 +2,50 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  QUICK_ADD_PRESETS, QUICK_ADD_DENOMINATIONS, createQuickAddQuestion, resolveQuickAddSettings, scoreQuickAddAnswer,
+  QUICK_ADD_PRESETS, createQuickAddQuestion, resolveQuickAddSettings, scoreQuickAddAnswer,
   summarizeQuickAddRound, quickAddRecordFields, summarizeQuickAddHistory, passRuleText, goalText,
+  quickAddAmountBand, quickAddTotalBand,
 } from '../quick-add-core.mjs';
 
 const seeded = (seed) => () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 2 ** 32; };
-const cents = new Map(QUICK_ADD_DENOMINATIONS.map((item) => [item.label, item.cents]));
 
-test('every question adds small cash values and its answer is their total', () => {
+test('every question adds one amount inside the chosen smallest and largest to the previous total', () => {
   const random = seeded(5);
-  for (const difficulty of ['Easy', 'Medium', 'Hard']) for (let i = 0; i < 500; i += 1) {
-    const question = createQuickAddQuestion({ difficulty, random });
-    const preset = QUICK_ADD_PRESETS[difficulty];
-    assert.ok(question.terms >= preset.terms[0] && question.terms <= preset.terms[1]);
-    assert.equal(question.values.length, question.terms);
-    assert.ok(question.values.every((value) => preset.values.includes(value)), question.expression);
-    const fromText = question.expression.split(' + ').reduce((sum, label) => sum + cents.get(label), 0);
-    assert.equal(question.answerCents, fromText, question.expression);
-    if (difficulty === 'Hard') assert.ok(question.hasCoins, 'Hard always has a coin');
-    else assert.equal(question.answerCents % 100, 0, 'Easy and Medium are whole dollars');
+  for (const [minAdd, maxAdd, includeCents] of [[1, 9, false], [5, 49, false], [10, 99, true], [7, 7, false], [3, 4, true]]) {
+    const settings = { minAdd, maxAdd, includeCents };
+    let previous = 0;
+    const seen = new Set();
+    for (let i = 0; i < 400; i += 1) {
+      const question = createQuickAddQuestion({ settings, previousCents: previous, random });
+      assert.equal(question.previousCents, previous, 'adds to the previous total');
+      assert.ok(question.addendCents >= minAdd * 100 && question.addendCents <= maxAdd * 100, `${minAdd}-${maxAdd}: ${question.addendCents}`);
+      assert.equal(question.addendCents % (includeCents ? 5 : 100), 0);
+      assert.equal(question.answerCents, previous + question.addendCents);
+      if (!includeCents) assert.equal(question.addendCents % 100, 0, 'whole dollars only');
+      seen.add(question.addendCents);
+      previous = question.answerCents;
+    }
+    assert.ok(seen.has(minAdd * 100) || maxAdd - minAdd > 5, 'the smallest amount can appear');
   }
-  const easy = Array.from({ length: 200 }, () => createQuickAddQuestion({ difficulty: 'Easy', random }));
-  for (const label of ['$10', '$1']) assert.ok(easy.some((q) => q.labels.includes(label)), `Easy uses ${label}`);
+  const exact = createQuickAddQuestion({ settings: { minAdd: 7, maxAdd: 7 }, previousCents: 1200, random });
+  assert.equal(exact.expression, '$12 + $7');
+  assert.equal(exact.answerCents, 1900);
+  assert.equal(createQuickAddQuestion({ settings: { minAdd: 2, maxAdd: 2, includeCents: true }, previousCents: 1250, random }).expression, '$12.50 + $2');
+});
+
+test('a chain of questions keeps adding to the last total', () => {
+  const settings = resolveQuickAddSettings({ difficulty: 'Medium' });
+  const random = seeded(9);
+  let total = 0;
+  const first = createQuickAddQuestion({ settings, previousCents: total, random });
+  assert.equal(first.previousCents, 0, 'a round starts at $0');
+  total = first.answerCents;
+  for (let i = 0; i < 20; i += 1) {
+    const next = createQuickAddQuestion({ settings, previousCents: total, random });
+    assert.equal(next.previousCents, total);
+    total = next.answerCents;
+  }
+  assert.ok(total > 21 * settings.minAdd * 100 - 1);
 });
 
 test('answers: exact cents are correct, wrong or blank is a mistake, a timeout is a mistake', () => {
@@ -37,12 +59,17 @@ test('answers: exact cents are correct, wrong or blank is a mistake, a timeout i
   assert.equal(round.timedOut, 1);
 });
 
-test('settings keep the chosen seconds, additions, rule and goal inside safe limits', () => {
-  const settings = resolveQuickAddSettings({ difficulty: 'Medium', secondsPerQuestion: '4', additions: '12', passRule: 'min-correct', passValue: '50', goalType: 'score', goalTarget: '99' });
-  assert.deepEqual(settings, { difficulty: 'Medium', secondsPerQuestion: 4, additions: 12, passRule: 'min-correct', passValue: 12, goalType: 'score', goalTarget: 12 });
+test('settings keep every number inside safe limits', () => {
+  const settings = resolveQuickAddSettings({ difficulty: 'Medium', secondsPerQuestion: '4', additions: '12', passRule: 'min-correct', passValue: '50', goalType: 'score', goalTarget: '99', minAdd: '8', maxAdd: '30', includeCents: true });
+  assert.deepEqual(settings, { difficulty: 'Medium', minAdd: 8, maxAdd: 30, includeCents: true, secondsPerQuestion: 4, additions: 12, passRule: 'min-correct', passValue: 12, goalType: 'score', goalTarget: 12 });
   assert.equal(resolveQuickAddSettings({ secondsPerQuestion: 0 }).secondsPerQuestion, 2);
   assert.equal(resolveQuickAddSettings({ passRule: 'max-mistakes', passValue: 0 }).passValue, 0, 'zero mistakes allowed is a valid rule');
   assert.equal(resolveQuickAddSettings({ difficulty: 'Nope' }).difficulty, 'Easy');
+  const crossed = resolveQuickAddSettings({ minAdd: 20, maxAdd: 5 });
+  assert.ok(crossed.maxAdd >= crossed.minAdd, 'the largest amount is never below the smallest');
+  assert.equal(resolveQuickAddSettings({ minAdd: 0 }).minAdd, 1);
+  assert.equal(resolveQuickAddSettings({ minAdd: 5000 }).minAdd, 1000);
+  for (const level of Object.values(QUICK_ADD_PRESETS)) assert.ok(level.minAdd <= level.maxAdd);
 });
 
 test('a round counts exactly Y additions and ignores anything after', () => {
@@ -88,11 +115,24 @@ test('goal progress follows the score or the best streak', () => {
   assert.match(passRuleText({ passRule: 'max-mistakes', passValue: 1, additions: 6 }), /1 or fewer mistake in 6/);
 });
 
+test('size groups for charts', () => {
+  assert.equal(quickAddAmountBand(700), '$1–$9');
+  assert.equal(quickAddAmountBand(1000), '$10–$24');
+  assert.equal(quickAddAmountBand(4999), '$25–$49');
+  assert.equal(quickAddAmountBand(9999), '$50–$99');
+  assert.equal(quickAddAmountBand(10000), '$100+');
+  assert.equal(quickAddTotalBand(0), '$0–$49');
+  assert.equal(quickAddTotalBand(25000), '$250–$499');
+  assert.equal(quickAddTotalBand(60000), '$500+');
+});
+
 test('the last record of a round saves the pass and goal result for History', () => {
-  const question = createQuickAddQuestion({ difficulty: 'Easy', random: seeded(2) });
-  const settings = { additions: 2, passRule: 'max-mistakes', passValue: 0, goalType: 'score', goalTarget: 2 };
+  const settings = { additions: 2, passRule: 'max-mistakes', passValue: 0, goalType: 'score', goalTarget: 2, minAdd: 1, maxAdd: 9 };
+  const question = createQuickAddQuestion({ settings, previousCents: 500, random: seeded(2) });
   const first = quickAddRecordFields(question, settings, summarizeQuickAddRound(['Correct'], settings));
   assert.equal(first.quickAddRoundComplete, undefined);
+  assert.equal(first.quickAddPreviousCents, 500);
+  assert.equal(first.quickAddAnswerCents, 500 + first.quickAddAddendCents);
   const last = quickAddRecordFields(question, settings, summarizeQuickAddRound(['Correct', 'Correct'], settings));
   assert.equal(last.quickAddRoundComplete, true);
   assert.equal(last.quickAddRoundPassed, true);
@@ -103,8 +143,10 @@ test('the last record of a round saves the pass and goal result for History', ()
   assert.equal(summary.roundsPassed, 1);
 });
 
-test('the game uses the shared timer and continues automatically with the answer note', () => {
+test('the game uses the shared timer, continues automatically, and chains from the correct total', () => {
   const app = readFileSync(new URL('../app.js', import.meta.url), 'utf8');
   assert.match(app, /startTimer\(state\.timeLimitSeconds, document\.getElementById\('quick-add-timer'\), \(\) => submitQuickAddAnswer\(true\)\)/);
   assert.match(app, /function submitQuickAddAnswer[\s\S]*?showAnswerToast\(record[\s\S]*?showNextQuickAddQuestion\(\)/);
+  assert.match(app, /state\.quickAddRunningCents = state\.quickAddQuestion\.answerCents/);
+  assert.match(app, /previousCents: state\.quickAddRunningCents/);
 });

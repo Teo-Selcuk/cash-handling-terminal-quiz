@@ -7,38 +7,38 @@
     <meta name="theme-color" content="#12343b">
     <title>Cash, Memory &amp; Detail Trainer</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="style.css?v=20261115-quick-add">
+    <link rel="stylesheet" href="style.css?v=20261116-chain">
     <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
     <!-- Start every startup module download at once instead of discovering imports one level at a time. -->
-    <link rel="modulepreload" href="app.js?v=20261115-quick-add">
+    <link rel="modulepreload" href="app.js?v=20261116-chain">
     <link rel="modulepreload" href="firebase-accounts.mjs?v=20261020-sync">
     <link rel="modulepreload" href="account-data.mjs?v=20261020-fast">
     <link rel="modulepreload" href="firebase-config.mjs">
     <link rel="modulepreload" href="account-access.mjs">
     <link rel="modulepreload" href="cash-mistakes.mjs?v=20261011-fair-credit">
-    <link rel="modulepreload" href="history-tables.mjs?v=20261115-quick-add">
-    <link rel="modulepreload" href="history-explanations.mjs?v=20261115-quick-add">
+    <link rel="modulepreload" href="history-tables.mjs?v=20261116-chain">
+    <link rel="modulepreload" href="history-explanations.mjs?v=20261116-chain">
     <link rel="modulepreload" href="chart-contrast.mjs?v=20261023-round3">
     <link rel="modulepreload" href="chart-examples.mjs?v=20261023-round3">
-    <link rel="modulepreload" href="chart-games.mjs?v=20261115-quick-add">
+    <link rel="modulepreload" href="chart-games.mjs?v=20261116-chain">
     <link rel="modulepreload" href="numpad-shortcuts.mjs?v=20261028-amount">
     <link rel="modulepreload" href="amount-input.mjs?v=20261101-numeric">
     <link rel="modulepreload" href="round-shortcuts.mjs?v=20261028-amount">
-    <link rel="modulepreload" href="answer-toast.mjs?v=20261115-quick-add">
-    <link rel="modulepreload" href="progress-projection.mjs?v=20261115-quick-add">
-    <link rel="modulepreload" href="progress-analytics.mjs?v=20261115-quick-add">
+    <link rel="modulepreload" href="answer-toast.mjs?v=20261116-chain">
+    <link rel="modulepreload" href="progress-projection.mjs?v=20261116-chain">
+    <link rel="modulepreload" href="progress-analytics.mjs?v=20261116-chain">
     <link rel="modulepreload" href="overload-core.mjs?v=20261003-accounts">
     <link rel="modulepreload" href="overload-analytics.mjs?v=20261003-accounts">
     <link rel="modulepreload" href="quiz-core.mjs?v=20261017-round2">
     <link rel="modulepreload" href="pattern-games.mjs">
-    <link rel="modulepreload" href="speed-goals.mjs?v=20261115-quick-add">
+    <link rel="modulepreload" href="speed-goals.mjs?v=20261116-chain">
     <link rel="modulepreload" href="overload-ui.mjs?v=20261101-numeric">
     <link rel="modulepreload" href="check-holds.mjs?v=20261003-accounts">
     <link rel="modulepreload" href="hold-training-ui.mjs?v=20261003-accounts">
     <link rel="modulepreload" href="math-core.mjs?v=20261113-math">
-    <link rel="modulepreload" href="quick-add-core.mjs?v=20261115-quick-add">
+    <link rel="modulepreload" href="quick-add-core.mjs?v=20261116-chain">
     <link rel="modulepreload" href="typing-core.mjs?v=20261002-typing">
-    <link rel="modulepreload" href="chess-ui.mjs?v=20261115-quick-add">
+    <link rel="modulepreload" href="chess-ui.mjs?v=20261116-chain">
     <link rel="modulepreload" href="chess-trainer-ui.mjs?v=20261114-touch">
     <link rel="modulepreload" href="chess-trainer.mjs?v=20261113-trainer">
     <link rel="modulepreload" href="chess-core.mjs">
@@ -51,7 +51,7 @@
     <link rel="modulepreload" href="distraction-sounds.mjs">
     <link rel="modulepreload" href="fraud-inspection.mjs?v=20261003-accounts">
     <link rel="modulepreload" href="adaptive-practice.mjs?v=20261017-perf">
-    <link rel="modulepreload" href="sample-history.mjs?v=20261115-quick-add">
+    <link rel="modulepreload" href="sample-history.mjs?v=20261116-chain">
     <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js">
     <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js">
     <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js">
@@ -120,7 +120,7 @@
             <div class="choice-grid game-choice-grid">
               <label class="choice-card"><input type="radio" name="game" value="cash" checked><span><strong>Cash handling</strong><small>Practice exact, change, and short transactions.</small></span></label>
               <label class="choice-card"><input type="radio" name="game" value="math"><span><strong>Math practice</strong><small>Add, subtract, multiply, divide, brackets, and mixed problems against the clock.</small></span></label>
-              <label class="choice-card"><input type="radio" name="game" value="quick-add"><span><strong>Quick addition</strong><small>Add ones, tens, and other bills fast, back to back, with a pass rule and a goal.</small></span></label>
+              <label class="choice-card"><input type="radio" name="game" value="quick-add"><span><strong>Quick addition</strong><small>Keep adding amounts to a running total, back to back, with a pass rule and a goal.</small></span></label>
               <label class="choice-card"><input type="radio" name="game" value="memory"><span><strong>Number memory</strong><small>Read a number, then type it back from memory.</small></span></label>
               <label class="choice-card"><input type="radio" name="game" value="task"><span><strong>Task simulation</strong><small>Watch a workflow, then repeat its tabs, fields, and selections from memory.</small></span></label>
               <label class="choice-card"><input type="radio" name="game" value="error-detection"><span><strong>Error detection</strong><small>15 rotating games: sequences, mirrors, rotations, binary patterns, grids, and more. Each has Easy, Medium, and Hard puzzles.</small></span></label>
@@ -337,13 +337,23 @@
           </div>
 
           <div id="quick-add-setup-options" hidden>
-            <p class="setup-note">Each question shows a few cash values, such as $10 + $1 + $5. Type the total and press Enter. Questions continue automatically, and a timeout counts as a mistake.</p>
+            <p class="setup-note">Each question adds one amount to the total you just reached, such as $12 + $7, then $19 + $5, and so on. Type the new total and press Enter. Questions continue automatically, and a timeout counts as a mistake.</p>
             <div class="form-grid">
               <label for="quick-add-seconds">Seconds per question
                 <input id="quick-add-seconds" name="quickAddSeconds" type="number" value="8" min="2" max="120" inputmode="numeric">
               </label>
               <label for="quick-add-additions">Additions per round
                 <input id="quick-add-additions" name="quickAddAdditions" type="number" value="10" min="1" max="100" inputmode="numeric">
+              </label>
+              <label for="quick-add-min-add">Smallest amount to add ($)
+                <input id="quick-add-min-add" name="quickAddMinAdd" type="number" value="1" min="1" max="1000" inputmode="numeric">
+              </label>
+              <label for="quick-add-max-add">Largest amount to add ($)
+                <input id="quick-add-max-add" name="quickAddMaxAdd" type="number" value="9" min="1" max="1000" inputmode="numeric">
+              </label>
+              <label class="toggle-row" for="quick-add-include-cents">
+                <input id="quick-add-include-cents" name="quickAddIncludeCents" type="checkbox">
+                <span><strong>Include cents</strong><small>Amounts to add can have cents, in 5¢ steps.</small></span>
               </label>
               <label for="quick-add-pass-rule">Pass rule
                 <select id="quick-add-pass-rule" name="quickAddPassRule">
@@ -618,7 +628,7 @@
           <time class="timer" id="quick-add-timer" aria-label="Time remaining">0:08</time>
         </div>
         <div class="transaction-card quick-add-card">
-          <p class="transaction-label">Add these values</p>
+          <p class="transaction-label">Add to the total so far</p>
           <ul class="quick-add-values" id="quick-add-values" aria-describedby="quick-add-expression"></ul>
           <h2 class="quick-add-expression" id="quick-add-heading" tabindex="-1"><span id="quick-add-expression">$0 = ?</span></h2>
         </div>
@@ -1100,6 +1110,6 @@
       <p class="answer-toast-title" id="answer-toast-title"></p>
       <dl class="answer-toast-lines" id="answer-toast-lines"></dl>
     </aside>
-    <script type="module" src="app.js?v=20261115-quick-add"></script>
+    <script type="module" src="app.js?v=20261116-chain"></script>
   </body>
 </html>
